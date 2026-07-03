@@ -11,8 +11,8 @@ Full-stack application for kidney transplant risk prediction and assessment.
 ### Backend
 \\\ash
 cd kidney-backend
-npm install          # or pip install -r requirements.txt
-npm start            # or python main.py
+uv sync
+uv main.py
 \\\
 
 ### Frontend
@@ -23,5 +23,5 @@ npm run dev
 \\\
 
 ## Tech Stack
-- **Backend**: [Tell me what you're using]
-- **Frontend**: [Tell me what you're using]
+- **Backend**: Fast API
+- **Frontend**: React
