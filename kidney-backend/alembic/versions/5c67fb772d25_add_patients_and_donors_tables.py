@@ -10,6 +10,8 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
+from sqlalchemy.dialects.postgresql import ENUM
+
 
 # revision identifiers, used by Alembic.
 revision: str = '5c67fb772d25'
@@ -18,7 +20,7 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
-blood_type_enum = sa.Enum('O', 'A', 'B', 'AB', name='blood_type_enum')
+blood_type_enum = ENUM('O', 'A', 'B', 'AB', name='blood_type_enum', create_type=False)
 
 
 def upgrade() -> None:
