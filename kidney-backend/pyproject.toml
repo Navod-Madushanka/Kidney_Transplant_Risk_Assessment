@@ -11,6 +11,9 @@ dependencies = [
     "alembic>=1.14.0",
     "pydantic-settings>=2.6.0",
     "python-dotenv>=1.0.1",
+    "python-jose[cryptography]>=3.5.0",
+    "bcrypt>=5.0.0",
+    "pydantic[email]>=2.13.4",
 ]
 
 [project.optional-dependencies]
