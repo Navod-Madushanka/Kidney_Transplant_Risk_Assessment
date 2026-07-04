@@ -17,7 +17,12 @@ class SensitizationEvent(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         ForeignKey("patients.id"), nullable=False, index=True
     )
     event_type: Mapped[SensitizationEventTypeEnum] = mapped_column(
-        Enum(SensitizationEventTypeEnum, name="sensitization_event_type_enum", create_type=False),
-        nullable=False,
+    Enum(
+        SensitizationEventTypeEnum,
+        name="sensitization_event_type_enum",
+        create_type=False,
+        values_callable=lambda enum_class: [member.value for member in enum_class],
+    ),
+    nullable=False,
     )
     event_date: Mapped[date] = mapped_column(nullable=False)

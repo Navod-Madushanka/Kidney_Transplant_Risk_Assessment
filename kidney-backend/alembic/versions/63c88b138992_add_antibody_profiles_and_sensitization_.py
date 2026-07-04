@@ -1,8 +1,8 @@
 """add antibody profiles and sensitization events tables
 
-Revision ID: 321ec76596c0
+Revision ID: 63c88b138992
 Revises: db4b8f00ec39
-Create Date: 2026-07-04 09:36:45.334575
+Create Date: 2026-07-04 13:47:11.824173
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '321ec76596c0'
+revision: str = '63c88b138992'
 down_revision: Union[str, Sequence[str], None] = 'db4b8f00ec39'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -34,7 +34,7 @@ def upgrade() -> None:
     op.create_index(op.f('ix_antibody_profiles_patient_id'), 'antibody_profiles', ['patient_id'], unique=False)
     op.create_table('sensitization_events',
     sa.Column('patient_id', sa.Uuid(), nullable=False),
-    sa.Column('event_type', sa.Enum('PREVIOUS_TRANSPLANT', 'PREGNANCY', 'BLOOD_TRANSFUSION', name='sensitization_event_type_enum'), nullable=False),
+    sa.Column('event_type', sa.Enum('previous_transplant', 'pregnancy', 'blood_transfusion', name='sensitization_event_type_enum'), nullable=False),
     sa.Column('event_date', sa.Date(), nullable=False),
     sa.Column('id', sa.Uuid(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),

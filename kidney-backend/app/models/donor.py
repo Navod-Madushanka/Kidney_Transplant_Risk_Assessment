@@ -19,5 +19,10 @@ class Donor(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     full_name: Mapped[str] = mapped_column(nullable=False)
     date_of_birth: Mapped[date] = mapped_column(nullable=False)
     blood_type: Mapped[BloodType] = mapped_column(
-        Enum(BloodType, name="blood_type_enum"), nullable=False
+    Enum(
+        BloodType,
+        name="blood_type_enum",
+        values_callable=lambda enum_class: [member.value for member in enum_class],
+    ),
+    nullable=False,
     )

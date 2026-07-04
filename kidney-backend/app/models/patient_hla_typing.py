@@ -17,7 +17,13 @@ class PatientHLATyping(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         ForeignKey("patients.id"), nullable=False, index=True
     )
     locus: Mapped[HLALocusEnum] = mapped_column(
-        Enum(HLALocusEnum, name="hla_locus_enum", create_type=False), nullable=False
+    Enum(
+        HLALocusEnum,
+        name="hla_locus_enum",
+        create_type=False,
+        values_callable=lambda enum_class: [member.value for member in enum_class],
+    ),
+    nullable=False,
     )
     allele_1: Mapped[str] = mapped_column(nullable=False)
     allele_2: Mapped[str] = mapped_column(nullable=False)
