@@ -30,7 +30,7 @@ async def create_match_report(
         sensitization_result=_to_json(pipeline_result.sensitization_result),
         dsa_result=_to_json(pipeline_result.dsa_result),
         hla_scoring_result=_to_json(pipeline_result.hla_scoring_result),
-        cpra_result=None,
+        cpra_result=_to_json(pipeline_result.cpra_result),
     )
     db.add(report)
     await db.commit()

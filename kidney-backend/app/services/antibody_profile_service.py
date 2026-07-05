@@ -33,3 +33,12 @@ async def replace_patient_antibody_profiles(
         db.add(profile_row)
 
     await db.commit()
+
+
+async def get_patient_sensitized_antigens(
+    db: AsyncSession, patient_id: uuid.UUID, mfi_cutoff_value: float
+) -> list[str]:
+    profiles = await get_patient_antibody_profiles(db, patient_id)
+    return [
+        profile.antigen for profile in profiles if float(profile.mfi) > mfi_cutoff_value
+    ]

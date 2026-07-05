@@ -7,12 +7,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.donor import Donor
 from app.models.patient import Patient
 from app.services.abo_service import ABOResult, check_abo_compatibility
-from app.services.antibody_profile_service import get_patient_antibody_profiles
+from app.services.antibody_profile_service import (
+    get_patient_antibody_profiles,
+    get_patient_sensitized_antigens,
+)
+from app.services.cpra_service import CPRAResult, calculate_cpra
 from app.services.dsa_service import DEFAULT_MFI_CUTOFF, DSAResult, PatientAntibody, check_dsa
 from app.services.hla_scoring_service import HLAScoringResult, calculate_hla_risk_score
 from app.services.hla_typing_service import (
     get_donor_hla_typing_dict,
     get_patient_hla_typing_dict,
+    get_population_hla_profiles,
 )
 from app.services.risk_tier_service import get_risk_tier
 from app.services.sensitization_event_service import get_patient_sensitization_event_types
@@ -27,6 +32,7 @@ class MatchPipelineResult:
     dsa_result: Optional[DSAResult] = None
     hla_scoring_result: Optional[HLAScoringResult] = None
     risk_tier: Optional[str] = None
+    cpra_result: Optional[CPRAResult] = None
 
 
 async def run_match_pipeline(
@@ -76,6 +82,15 @@ async def run_match_pipeline(
     hla_scoring_result = calculate_hla_risk_score(patient_hla_typing, donor_hla_typing)
     risk_tier = get_risk_tier(hla_scoring_result.total_score)
 
+    sensitized_antigens = await get_patient_sensitized_antigens(
+        db, patient.id, DEFAULT_MFI_CUTOFF
+    )
+    population_profiles = await get_population_hla_profiles(db)
+    cpra_result = calculate_cpra(
+        sensitized_antigens=sensitized_antigens,
+        population_profiles=population_profiles,
+    )
+
     return MatchPipelineResult(
         overall_status="completed",
         abo_result=abo_result,
@@ -83,4 +98,5 @@ async def run_match_pipeline(
         dsa_result=dsa_result,
         hla_scoring_result=hla_scoring_result,
         risk_tier=risk_tier,
+        cpra_result=cpra_result,
     )
