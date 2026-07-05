@@ -8,7 +8,9 @@ from app.core.dependencies import get_current_user
 from app.db.session import get_db
 from app.models.doctor import Doctor
 from app.schemas.donor import DonorCreate, DonorResponse
+from app.schemas.hla_typing import HLATypingEntry
 from app.services.donor_service import create_donor, get_donor_by_id_for_doctor
+from app.services.hla_typing_service import replace_donor_hla_typing
 
 router = APIRouter(prefix="/donors", tags=["donors"])
 
@@ -38,3 +40,20 @@ async def get_donor_endpoint(
         )
 
     return DonorResponse.model_validate(donor)
+
+
+@router.put("/{donor_id}/hla-typings", status_code=status.HTTP_204_NO_CONTENT)
+async def replace_donor_hla_typing_endpoint(
+    donor_id: uuid.UUID,
+    entries: list[HLATypingEntry],
+    current_doctor: Doctor = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    donor = await get_donor_by_id_for_doctor(db, donor_id, current_doctor.id)
+    if donor is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Donor not found",
+        )
+
+    await replace_donor_hla_typing(db, donor_id, entries)
