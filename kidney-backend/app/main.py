@@ -10,6 +10,7 @@ from app.db.session import get_db
 from app.models.doctor import Doctor
 from app.api.patients import router as patients_router
 from app.api.donors import router as donors_router
+from app.api.compatibility import router as compatibility_router
 
 app = FastAPI(title="Kidney Transplant Compatibility System")
 
@@ -24,6 +25,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(patients_router)
 app.include_router(donors_router)
+app.include_router(compatibility_router)
 
 @app.get("/")
 def read_root():
