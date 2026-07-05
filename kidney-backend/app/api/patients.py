@@ -7,7 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.dependencies import get_current_user
 from app.db.session import get_db
 from app.models.doctor import Doctor
+from app.schemas.hla_typing import HLATypingEntry
 from app.schemas.patient import PatientCreate, PatientResponse
+from app.services.hla_typing_service import replace_patient_hla_typing
 from app.services.patient_service import create_patient, get_patient_by_id_for_doctor
 
 router = APIRouter(prefix="/patients", tags=["patients"])
@@ -38,3 +40,20 @@ async def get_patient_endpoint(
         )
 
     return PatientResponse.model_validate(patient)
+
+
+@router.put("/{patient_id}/hla-typings", status_code=status.HTTP_204_NO_CONTENT)
+async def replace_patient_hla_typing_endpoint(
+    patient_id: uuid.UUID,
+    entries: list[HLATypingEntry],
+    current_doctor: Doctor = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    patient = await get_patient_by_id_for_doctor(db, patient_id, current_doctor.id)
+    if patient is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Patient not found",
+        )
+
+    await replace_patient_hla_typing(db, patient_id, entries)

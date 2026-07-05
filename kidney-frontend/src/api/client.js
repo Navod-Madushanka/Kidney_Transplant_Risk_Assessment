@@ -1,5 +1,5 @@
 // src/api/client.js
-const BASE_URL = "http://localhost:8000";
+const BASE_URL = "http://localhost:8090";
 
 export async function apiGet(path){
     const response = await fetch(`${BASE_URL}${path}`);
