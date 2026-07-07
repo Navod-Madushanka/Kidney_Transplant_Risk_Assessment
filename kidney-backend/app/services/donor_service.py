@@ -16,6 +16,7 @@ async def create_donor(
         full_name=payload.full_name,
         date_of_birth=payload.date_of_birth,
         blood_type=payload.blood_type,
+        nic_number=payload.nic_number,
     )
     db.add(donor)
     await db.commit()

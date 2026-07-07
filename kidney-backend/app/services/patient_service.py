@@ -16,6 +16,7 @@ async def create_patient(
         full_name=payload.full_name,
         date_of_birth=payload.date_of_birth,
         blood_type=payload.blood_type,
+        nic_number=payload.nic_number,
     )
     db.add(patient)
     await db.commit()
