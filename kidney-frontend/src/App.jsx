@@ -1,42 +1,25 @@
 // src/App.jsx
-import { useEffect, useState } from 'react'
-import { apiGet } from './api/client'
+import { Navigate, Route, Routes } from "react-router-dom"
+import LoginPage from "./pages/LoginPage"
+import RegisterPage from "./pages/RegisterPage"
+import DashboardLayout from "./layout/DashboardLayout"
+import ProtectedRoute from "./routes/ProtectedRoute"
 
 function App() {
-  const [status, setStatus] = useState('checking')
-
-  useEffect(() => {
-    apiGet('/health/db')
-      .then(() => setStatus('connected'))
-      .catch(() => setStatus('down'))
-  }, [])
-
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="bg-white p-8 rounded-lg shadow-md text-center">
-        <h1 className="text-2xl font-bold text-gray-800 mb-4">
-          Kidney Transplant Compatibility System
-        </h1>
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
 
-        {status === 'checking' && (
-          <span className="inline-block px-4 py-2 rounded-full bg-gray-200 text-gray-700">
-            Checking backend...
-          </span>
-        )}
+      <Route element={<ProtectedRoute />}>
+        <Route element={<DashboardLayout />}>
+          <Route path="/" element={<div>Dashboard placeholder</div>} handle={{ title: "Dashboard" }} />
+          {/* patients, donors, checks, reports routes go here next */}
+        </Route>
+      </Route>
 
-        {status === 'connected' && (
-          <span className="inline-block px-4 py-2 rounded-full bg-green-100 text-green-700 font-medium">
-            Backend connected
-          </span>
-        )}
-
-        {status === 'down' && (
-          <span className="inline-block px-4 py-2 rounded-full bg-red-100 text-red-700 font-medium">
-            Backend down
-          </span>
-        )}
-      </div>
-    </div>
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   )
 }
 

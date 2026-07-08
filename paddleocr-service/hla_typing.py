@@ -1,123 +1,135 @@
 # paddleocr-service/hla_typing.py
 """Extraction of the HLA Typing table from a Histocompatibility Type-match
-Report (e.g. sample.jpg): the table with columns HLA-A*, HLA-B*, HLA-C*,
-HLA DRB1*, HLA-DRB3,4,5*, HLA DQA1*, HLA DQB1*, HLA DPA1*, HLA DPB1*, and
-Patient / Donor rows.
-
-Output shape matches the backend's HLATypingEntry schema:
-    {"locus": ..., "allele_1": ..., "allele_2": ...}
+Report. Column headers are identified by scanning every detection's text
+directly for known locus tokens (not by picking a single "header row"),
+since real headers often wrap across two physical lines. Patient/Donor
+rows are identified by literal text search too, not by column position,
+since the label can sit very close to the first data column.
 """
-from box_utils import group_into_rows
-from table_extraction import (
-    extract_row_by_columns,
-    find_header_row,
-    merge_short_continuation_rows,
-)
 
-HLA_HEADER_LABELS = [
-    "HLA-A",
-    "HLA-B",
-    "HLA-C",
-    "DRB1",
-    "DRB3",
-    "DQA1",
-    "DQB1",
-    "DPA1",
-    "DPB1",
+HEADER_TOKEN_TO_COLUMN = [
+    ("HLA-A", "hla_a"),
+    ("HLA-B", "hla_b"),
+    ("HLA-C", "hla_c"),
+    ("DRB1", "hla_drb1"),
+    ("DRB3", "hla_drb345"),
+    ("DQA1", "hla_dqa1"),
+    ("DQB1", "hla_dqb1"),
+    ("DPA1", "hla_dpa1"),
+    ("DPB1", "hla_dpb1"),
 ]
-
-HLA_COLUMN_NAMES = [
-    "row_label",
-    "hla_a",
-    "hla_b",
-    "hla_c",
-    "hla_drb1",
-    "hla_drb345",
-    "hla_dqa1",
-    "hla_dqb1",
-    "hla_dpa1",
-    "hla_dpb1",
-]
-
-LOCUS_A = "A"
-LOCUS_B = "B"
-LOCUS_C = "C"
-LOCUS_DRB1 = "DRB1"
-LOCUS_DQA1 = "DQA1"
-LOCUS_DQB1 = "DQB1"
-LOCUS_DPA1 = "DPA1"
-LOCUS_DPB1 = "DPB1"
-DRB_COMBINED_LOCUS = "DRB3,4,5"
 
 STANDARD_COLUMN_TO_LOCUS = {
-    "hla_a": LOCUS_A,
-    "hla_b": LOCUS_B,
-    "hla_c": LOCUS_C,
-    "hla_drb1": LOCUS_DRB1,
-    "hla_dqa1": LOCUS_DQA1,
-    "hla_dqb1": LOCUS_DQB1,
-    "hla_dpa1": LOCUS_DPA1,
-    "hla_dpb1": LOCUS_DPB1,
+    "hla_a": "A",
+    "hla_b": "B",
+    "hla_c": "C",
+    "hla_drb1": "DRB1",
+    "hla_dqa1": "DQA1",
+    "hla_dqb1": "DQB1",
+    "hla_dpa1": "DPA1",
+    "hla_dpb1": "DPB1",
 }
 
+DRB_COMBINED_LOCUS = "DRB3,4,5"
 STOP_ROW_MARKERS = ["allele group-level resolution", "interpretation"]
-
 LOW_CONFIDENCE_THRESHOLD = 0.75
+MAX_COLUMN_DISTANCE = 60.0
+
+from box_utils import group_into_rows
+
+
+def _normalize_for_header_match(text: str) -> str:
+    # Corrects the common OCR confusion of the digit "1" reading as the
+    # letter "I" (e.g. "DQB1*" misread as "DQBI*"), specifically for
+    # matching header tokens - never used on actual allele values.
+    return text.upper().replace("I", "1")
+
+
+def _is_patient_or_donor_label(text: str) -> str | None:
+    upper = text.strip().upper()
+    if upper.startswith("PATIENT"):
+        return "patient"
+    if upper.startswith("DONOR"):
+        return "donor"
+    return None
+
+
+def _build_column_centers(header_rows: list[list[dict]]) -> list[tuple[float, str]]:
+    column_centers: list[tuple[float, str]] = []
+    seen_columns: set[str] = set()
+
+    for row in header_rows:
+        for detection in row:
+            normalized = _normalize_for_header_match(detection["text"])
+            for token, column_name in HEADER_TOKEN_TO_COLUMN:
+                if token in normalized and column_name not in seen_columns:
+                    column_centers.append((detection["center_x"], column_name))
+                    seen_columns.add(column_name)
+
+    return column_centers
 
 
 def extract_hla_typing(detections: list[dict]) -> dict:
     """Return {"patient": [...], "donor": [...]}, where each entry is
     {"locus", "allele_1", "allele_2", "confidence", "needs_review"}.
-
-    needs_review is True whenever the underlying OCR confidence for that
-    cell fell below LOW_CONFIDENCE_THRESHOLD - the frontend should flag
-    these for the doctor to check/correct before submitting.
     """
     rows = group_into_rows(detections)
 
-    header = find_header_row(rows, HLA_HEADER_LABELS)
-    if header is None:
+    label_positions: list[tuple[int, str, dict]] = []
+    for row_index, row in enumerate(rows):
+        for detection in row:
+            side = _is_patient_or_donor_label(detection["text"])
+            if side is not None:
+                label_positions.append((row_index, side, detection))
+                break
+
+    if not label_positions:
         return {"patient": [], "donor": []}
 
-    header_index, header_row = header
-    column_names = _match_column_names(header_row)
-    column_centers = list(zip((d["center_x"] for d in header_row), column_names))
-
-    data_rows: list[list[dict]] = []
-    for row in rows[header_index + 1 :]:
-        row_text = " ".join(d["text"] for d in row).lower()
-        if any(marker in row_text for marker in STOP_ROW_MARKERS):
-            break
-        data_rows.append(row)
-
-    merged_rows = merge_short_continuation_rows(data_rows, len(column_centers))
+    header_rows = rows[: label_positions[0][0]]
+    column_centers = _build_column_centers(header_rows)
+    if not column_centers:
+        return {"patient": [], "donor": []}
 
     result: dict = {"patient": [], "donor": []}
 
-    for row in merged_rows:
-        fields = extract_row_by_columns(row, column_centers)
-        row_label_field = fields.pop("row_label", {"text": "", "confidence": None})
-        row_label = row_label_field["text"].strip().lower()
+    for i, (row_index, side, label_detection) in enumerate(label_positions):
+        end_index = (
+            label_positions[i + 1][0] if i + 1 < len(label_positions) else len(rows)
+        )
 
-        entries = _row_fields_to_entries(fields)
+        block_detections: list[dict] = []
+        for row in rows[row_index:end_index]:
+            row_text = " ".join(d["text"] for d in row).lower()
+            if any(marker in row_text for marker in STOP_ROW_MARKERS):
+                break
+            block_detections.extend(d for d in row if d is not label_detection)
 
-        if row_label.startswith("patient"):
-            result["patient"] = entries
-        elif row_label.startswith("donor"):
-            result["donor"] = entries
+        result[side] = _extract_entries(block_detections, column_centers)
 
     return result
 
 
-def _row_fields_to_entries(fields: dict[str, dict]) -> list[dict]:
+def _extract_entries(
+    detections: list[dict], column_centers: list[tuple[float, str]]
+) -> list[dict]:
+    buckets: dict[str, list[dict]] = {name: [] for _, name in column_centers}
+
+    for detection in detections:
+        nearest_center, nearest_name = min(
+            column_centers, key=lambda c: abs(c[0] - detection["center_x"])
+        )
+        if abs(nearest_center - detection["center_x"]) <= MAX_COLUMN_DISTANCE:
+            buckets[nearest_name].append(detection)
+
     entries: list[dict] = []
-
-    for column_name, field in fields.items():
-        raw_value = field["text"]
-        confidence = field["confidence"]
-
-        if not raw_value:
+    for column_name, cells in buckets.items():
+        if not cells:
             continue
+
+        cells.sort(key=lambda c: c["center_x"])
+        raw_value = " ".join(c["text"].strip() for c in cells).strip()
+        confidence = min(c["confidence"] for c in cells)
 
         if column_name == "hla_drb345":
             entries.extend(_parse_multi_locus_cell(raw_value, confidence))
@@ -127,7 +139,7 @@ def _row_fields_to_entries(fields: dict[str, dict]) -> list[dict]:
         if locus is None:
             continue
 
-        alleles = [a.strip() for a in raw_value.split(",") if a.strip()]
+        alleles = [a.strip() for a in raw_value.replace(".", ",").split(",") if a.strip()]
         if not alleles:
             continue
 
@@ -137,26 +149,15 @@ def _row_fields_to_entries(fields: dict[str, dict]) -> list[dict]:
                 "allele_1": alleles[0],
                 "allele_2": alleles[1] if len(alleles) > 1 else alleles[0],
                 "confidence": confidence,
-                "needs_review": confidence is None
-                or confidence < LOW_CONFIDENCE_THRESHOLD,
+                "needs_review": confidence < LOW_CONFIDENCE_THRESHOLD,
             }
         )
 
     return entries
 
 
-def _parse_multi_locus_cell(raw_value: str, confidence: float | None) -> list[dict]:
-    """Parse a combined cell like "DRB3*02, DRB4*01" into a SINGLE
-    HLATypingEntry-shaped dict for the combined "DRB3,4,5" locus - the only
-    value HLALocusEnum actually defines for this cell.
-    """
-    alleles: list[str] = []
-
-    for token in raw_value.split(","):
-        token = token.strip()
-        if token:
-            alleles.append(token)
-
+def _parse_multi_locus_cell(raw_value: str, confidence: float) -> list[dict]:
+    alleles = [token.strip() for token in raw_value.split(",") if token.strip()]
     if not alleles:
         return []
 
@@ -166,18 +167,6 @@ def _parse_multi_locus_cell(raw_value: str, confidence: float | None) -> list[di
             "allele_1": alleles[0],
             "allele_2": alleles[1] if len(alleles) > 1 else alleles[0],
             "confidence": confidence,
-            "needs_review": confidence is None
-            or confidence < LOW_CONFIDENCE_THRESHOLD,
+            "needs_review": confidence < LOW_CONFIDENCE_THRESHOLD,
         }
     ]
-
-
-def _match_column_names(header_row: list[dict]) -> list[str]:
-    if len(header_row) == len(HLA_COLUMN_NAMES):
-        return HLA_COLUMN_NAMES
-
-    if len(header_row) < len(HLA_COLUMN_NAMES):
-        return HLA_COLUMN_NAMES[: len(header_row)]
-
-    extra = [f"extra_col_{i}" for i in range(len(HLA_COLUMN_NAMES), len(header_row))]
-    return HLA_COLUMN_NAMES + extra
