@@ -1,1 +1,71 @@
 @import "tailwindcss";
+
+/*
+  Design tokens for the Kidney Transplant Compatibility System.
+  Tailwind v4 auto-generates utilities from these (e.g. --color-accent -> bg-accent, text-accent).
+
+  Two color groups, kept strictly separate:
+  - Neutral/interactive: bg, surface, border, text, accent — the "chrome" of the app.
+  - Clinical state: clear / moderate / high-moderate / high-risk — reserved ONLY for
+    clinical status (ABO, DSA, risk tier). Never reuse these for decoration or branding;
+    a color meaning something different in two places is a safety bug in this app.
+*/
+@theme {
+  /* Surfaces */
+  --color-bg: #F7F8F9;
+  --color-surface: #FFFFFF;
+  --color-border: #E5E7EB;
+
+  /* Text */
+  --color-text: #1C1E21;
+  --color-text-muted: #6B7280;
+
+  /* Accent — interactive elements only (links, primary buttons, focus rings) */
+  --color-accent: #2563EB;
+  --color-accent-hover: #1D4ED8;
+  --color-accent-subtle: #EFF6FF;
+
+  /* Clinical state palette */
+  --color-clear: #16A34A;
+  --color-clear-subtle: #F0FDF4;
+  --color-moderate: #D97706;
+  --color-moderate-subtle: #FFFBEB;
+  --color-high-moderate: #EA580C;
+  --color-high-moderate-subtle: #FFF7ED;
+  --color-high-risk: #DC2626;
+  --color-high-risk-subtle: #FEF2F2;
+
+  /* Radius */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+
+  /* Shadow — soft, low-elevation, card-like rather than a hard drop shadow */
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04), 0 2px 8px rgba(16, 24, 40, 0.04);
+  --shadow-card-hover: 0 2px 4px rgba(16, 24, 40, 0.06), 0 8px 24px rgba(16, 24, 40, 0.08);
+
+  /* Type — system stack so it renders as native SF Pro on Apple devices */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", Roboto, sans-serif;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Tabular numerals for clinical scores, MFI values, dates — keeps columns of numbers aligned */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Respect reduced-motion preferences across the app */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
