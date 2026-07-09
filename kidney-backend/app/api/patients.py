@@ -18,10 +18,24 @@ from app.schemas.sensitization_event import (
 from app.services.antibody_profile_service import replace_patient_antibody_profiles
 from app.services.hla_typing_service import replace_patient_hla_typing
 from app.services.match_report_service import get_reports_for_patient
-from app.services.patient_service import create_patient, get_patient_by_id_for_doctor
+from app.services.patient_service import (
+    create_patient,
+    get_patient_by_id_for_doctor,
+    get_patients_for_doctor,          # ← Added
+)
 from app.services.sensitization_event_service import create_sensitization_events
 
 router = APIRouter(prefix="/patients", tags=["patients"])
+
+
+@router.get("", response_model=list[PatientResponse])
+async def list_patients_endpoint(
+    current_doctor: Doctor = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all patients belonging to the current doctor."""
+    patients = await get_patients_for_doctor(db, current_doctor.id)
+    return [PatientResponse.model_validate(p) for p in patients]
 
 
 @router.post("", response_model=PatientResponse, status_code=status.HTTP_201_CREATED)
@@ -30,6 +44,7 @@ async def create_patient_endpoint(
     current_doctor: Doctor = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """Create a new patient for the current doctor."""
     patient = await create_patient(db, current_doctor.id, payload)
     return PatientResponse.model_validate(patient)
 
@@ -40,6 +55,7 @@ async def get_patient_endpoint(
     current_doctor: Doctor = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """Retrieve a specific patient (only if owned by current doctor)."""
     patient = await get_patient_by_id_for_doctor(db, patient_id, current_doctor.id)
 
     if patient is None:
@@ -58,13 +74,8 @@ async def replace_patient_hla_typing_endpoint(
     current_doctor: Doctor = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    patient = await get_patient_by_id_for_doctor(db, patient_id, current_doctor.id)
-    if patient is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Patient not found",
-        )
-
+    """Replace HLA typing data for a patient."""
+    await _ensure_patient_exists(db, patient_id, current_doctor.id)
     await replace_patient_hla_typing(db, patient_id, entries)
 
 
@@ -75,13 +86,8 @@ async def replace_patient_antibody_profiles_endpoint(
     current_doctor: Doctor = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    patient = await get_patient_by_id_for_doctor(db, patient_id, current_doctor.id)
-    if patient is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Patient not found",
-        )
-
+    """Replace antibody profile data for a patient."""
+    await _ensure_patient_exists(db, patient_id, current_doctor.id)
     await replace_patient_antibody_profiles(db, patient_id, entries)
 
 
@@ -96,12 +102,8 @@ async def create_sensitization_events_endpoint(
     current_doctor: Doctor = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    patient = await get_patient_by_id_for_doctor(db, patient_id, current_doctor.id)
-    if patient is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Patient not found",
-        )
+    """Add new sensitization events for a patient."""
+    await _ensure_patient_exists(db, patient_id, current_doctor.id)
 
     events = await create_sensitization_events(db, patient_id, entries)
     return [SensitizationEventResponse.model_validate(event) for event in events]
@@ -113,12 +115,23 @@ async def get_patient_reports_endpoint(
     current_doctor: Doctor = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    patient = await get_patient_by_id_for_doctor(db, patient_id, current_doctor.id)
+    """Get match reports for a patient."""
+    await _ensure_patient_exists(db, patient_id, current_doctor.id)
+
+    reports = await get_reports_for_patient(db, patient_id)
+    return [MatchReportResponse.model_validate(report) for report in reports]
+
+
+# ----------------------------------------------------------------------
+# Helper (keeps endpoints DRY)
+# ----------------------------------------------------------------------
+async def _ensure_patient_exists(
+    db: AsyncSession, patient_id: uuid.UUID, doctor_id: uuid.UUID
+) -> None:
+    """Raise 404 if patient doesn't exist or isn't owned by the doctor."""
+    patient = await get_patient_by_id_for_doctor(db, patient_id, doctor_id)
     if patient is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Patient not found",
         )
-
-    reports = await get_reports_for_patient(db, patient_id)
-    return [MatchReportResponse.model_validate(report) for report in reports]
