@@ -15,15 +15,24 @@ from app.schemas.sensitization_event import (
     SensitizationEventEntry,
     SensitizationEventResponse,
 )
-from app.services.antibody_profile_service import replace_patient_antibody_profiles
-from app.services.hla_typing_service import replace_patient_hla_typing
+from app.services.antibody_profile_service import (
+    get_patient_antibody_profiles,
+    replace_patient_antibody_profiles,
+)
+from app.services.hla_typing_service import (
+    get_patient_hla_typings,
+    replace_patient_hla_typing,
+)
 from app.services.match_report_service import get_reports_for_patient
 from app.services.patient_service import (
     create_patient,
     get_patient_by_id_for_doctor,
-    get_patients_for_doctor,          # ← Added
+    get_patients_for_doctor,
 )
-from app.services.sensitization_event_service import create_sensitization_events
+from app.services.sensitization_event_service import (
+    create_sensitization_events,
+    get_sensitization_events_for_patient,
+)
 
 router = APIRouter(prefix="/patients", tags=["patients"])
 
@@ -79,6 +88,17 @@ async def replace_patient_hla_typing_endpoint(
     await replace_patient_hla_typing(db, patient_id, entries)
 
 
+@router.get("/{patient_id}/hla-typings", response_model=list[HLATypingEntry])
+async def get_patient_hla_typings_endpoint(
+    patient_id: uuid.UUID,
+    current_doctor: Doctor = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get current HLA typing for a patient."""
+    await _ensure_patient_exists(db, patient_id, current_doctor.id)
+    return await get_patient_hla_typings(db, patient_id)
+
+
 @router.put("/{patient_id}/antibody-profiles", status_code=status.HTTP_204_NO_CONTENT)
 async def replace_patient_antibody_profiles_endpoint(
     patient_id: uuid.UUID,
@@ -89,6 +109,17 @@ async def replace_patient_antibody_profiles_endpoint(
     """Replace antibody profile data for a patient."""
     await _ensure_patient_exists(db, patient_id, current_doctor.id)
     await replace_patient_antibody_profiles(db, patient_id, entries)
+
+
+@router.get("/{patient_id}/antibody-profiles", response_model=list[AntibodyProfileEntry])
+async def get_patient_antibody_profiles_endpoint(
+    patient_id: uuid.UUID,
+    current_doctor: Doctor = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get current antibody profiles for a patient."""
+    await _ensure_patient_exists(db, patient_id, current_doctor.id)
+    return await get_patient_antibody_profiles(db, patient_id)
 
 
 @router.post(
@@ -109,6 +140,18 @@ async def create_sensitization_events_endpoint(
     return [SensitizationEventResponse.model_validate(event) for event in events]
 
 
+@router.get("/{patient_id}/sensitization-events", response_model=list[SensitizationEventResponse])
+async def list_patient_sensitization_events_endpoint(
+    patient_id: uuid.UUID,
+    current_doctor: Doctor = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List sensitization events for a patient."""
+    await _ensure_patient_exists(db, patient_id, current_doctor.id)
+    events = await get_sensitization_events_for_patient(db, patient_id)
+    return [SensitizationEventResponse.model_validate(event) for event in events]
+
+
 @router.get("/{patient_id}/reports", response_model=list[MatchReportResponse])
 async def get_patient_reports_endpoint(
     patient_id: uuid.UUID,
@@ -123,7 +166,7 @@ async def get_patient_reports_endpoint(
 
 
 # ----------------------------------------------------------------------
-# Helper (keeps endpoints DRY)
+# Internal helper
 # ----------------------------------------------------------------------
 async def _ensure_patient_exists(
     db: AsyncSession, patient_id: uuid.UUID, doctor_id: uuid.UUID

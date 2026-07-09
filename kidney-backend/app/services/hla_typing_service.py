@@ -110,3 +110,21 @@ async def get_population_hla_profiles(db: AsyncSession) -> list[list[str]]:
         )
 
     return list(profiles_by_person.values())
+
+
+async def get_patient_hla_typing_entries(
+    db: AsyncSession, patient_id: uuid.UUID
+) -> list[PatientHLATyping]:
+    result = await db.execute(
+        select(PatientHLATyping).where(PatientHLATyping.patient_id == patient_id)
+    )
+    return list(result.scalars().all())
+
+
+async def get_donor_hla_typing_entries(
+    db: AsyncSession, donor_id: uuid.UUID
+) -> list[DonorHLATyping]:
+    result = await db.execute(
+        select(DonorHLATyping).where(DonorHLATyping.donor_id == donor_id)
+    )
+    return list(result.scalars().all())
