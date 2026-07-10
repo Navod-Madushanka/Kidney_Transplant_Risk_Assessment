@@ -10,15 +10,23 @@ purely-zero baseline rows every page has. The doctor-configurable clinical
 cutoff is applied at compatibility-check time on the backend, not baked
 into extraction.
 
-Column centers are found by matching each header cell's OWN TEXT against
-known tokens (BEAD / SERO / ALLELE / MFI / BASELINE), not by pairing
-header cells to COLUMN_NAMES by position. Positional pairing breaks silently
-whenever a column's header text gets OCR'd into a separate row/cell than
-expected (e.g. "Allele Equiv" splitting off or landing outside the y-band
-of the rest of the header row) - it just shifts every later column name
-onto the wrong x-position instead of failing loudly. Text-based matching
-means a missing header cell just means that one column doesn't get
-extracted, instead of corrupting every column after it.
+The header can span TWO physical OCR rows (e.g. "Bead"/"Sero"/"MFI" on one
+line, "Allele Equiv"/"Baseline" wrapped onto the next) - confirmed by
+inspecting raw detections on a real sample page. find_header_row() only
+ever returns the single best-scoring row, so anything printed on a second
+wrapped header line is invisible to it. _find_header_span() checks the row
+immediately after the matched header row and folds it in if it looks like
+a header continuation (contains column-name tokens, not table data), so
+column centers are built from the FULL header regardless of how many
+physical lines it was OCR'd into, and actual data extraction correctly
+starts after every header line rather than treating a wrapped header line
+as a phantom data row.
+
+Column centers are matched by each header cell's OWN TEXT against known
+tokens (BEAD / SERO / ALLELE / MFI / BASELINE), not by pairing header cells
+to column names by position - positional pairing breaks silently whenever
+a header cell goes missing or lands out of order, shifting every later
+column onto the wrong x-position instead of failing loudly.
 """
 from box_utils import group_into_rows
 from table_extraction import extract_row_by_columns, find_header_row
@@ -33,24 +41,60 @@ HEADER_TOKEN_TO_COLUMN = [
     ("MFI", "mfi_baseline"),
 ]
 
+# Tokens that mean "this row is still part of the header", used only to
+# decide whether to fold a second physical line into the header span -
+# separate from HEADER_TOKEN_TO_COLUMN so adding a new recognized token
+# there doesn't have to also update matching logic here.
+HEADER_CONTINUATION_TOKENS = ["ALLELE", "EQUIV", "BASELINE", "MFI", "BEAD", "SERO"]
+
 EXTRACTION_NOISE_FLOOR = 0.0
 LOW_CONFIDENCE_THRESHOLD = 0.75
 MFI_ROW_Y_TOLERANCE = 8.0
 
 
-def _build_column_centers(header_row: list[dict]) -> list[tuple[float, str]]:
+def _looks_like_header_continuation(row: list[dict]) -> bool:
+    row_text = " ".join(d["text"] for d in row).upper()
+    return any(token in row_text for token in HEADER_CONTINUATION_TOKENS)
+
+
+def _find_header_span(
+    rows: list[list[dict]], header_labels: list[str]
+) -> tuple[int, list[dict]] | None:
+    """Locate the header and return (first_data_row_index, combined_header_cells).
+
+    Starts from whatever single row find_header_row() scores best, then
+    folds in any immediately-following row(s) that still look like header
+    text (rather than a real bead/sero/MFI data row). This handles a
+    header wrapping across two OCR'd lines, e.g. "Bead Sero MFI" on one
+    line and "Allele Equiv Baseline" on the next.
+    """
+    header = find_header_row(rows, header_labels)
+    if header is None:
+        return None
+
+    header_index, header_row = header
+    combined_cells = list(header_row)
+    next_index = header_index + 1
+
+    while next_index < len(rows) and _looks_like_header_continuation(rows[next_index]):
+        combined_cells.extend(rows[next_index])
+        next_index += 1
+
+    return next_index, combined_cells
+
+
+def _build_column_centers(header_cells: list[dict]) -> list[tuple[float, str]]:
     """Match each header cell to a column name by its own text content.
 
     Returns a list of (center_x, column_name) pairs. If a column's header
-    text was never detected (e.g. "Allele Equiv" got OCR'd into a
-    neighboring row and merge_wrapped_lines/group_into_rows missed it),
-    that column simply won't appear here - it will not be extracted for
-    any data row, but it also won't drag every other column's position off.
+    text was never detected anywhere in the header span, that column
+    simply won't appear here - it won't be extracted for any data row,
+    but it also won't drag any other column's position off.
     """
     column_centers: list[tuple[float, str]] = []
     seen_columns: set[str] = set()
 
-    for cell in header_row:
+    for cell in header_cells:
         upper = cell["text"].upper()
         for token, column_name in HEADER_TOKEN_TO_COLUMN:
             if token in upper and column_name not in seen_columns:
@@ -77,16 +121,16 @@ def extract_mfi_values(detections: list[dict]) -> list[dict]:
     """
     rows = group_into_rows(detections, y_tolerance=MFI_ROW_Y_TOLERANCE)
 
-    header = find_header_row(rows, HEADER_LABELS)
-    if header is None:
+    header_span = _find_header_span(rows, HEADER_LABELS)
+    if header_span is None:
         return []
 
-    header_index, header_row = header
-    column_centers = _build_column_centers(header_row)
+    first_data_row_index, header_cells = header_span
+    column_centers = _build_column_centers(header_cells)
 
-    # If we couldn't even match "bead", "sero", and "mfi_baseline" (the
-    # three columns actually required downstream), there's nothing usable
-    # to extract from this page - bail out rather than return garbage rows.
+    # If we couldn't match "bead", "sero", and "mfi_baseline" (the three
+    # columns actually required downstream), there's nothing usable to
+    # extract from this page - bail out rather than return garbage rows.
     matched_columns = {name for _, name in column_centers}
     if not {"bead", "sero", "mfi_baseline"}.issubset(matched_columns):
         return []
@@ -94,7 +138,7 @@ def extract_mfi_values(detections: list[dict]) -> list[dict]:
     records: list[dict] = []
     empty_field = {"text": "", "confidence": 0.0}
 
-    for row in rows[header_index + 1 :]:
+    for row in rows[first_data_row_index:]:
         row_text = " ".join(d["text"] for d in row).upper()
 
         if len(row) <= 1 and any(label in row_text for label in HEADER_LABELS):
