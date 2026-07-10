@@ -39,3 +39,14 @@ async def get_patient_sensitization_event_types(
     events = result.scalars().all()
 
     return [event.event_type.value for event in events]
+
+async def get_sensitization_events_for_patient(
+    db: AsyncSession, patient_id: uuid.UUID
+) -> list[SensitizationEvent]:
+    """Get all sensitization events for a patient."""
+    result = await db.execute(
+        select(SensitizationEvent)
+        .where(SensitizationEvent.patient_id == patient_id)
+        .order_by(SensitizationEvent.event_date.desc())  # most recent first
+    )
+    return list(result.scalars().all())

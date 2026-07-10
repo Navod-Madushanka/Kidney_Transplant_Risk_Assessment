@@ -32,3 +32,15 @@ async def get_patient_by_id_for_doctor(
         select(Patient).where(Patient.id == patient_id, Patient.doctor_id == doctor_id)
     )
     return result.scalar_one_or_none()
+
+
+async def get_patients_for_doctor(
+    db: AsyncSession, doctor_id: uuid.UUID
+) -> list[Patient]:
+    """Get all patients belonging to a specific doctor."""
+    result = await db.execute(
+        select(Patient)
+        .where(Patient.doctor_id == doctor_id)
+        .order_by(Patient.full_name)   # optional: nice default ordering
+    )
+    return list(result.scalars().all())

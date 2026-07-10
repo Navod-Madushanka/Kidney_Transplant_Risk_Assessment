@@ -20,14 +20,14 @@ from app.services.antibody_profile_service import (
     replace_patient_antibody_profiles,
 )
 from app.services.hla_typing_service import (
-    get_patient_hla_typings,
+    get_patient_hla_typing_entries,
     replace_patient_hla_typing,
 )
 from app.services.match_report_service import get_reports_for_patient
 from app.services.patient_service import (
     create_patient,
     get_patient_by_id_for_doctor,
-    get_patients_for_doctor,
+    get_patients_for_doctor,        # ← should now work
 )
 from app.services.sensitization_event_service import (
     create_sensitization_events,
@@ -96,7 +96,14 @@ async def get_patient_hla_typings_endpoint(
 ):
     """Get current HLA typing for a patient."""
     await _ensure_patient_exists(db, patient_id, current_doctor.id)
-    return await get_patient_hla_typings(db, patient_id)
+    
+    # Use the entries version instead of dict
+    entries = await get_patient_hla_typing_entries(db, patient_id)
+    
+    # Convert model instances to schema
+    return [
+        HLATypingEntry.model_validate(entry) for entry in entries
+    ]
 
 
 @router.put("/{patient_id}/antibody-profiles", status_code=status.HTTP_204_NO_CONTENT)
