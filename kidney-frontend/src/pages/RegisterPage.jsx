@@ -12,12 +12,12 @@ export default function RegisterPage() {
   const navigate = useNavigate()
 
   const [form, setForm] = useState({
-    hospitalName: "",
     fullName: "",
     email: "",
     password: "",
     confirmPassword: "",
   })
+
   const [errors, setErrors] = useState({})
   const [formError, setFormError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -28,7 +28,6 @@ export default function RegisterPage() {
 
   function validate() {
     const next = {}
-    if (!form.hospitalName.trim()) next.hospitalName = "Hospital name is required"
     if (!form.fullName.trim()) next.fullName = "Your full name is required"
     if (!form.email.trim()) next.email = "Email is required"
     if (!form.password) next.password = "Password is required"
@@ -49,9 +48,12 @@ export default function RegisterPage() {
         email: form.email.trim(),
         password: form.password,
         fullName: form.fullName.trim(),
-        hospitalName: form.hospitalName.trim(),
+        hospitalName: "Kandy National Hospital Sri Lanka",
       })
-      navigate("/", { replace: true })
+
+      // Success: silently redirect to login
+      navigate("/login", { replace: true })
+
     } catch (err) {
       if (err instanceof ApiError && err.status === 400) {
         setFormError(err.message || "An account with this email already exists.")
@@ -75,9 +77,8 @@ export default function RegisterPage() {
           <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
             <InputField
               label="Hospital name"
-              value={form.hospitalName}
-              onChange={updateField("hospitalName")}
-              error={errors.hospitalName}
+              value="Kandy National Hospital Sri Lanka"
+              disabled
               required
             />
             <InputField

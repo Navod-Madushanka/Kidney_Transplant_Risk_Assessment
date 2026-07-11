@@ -11,18 +11,26 @@ export default function LoginPage() {
   const { login } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  
   const redirectTo = location.state?.from?.pathname || "/"
 
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
+  const [form, setForm] = useState({
+    email: "",
+    password: "",
+  })
+
   const [errors, setErrors] = useState({})
   const [formError, setFormError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  function updateField(field) {
+    return (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }))
+  }
+
   function validate() {
     const next = {}
-    if (!email.trim()) next.email = "Email is required"
-    if (!password) next.password = "Password is required"
+    if (!form.email.trim()) next.email = "Email is required"
+    if (!form.password) next.password = "Password is required"
     setErrors(next)
     return Object.keys(next).length === 0
   }
@@ -34,7 +42,7 @@ export default function LoginPage() {
 
     setIsSubmitting(true)
     try {
-      await login(email.trim(), password)
+      await login(form.email.trim(), form.password)
       navigate(redirectTo, { replace: true })
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
@@ -48,7 +56,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-bg px-4">
+    <div className="min-h-screen flex items-center justify-center bg-bg px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <p className="text-[20px] font-bold text-text">Kidney Transplant</p>
@@ -61,8 +69,8 @@ export default function LoginPage() {
               label="Email"
               type="email"
               autoComplete="username"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={form.email}
+              onChange={updateField("email")}
               error={errors.email}
               required
             />
@@ -70,8 +78,8 @@ export default function LoginPage() {
               label="Password"
               type="password"
               autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              value={form.password}
+              onChange={updateField("password")}
               error={errors.password}
               required
             />

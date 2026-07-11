@@ -128,3 +128,18 @@ async def get_donor_hla_typing_entries(
         select(DonorHLATyping).where(DonorHLATyping.donor_id == donor_id)
     )
     return list(result.scalars().all())
+
+
+async def get_patient_hla_typings(
+    db: AsyncSession, patient_id: uuid.UUID
+) -> list[HLATypingEntry]:
+    """Return a patient's HLA typing as HLATypingEntry schemas, for the
+    GET /patients/{id}/hla-typings endpoint. Unlike get_patient_hla_typing_dict,
+    this does NOT raise if some loci are missing - a doctor should be able to
+    view a partially-entered typing, not get a 500 error.
+    """
+    entries = await get_patient_hla_typing_entries(db, patient_id)
+    return [
+        HLATypingEntry(locus=e.locus, allele_1=e.allele_1, allele_2=e.allele_2)
+        for e in entries
+    ]

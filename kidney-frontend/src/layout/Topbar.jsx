@@ -1,16 +1,24 @@
 // src/layout/Topbar.jsx
 import { useAuth } from "../hooks/useAuth"
-import { LogoutIcon } from "../components/icons"
+import { LogOut } from "lucide-react"
 
-// Mobile-only (Sidebar shows this info on desktop).
 export default function Topbar({ title }) {
-  const { logout } = useAuth()
+  const { user, logout } = useAuth()
 
   return (
-    <header className="md:hidden sticky top-0 z-30 flex items-center justify-between border-b border-border bg-surface/90 backdrop-blur-sm px-4 h-14">
-      <p className="text-[17px] font-semibold text-text truncate">{title}</p>
-      <button onClick={logout} aria-label="Log out" className="p-2 -mr-2 text-text-muted hover:text-high-risk">
-        <LogoutIcon className="h-5 w-5" aria-hidden="true" />
+    <header className="md:hidden sticky top-0 z-50 bg-white border-b border-gray-200 px-4 h-14 flex items-center justify-between backdrop-blur-lg">
+      <div>
+        <p className="font-semibold text-[17px] text-text truncate">{title}</p>
+        <p className="text-xs text-text-muted -mt-0.5">
+          {user?.hospitalName || "Kandy National Hospital"}
+        </p>
+      </div>
+
+      <button
+        onClick={logout}
+        className="p-2 -mr-2 text-text-muted hover:text-red-500 rounded-full active:bg-gray-100 transition-all"
+      >
+        <LogOut className="w-5 h-5" />
       </button>
     </header>
   )

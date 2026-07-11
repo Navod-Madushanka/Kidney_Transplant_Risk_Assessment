@@ -1,39 +1,42 @@
 // src/layout/TabBar.jsx
 import { NavLink } from "react-router-dom"
-import { HomeIcon, PatientsIcon, DonorIcon, NewCheckIcon, HistoryIcon } from "../components/icons"
+import { Home, Users, Calculator, History } from "lucide-react"
 
 const NAV_ITEMS = [
-  { to: "/", label: "Home", icon: HomeIcon, end: true },
-  { to: "/patients", label: "Patients", icon: PatientsIcon },
-  { to: "/checks/new", label: "New Check", icon: NewCheckIcon },
-  { to: "/donors", label: "Donors", icon: DonorIcon },
-  { to: "/reports", label: "Reports", icon: HistoryIcon },
+  { to: "/", label: "Dashboard", icon: Home },
+  { to: "/patients", label: "Patients", icon: Users },
+  { to: "/calculator", label: "Calculator", icon: Calculator },
+  { to: "/history", label: "History", icon: History },
 ]
 
-// Mobile-only; hidden at md breakpoint where Sidebar takes over.
-// env(safe-area-inset-bottom) clears the home indicator on notched iPhones.
 export default function TabBar() {
   return (
-    <nav
-      className="md:hidden fixed bottom-0 inset-x-0 z-40 flex border-t border-border bg-surface/95 backdrop-blur-sm"
+    <nav 
+      className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-xl border-t border-gray-200 shadow-lg"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
-      {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
-        <NavLink
-          key={to}
-          to={to}
-          end={end}
-          className={({ isActive }) =>
-            [
-              "flex flex-1 flex-col items-center justify-center gap-1 py-2 text-[11px] font-medium min-h-[54px]",
-              isActive ? "text-accent" : "text-text-muted",
-            ].join(" ")
-          }
-        >
-          <Icon className="h-5 w-5" aria-hidden="true" />
-          {label}
-        </NavLink>
-      ))}
+      <div className="max-w-md mx-auto flex items-center justify-around py-1">
+        {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
+          <NavLink
+            key={to}
+            to={to}
+            end={to === "/"}
+            className={({ isActive }) => `
+              flex flex-col items-center justify-center py-2 px-3 text-[10px] font-medium transition-all flex-1
+              ${isActive ? "text-blue-600" : "text-gray-500"}
+            `}
+          >
+            {({ isActive }) => (
+              <>
+                <Icon 
+                  className={`w-6 h-6 mb-0.5 transition-transform ${isActive ? "scale-110" : ""}`} 
+                />
+                <span>{label}</span>
+              </>
+            )}
+          </NavLink>
+        ))}
+      </div>
     </nav>
   )
 }

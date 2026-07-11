@@ -54,22 +54,18 @@ export function AuthProvider({ children }) {
     [applySession]
   );
 
+  // Updated: Register no longer logs the user in automatically
   const register = useCallback(
     async ({ email, password, fullName, hospitalName }) => {
-      const data = await apiPost("/auth/register", {
+      await apiPost("/auth/register", {
         email,
         password,
         full_name: fullName,
         hospital_name: hospitalName,
       });
-      applySession({
-        access_token: data.access_token,
-        email,
-        full_name: fullName,
-        hospital_name: hospitalName,
-      });
+      // No applySession() → user will be redirected to login page
     },
-    [applySession]
+    []
   );
 
   const logout = useCallback(() => {
