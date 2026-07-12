@@ -31,6 +31,22 @@ async def get_patient_hla_typing_dict(
     return typing_dict
 
 
+async def get_patient_hla_typings(
+    db: AsyncSession, patient_id: uuid.UUID
+) -> list[HLATypingEntry]:
+    """Returns the patient's HLA typing rows shaped for the API response
+    (list[HLATypingEntry]), unlike get_patient_hla_typing_dict which returns
+    a locus->alleles dict for the scoring pipeline and requires every locus
+    to be present. This one is fine returning a partial or empty list, since
+    it's for the GET endpoint the frontend uses to populate the editor.
+    """
+    entries = await get_patient_hla_typing_entries(db, patient_id)
+    return [
+        HLATypingEntry(locus=row.locus, allele_1=row.allele_1, allele_2=row.allele_2)
+        for row in entries
+    ]
+
+
 async def replace_patient_hla_typing(
     db: AsyncSession, patient_id: uuid.UUID, entries: list[HLATypingEntry]
 ) -> None:
@@ -69,6 +85,19 @@ async def get_donor_hla_typing_dict(
         )
 
     return typing_dict
+
+
+async def get_donor_hla_typings(
+    db: AsyncSession, donor_id: uuid.UUID
+) -> list[HLATypingEntry]:
+    """Same rationale as get_patient_hla_typings above — shaped for the
+    donor HLA-typing GET endpoint, no completeness requirement.
+    """
+    entries = await get_donor_hla_typing_entries(db, donor_id)
+    return [
+        HLATypingEntry(locus=row.locus, allele_1=row.allele_1, allele_2=row.allele_2)
+        for row in entries
+    ]
 
 
 async def replace_donor_hla_typing(
@@ -128,18 +157,3 @@ async def get_donor_hla_typing_entries(
         select(DonorHLATyping).where(DonorHLATyping.donor_id == donor_id)
     )
     return list(result.scalars().all())
-
-
-async def get_patient_hla_typings(
-    db: AsyncSession, patient_id: uuid.UUID
-) -> list[HLATypingEntry]:
-    """Return a patient's HLA typing as HLATypingEntry schemas, for the
-    GET /patients/{id}/hla-typings endpoint. Unlike get_patient_hla_typing_dict,
-    this does NOT raise if some loci are missing - a doctor should be able to
-    view a partially-entered typing, not get a 500 error.
-    """
-    entries = await get_patient_hla_typing_entries(db, patient_id)
-    return [
-        HLATypingEntry(locus=e.locus, allele_1=e.allele_1, allele_2=e.allele_2)
-        for e in entries
-    ]

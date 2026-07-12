@@ -40,13 +40,18 @@ async def get_patient_sensitization_event_types(
 
     return [event.event_type.value for event in events]
 
+
 async def get_sensitization_events_for_patient(
     db: AsyncSession, patient_id: uuid.UUID
 ) -> list[SensitizationEvent]:
-    """Get all sensitization events for a patient."""
+    """Returns the full ORM rows (not just event_type strings), for the
+    GET .../sensitization-events endpoint which serializes via
+    SensitizationEventResponse.model_validate — that needs id, event_date,
+    created_at, etc., not just the event_type used by the scoring pipeline.
+    """
     result = await db.execute(
         select(SensitizationEvent)
         .where(SensitizationEvent.patient_id == patient_id)
-        .order_by(SensitizationEvent.event_date.desc())  # most recent first
+        .order_by(SensitizationEvent.event_date.desc())
     )
     return list(result.scalars().all())

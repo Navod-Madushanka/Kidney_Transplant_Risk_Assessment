@@ -32,3 +32,14 @@ async def get_donor_by_id_for_doctor(
         select(Donor).where(Donor.id == donor_id, Donor.doctor_id == doctor_id)
     )
     return result.scalar_one_or_none()
+
+
+async def get_donors_for_doctor(
+    db: AsyncSession, doctor_id: uuid.UUID
+) -> list[Donor]:
+    result = await db.execute(
+        select(Donor)
+        .where(Donor.doctor_id == doctor_id)
+        .order_by(Donor.full_name)
+    )
+    return list(result.scalars().all())

@@ -37,10 +37,9 @@ async def get_patient_by_id_for_doctor(
 async def get_patients_for_doctor(
     db: AsyncSession, doctor_id: uuid.UUID
 ) -> list[Patient]:
-    """Get all patients belonging to a specific doctor."""
     result = await db.execute(
         select(Patient)
         .where(Patient.doctor_id == doctor_id)
-        .order_by(Patient.full_name)   # optional: nice default ordering
+        .order_by(Patient.full_name)
     )
     return list(result.scalars().all())
