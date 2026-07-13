@@ -1,0 +1,15 @@
+services:
+  ocr-service:
+    build: .
+    container_name: ocr-service
+    ports:
+      - "8001:8001"
+    environment:
+      - OCR_SERVICE_API_KEY=${OCR_SERVICE_API_KEY}
+    volumes:
+      - ./app:/app/app
+      - paddlex-models:/root/.paddlex   # persists downloaded models across rebuilds
+    restart: unless-stopped
+
+volumes:
+  paddlex-models:

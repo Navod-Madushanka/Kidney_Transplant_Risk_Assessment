@@ -1,0 +1,14 @@
+[project]
+name = "ocr-service"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.139.0",
+    "paddleocr>=3.7.0",
+    "paddlepaddle>=3.3.1",
+    "pydantic-settings>=2.14.2",
+    "python-multipart>=0.0.32",
+    "uvicorn[standard]>=0.51.0",
+]

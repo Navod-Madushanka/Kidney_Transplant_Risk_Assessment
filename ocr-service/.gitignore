@@ -1,0 +1,5 @@
+# ocr-service/.gitignore
+.venv
+__pycache__
+.env
+app/test_images/
