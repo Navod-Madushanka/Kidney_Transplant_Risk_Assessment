@@ -5,6 +5,7 @@ import os
 
 from app.core.config import settings
 from app.extraction.demographics import extract_demographics
+from app.extraction.hla import extract_hla
 
 router = APIRouter()
 
@@ -44,14 +45,18 @@ async def extract_report(
         ocr_engine = request.app.state.ocr_engine
         raw_result = ocr_engine.extract_raw(temp_filename)
         structured = extract_demographics(raw_result["rec_texts"], raw_result["rec_boxes"].tolist())
+        hla = extract_hla(raw_result["rec_texts"], raw_result["rec_boxes"].tolist())
     finally:
         os.remove(temp_filename)  # always clean up, even if OCR raised an error
 
     return {
-    "structured": structured,
-    "raw": {
-        "texts": raw_result["rec_texts"],
-        "scores": raw_result["rec_scores"],
-        "boxes": raw_result["rec_boxes"].tolist(),
-    },
-}
+        "structured": {
+            **structured,
+            **hla,
+        },
+        "raw": {
+            "texts": raw_result["rec_texts"],
+            "scores": raw_result["rec_scores"],
+            "boxes": raw_result["rec_boxes"].tolist(),
+        },
+    }

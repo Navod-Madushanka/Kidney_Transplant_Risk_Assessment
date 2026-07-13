@@ -1,6 +1,8 @@
 import re
 from typing import Optional
 
+from app.extraction.geometry import box_center_y, box_left_x
+
 COLUMN_SPLIT_X = 550
 ROW_TOLERANCE_PX = 15
 
@@ -15,16 +17,8 @@ FIELD_LABEL_VARIANTS: dict[str, list[str]] = {
 }
 
 
-def _box_center_y(box: list[int]) -> float:
-    return (box[1] + box[3]) / 2
-
-
-def _box_left_x(box: list[int]) -> int:
-    return box[0]
-
-
 def _same_row(box_a: list[int], box_b: list[int]) -> bool:
-    return abs(_box_center_y(box_a) - _box_center_y(box_b)) <= ROW_TOLERANCE_PX
+    return abs(box_center_y(box_a) - box_center_y(box_b)) <= ROW_TOLERANCE_PX
 
 
 def _build_combined_pattern(variants: list[str]) -> re.Pattern:
@@ -48,7 +42,7 @@ def extract_demographics(texts: list[str], boxes: list[list[int]]) -> dict:
 
     for i, text in enumerate(texts):
         box = boxes[i]
-        target = patient if _box_left_x(box) < COLUMN_SPLIT_X else donor
+        target = patient if box_left_x(box) < COLUMN_SPLIT_X else donor
         stripped = text.strip()
 
         # --- Pattern A: label and value combined in one string ---
@@ -78,19 +72,19 @@ def _find_value_in_same_row(
     texts: list[str], boxes: list[list[int]], label_index: int
 ) -> Optional[str]:
     label_box = boxes[label_index]
-    label_is_patient_side = _box_left_x(label_box) < COLUMN_SPLIT_X
+    label_is_patient_side = box_left_x(label_box) < COLUMN_SPLIT_X
 
     candidates = []
     for j, other_box in enumerate(boxes):
         if j == label_index:
             continue
 
-        other_is_patient_side = _box_left_x(other_box) < COLUMN_SPLIT_X
+        other_is_patient_side = box_left_x(other_box) < COLUMN_SPLIT_X
         if other_is_patient_side != label_is_patient_side:
             continue  # don't cross into the other column
 
-        if _same_row(label_box, other_box) and _box_left_x(other_box) > _box_left_x(label_box):
-            candidates.append((_box_left_x(other_box), texts[j]))
+        if _same_row(label_box, other_box) and box_left_x(other_box) > box_left_x(label_box):
+            candidates.append((box_left_x(other_box), texts[j]))
 
     if not candidates:
         return None
