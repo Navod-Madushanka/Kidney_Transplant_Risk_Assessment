@@ -20,6 +20,7 @@ import HlaTypingStep from "./pages/HlaTypingStep"
 import SensitizationStep from "./pages/SensitizationStep"
 import BeadSpecificityStep from "./pages/BeadSpecificityStep"
 import ReviewStep from "./pages/ReviewStep"
+import ReportDetailPage from "@/pages/ReportDetailPage"
 
 function App() {
   return (
@@ -58,6 +59,7 @@ function App() {
           <Route path="sensitization" element={<SensitizationStep />} handle={{ title: "New Check" }} />
           <Route path="bead-chart" element={<BeadSpecificityStep />} handle={{ title: "New Check" }} />
           <Route path="review" element={<ReviewStep />} handle={{ title: "New Check" }} />
+          <Route path="/reports/:reportId" element={<ReportDetailPage />} handle={{ title: "Report" }} />
         </Route>
       </Route>
 
