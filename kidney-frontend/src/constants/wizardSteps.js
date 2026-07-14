@@ -11,6 +11,7 @@ export const WIZARD_STEPS = [
   { key: "hla", label: "HLA Typing", path: "hla" },
   { key: "sensitization", label: "Sensitization", path: "sensitization" },
   { key: "bead-chart", label: "Bead Specificity", path: "bead-chart" },
+  { key: "review", label: "Review & Submit", path: "review" },
 ]
 
 export function wizardStepIndexForPath(path) {

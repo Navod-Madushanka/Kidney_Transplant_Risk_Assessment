@@ -1,9 +1,9 @@
 // src/pages/wizard/PhotoUploadsStep.jsx
 import { useNavigate } from "react-router-dom"
-import { useWizard } from "../../hooks/useWizard"
-import FileUpload from "../../components/ui/FileUpload"
-import Button from "../../components/ui/Button"
-import Card from "../../components/ui/Card"
+import { useWizard } from "@/hooks/useWizard"
+import FileUpload from "@/components/ui/FileUpload"
+import Button from "@/components/ui/Button"
+import Card from "@/components/ui/Card"
 
 const UPLOAD_SLOTS = [
   {

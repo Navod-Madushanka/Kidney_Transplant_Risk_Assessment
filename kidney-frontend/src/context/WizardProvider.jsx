@@ -42,6 +42,9 @@ export function WizardProvider({ children }) {
 
       unlockStep: (index) =>
         dispatch({ type: WIZARD_ACTIONS.UNLOCK_STEP, index }),
+      
+      setSensitizationDate: (eventType, date) =>
+        dispatch({ type: WIZARD_ACTIONS.SET_SENSITIZATION_DATE, eventType, date }),
 
       reset: () => dispatch({ type: WIZARD_ACTIONS.RESET }),
     }),

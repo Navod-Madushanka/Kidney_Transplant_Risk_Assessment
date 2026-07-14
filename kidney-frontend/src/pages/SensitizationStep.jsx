@@ -33,6 +33,16 @@ export default function SensitizationStep() {
     actions.setMfiCutoff(raw === "" ? 0 : Number(raw))
   }
 
+  function handleToggle(eventType, checked) {
+    actions.setSensitization({ [eventType]: checked })
+    // Switching an event off clears its date too, so a stale date can't
+    // silently linger and resurface if the doctor re-enables it later
+    // expecting a blank field.
+    if (!checked) {
+      actions.setSensitizationDate(eventType, "")
+    }
+  }
+
   function handleContinue() {
     actions.unlockStep(4)
     navigate("/checks/new/bead-chart")
@@ -51,21 +61,32 @@ export default function SensitizationStep() {
       <Card>
         <Card.Header
           title="Sensitizing events"
-          subtitle="Toggle any that apply to this patient's history"
+          subtitle="Toggle any that apply, and enter when each one occurred"
         />
         <div className="flex flex-col divide-y divide-border">
-          {SENSITIZATION_EVENT_OPTIONS.map((option) => (
-            <ToggleSwitch
-              key={option.value}
-              label={option.label}
-              checked={state.sensitization[option.value]}
-              onChange={(checked) =>
-                actions.setSensitization({ [option.value]: checked })
-              }
-              helperText={formatPoints(SENSITIZATION_EVENT_WEIGHTS[option.value])}
-              className="py-3 first:pt-0 last:pb-0"
-            />
-          ))}
+          {SENSITIZATION_EVENT_OPTIONS.map((option) => {
+            const isOn = state.sensitization[option.value]
+            return (
+              <div key={option.value} className="py-3 first:pt-0 last:pb-0 flex flex-col gap-3">
+                <ToggleSwitch
+                  label={option.label}
+                  checked={isOn}
+                  onChange={(checked) => handleToggle(option.value, checked)}
+                  helperText={formatPoints(SENSITIZATION_EVENT_WEIGHTS[option.value])}
+                />
+                {isOn && (
+                  <InputField
+                    label={`Date of ${option.label.toLowerCase()}`}
+                    type="date"
+                    value={state.sensitization_dates[option.value]}
+                    onChange={(e) => actions.setSensitizationDate(option.value, e.target.value)}
+                    required
+                    className="max-w-xs"
+                  />
+                )}
+              </div>
+            )
+          })}
         </div>
       </Card>
 

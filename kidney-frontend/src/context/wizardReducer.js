@@ -50,10 +50,16 @@ export function buildInitialWizardState() {
       pregnancy: false,
       blood_transfusion: false,
     },
+    sensitization_dates: {
+      previous_transplant: "",
+      pregnancy: "",
+      blood_transfusion: "",
+    },
     mfi_cutoff: DEFAULT_MFI_CUTOFF,
 
     // Phase 7 — Payload 3
     bead_specificity: [],
+    SET_SENSITIZATION_DATE: "SET_SENSITIZATION_DATE",
 
     // Wizard navigation guard: the furthest step the doctor has actually
     // reached, so ProtectedRoute-style guards can block jumping ahead via a
@@ -131,6 +137,15 @@ export function wizardReducer(state, action) {
 
     case WIZARD_ACTIONS.RESET:
       return buildInitialWizardState();
+
+    case WIZARD_ACTIONS.SET_SENSITIZATION_DATE:
+      return {
+        ...state,
+        sensitization_dates: {
+          ...state.sensitization_dates,
+          [action.eventType]: action.date,
+        },
+      };
 
     default:
       return state;

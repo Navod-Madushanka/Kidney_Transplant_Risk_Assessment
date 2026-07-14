@@ -12,6 +12,15 @@ import DonorsListPage from "./pages/DonorsListPage"
 import NewDonorPage from "./pages/NewDonorPage"
 import DonorDetailPage from "./pages/DonorDetailPage"
 
+import { WizardProvider } from "./context/WizardProvider"
+import WizardLayout from "./layout/WizardLayout"
+import PhotoUploadsStep from "./pages/PhotoUploadsStep"
+import DetailsStep from "./pages/DetailsStep"
+import HlaTypingStep from "./pages/HlaTypingStep"
+import SensitizationStep from "./pages/SensitizationStep"
+import BeadSpecificityStep from "./pages/BeadSpecificityStep"
+import ReviewStep from "./pages/ReviewStep"
+
 function App() {
   return (
     <Routes>
@@ -27,6 +36,28 @@ function App() {
           <Route path="/donors" element={<DonorsListPage />} handle={{ title: "Donors" }} />
           <Route path="/donors/new" element={<NewDonorPage />} handle={{ title: "Add donor" }} />
           <Route path="/donors/:donorId" element={<DonorDetailPage />} handle={{ title: "Donor" }} />
+        </Route>
+
+        {/* Compatibility check wizard — its own full-screen layout branch,
+            deliberately outside DashboardLayout (no sidebar/tab-bar; see
+            WizardLayout's own comment for the reasoning). WizardProvider is
+            scoped to just this subtree so wizard state never exists before
+            a doctor starts a check and resets cleanly between checks. */}
+        <Route
+          path="/checks/new"
+          element={
+            <WizardProvider>
+              <WizardLayout />
+            </WizardProvider>
+          }
+        >
+          <Route index element={<Navigate to="photos" replace />} />
+          <Route path="photos" element={<PhotoUploadsStep />} handle={{ title: "New Check" }} />
+          <Route path="details" element={<DetailsStep />} handle={{ title: "New Check" }} />
+          <Route path="hla" element={<HlaTypingStep />} handle={{ title: "New Check" }} />
+          <Route path="sensitization" element={<SensitizationStep />} handle={{ title: "New Check" }} />
+          <Route path="bead-chart" element={<BeadSpecificityStep />} handle={{ title: "New Check" }} />
+          <Route path="review" element={<ReviewStep />} handle={{ title: "New Check" }} />
         </Route>
       </Route>
 
