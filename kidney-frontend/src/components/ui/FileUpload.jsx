@@ -1,5 +1,5 @@
 // src/components/ui/FileUpload.jsx
-import { useId, useRef, useState } from "react"
+import { useEffect, useId, useRef, useState } from "react"
 
 /**
  * Usage:
@@ -10,9 +10,22 @@ import { useId, useRef, useState } from "react"
  *     helperText="JPG or PNG, up to 10MB"
  *   />
  *
+ *   // Controlled from external state (e.g. a wizard step navigated back to):
+ *   <FileUpload
+ *     label="HLA Typing Report"
+ *     initialFile={wizardState.photos.hlaTypingReport}
+ *     onFileSelect={(file) => actions.setPhoto("hlaTypingReport", file)}
+ *   />
+ *
  * Supports drag-and-drop and tap-to-browse (works fine on mobile, where drag
  * just won't trigger and the tap target takes over). Shows a lightweight
  * preview once a file is chosen, with a way to clear and re-select.
+ *
+ * initialFile is optional and only needed when the selection can outlive
+ * this component's mount (e.g. wizard steps you navigate away from and back
+ * to). It seeds the initial preview and stays in sync if the caller changes
+ * it externally (including clearing it back to null, e.g. on a form reset).
+ * Purely internal selections (the common case) don't need it at all.
  */
 export default function FileUpload({
   label,
@@ -20,12 +33,20 @@ export default function FileUpload({
   onFileSelect,
   helperText,
   error,
+  initialFile = null,
   className = "",
 }) {
   const inputId = useId()
   const inputRef = useRef(null)
-  const [selectedFile, setSelectedFile] = useState(null)
+  const [selectedFile, setSelectedFile] = useState(initialFile)
   const [isDragActive, setIsDragActive] = useState(false)
+
+  // Keep the preview in sync with externally-owned state (e.g. wizard
+  // context). Doesn't fire on purely-internal selections, since those
+  // already update selectedFile directly in handleFiles/handleClear.
+  useEffect(() => {
+    setSelectedFile(initialFile)
+  }, [initialFile])
 
   function handleFiles(fileList) {
     const file = fileList?.[0]
