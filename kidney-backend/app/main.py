@@ -12,6 +12,7 @@ from app.api.patients import router as patients_router
 from app.api.donors import router as donors_router
 from app.api.compatibility import router as compatibility_router
 from app.api.dashboard import router as dashboard_router
+from app.api.ocr import router as ocr_router
 
 app = FastAPI(title="Kidney Transplant Compatibility System")
 
@@ -28,6 +29,7 @@ app.include_router(patients_router)
 app.include_router(donors_router)
 app.include_router(compatibility_router)
 app.include_router(dashboard_router)
+app.include_router(ocr_router)
 
 @app.get("/")
 def read_root():
