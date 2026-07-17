@@ -14,6 +14,7 @@ FIELD_LABEL_VARIANTS: dict[str, list[str]] = {
     "nic_number": ["National Identity Card", "NIC"],
     "date_of_birth": ["Date of Birth", "DOB"],
     "blood_type": ["Blood Type", "Blood Group"],
+    "hla_ref_no": ["HLA Ref No", "Laboratory Reference"],
 }
 
 
@@ -37,8 +38,8 @@ COMBINED_PATTERNS = {field: _build_combined_pattern(variants) for field, variant
 
 
 def extract_demographics(texts: list[str], boxes: list[list[int]]) -> dict:
-    patient = {"full_name": "", "nic_number": "", "date_of_birth": "", "blood_type": ""}
-    donor = {"full_name": "", "nic_number": "", "date_of_birth": "", "blood_type": ""}
+    patient = {"full_name": "", "nic_number": "", "date_of_birth": "", "blood_type": "", "hla_ref_no": ""}
+    donor = {"full_name": "", "nic_number": "", "date_of_birth": "", "blood_type": "", "hla_ref_no": ""}
 
     for i, text in enumerate(texts):
         box = boxes[i]

@@ -173,6 +173,36 @@ export default function ReviewStep() {
         )}
       </Card>
 
+      {/* Crossmatch read-only preview card */}
+      {state.crossmatch && Object.values(state.crossmatch).some(Boolean) && (
+        <Card>
+          <Card.Header 
+            title="Crossmatch (from uploaded report)" 
+            subtitle="Reference only — not sent with this check" 
+          />
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[14px]">
+            <span className="text-text-muted">T-cell result</span>
+            <span className="text-text font-medium">{state.crossmatch.t_cell_result || "—"}</span>
+            <span className="text-text-muted">B-cell result</span>
+            <span className="text-text font-medium">{state.crossmatch.b_cell_result || "—"}</span>
+            <span className="text-text-muted">Interpretation</span>
+            <span className="text-text font-medium">{state.crossmatch.interpretation || "—"}</span>
+            {state.crossmatch.remarks && (
+              <>
+                <span className="text-text-muted">Remarks</span>
+                <span className="text-text font-medium">{state.crossmatch.remarks}</span>
+              </>
+            )}
+            {state.crossmatch.test_date && (
+              <>
+                <span className="text-text-muted">Test date</span>
+                <span className="text-text font-medium">{state.crossmatch.test_date}</span>
+              </>
+            )}
+          </div>
+        </Card>
+      )}
+
       <Card>
         <Card.Header
           title="Uploaded documents"

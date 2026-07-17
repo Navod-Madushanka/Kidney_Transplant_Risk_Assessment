@@ -46,6 +46,9 @@ export function WizardProvider({ children }) {
       setSensitizationDate: (eventType, date) =>
         dispatch({ type: WIZARD_ACTIONS.SET_SENSITIZATION_DATE, eventType, date }),
 
+      hydrateFromOcr: (payload) =>
+        dispatch({ type: WIZARD_ACTIONS.HYDRATE_FROM_OCR, payload }),
+
       reset: () => dispatch({ type: WIZARD_ACTIONS.RESET }),
     }),
     []

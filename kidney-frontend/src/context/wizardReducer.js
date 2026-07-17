@@ -1,4 +1,3 @@
-// src/context/wizardReducer.js
 import { HLA_LOCUS_OPTIONS } from "../constants/clinicalEnums";
 import { DEFAULT_MFI_CUTOFF } from "../constants/clinical";
 
@@ -59,7 +58,16 @@ export function buildInitialWizardState() {
 
     // Phase 7 — Payload 3
     bead_specificity: [],
-    SET_SENSITIZATION_DATE: "SET_SENSITIZATION_DATE",
+    // Populated by OCR extraction on the photos step (not part of the
+    // submission payload today — surfaced read-only in Review for the
+    // doctor's context, since there's no MatchReport field for it yet).
+    crossmatch: {
+      t_cell_result: "",
+      b_cell_result: "",
+      interpretation: "",
+      remarks: "",
+      test_date: "",
+    },
 
     // Wizard navigation guard: the furthest step the doctor has actually
     // reached, so ProtectedRoute-style guards can block jumping ahead via a
@@ -77,8 +85,10 @@ export const WIZARD_ACTIONS = {
   SET_SENSITIZATION: "SET_SENSITIZATION",
   SET_MFI_CUTOFF: "SET_MFI_CUTOFF",
   SET_BEAD_SPECIFICITY: "SET_BEAD_SPECIFICITY",
+  HYDRATE_FROM_OCR: "HYDRATE_FROM_OCR",
   UNLOCK_STEP: "UNLOCK_STEP",
   RESET: "RESET",
+  SET_SENSITIZATION_DATE: "SET_SENSITIZATION_DATE",
 };
 
 function updateHlaRow(rows, locus, patch) {
@@ -128,6 +138,47 @@ export function wizardReducer(state, action) {
 
     case WIZARD_ACTIONS.SET_BEAD_SPECIFICITY:
       return { ...state, bead_specificity: action.rows };
+
+    case WIZARD_ACTIONS.HYDRATE_FROM_OCR: {
+      const { patientDetails, donorDetails, patientHla, donorHla, beadSpecificity, crossmatch } =
+        action.payload;
+
+      // Only overwrite a field if OCR actually found something — never
+      // blank out a value the doctor already typed in by hand.
+      const mergeDetails = (existing, incoming) => {
+        const next = { ...existing };
+        for (const [key, value] of Object.entries(incoming || {})) {          if (value) next[key] = value;
+        }
+        return next;
+      };
+
+      // Matches incoming OCR rows to existing rows by locus (both sides
+      // use the same canonical HLA_LOCI codes), leaving any locus OCR
+      // didn't find untouched.
+      const mergeHlaRows = (existingRows, incomingRows) => {
+        if (!incomingRows || incomingRows.length === 0) return existingRows;
+        return existingRows.map((row) => {
+          const match = incomingRows.find((r) => r.locus === row.locus);
+          if (!match) return row;
+          return {
+            ...row,
+            allele_1: match.allele_1 || match.allele1 || row.allele_1,
+            allele_2: match.allele_2 || match.allele2 || row.allele_2,
+          };
+        });
+      };
+
+      return {
+        ...state,
+        patient_details: mergeDetails(state.patient_details, patientDetails),
+        donor_details: mergeDetails(state.donor_details, donorDetails),
+        patient_hla: mergeHlaRows(state.patient_hla, patientHla),
+        donor_hla: mergeHlaRows(state.donor_hla, donorHla),
+        bead_specificity:
+          beadSpecificity && beadSpecificity.length > 0 ? beadSpecificity : state.bead_specificity,
+        crossmatch: crossmatch ? { ...state.crossmatch, ...crossmatch } : state.crossmatch,
+      };
+    }
 
     case WIZARD_ACTIONS.UNLOCK_STEP:
       return {

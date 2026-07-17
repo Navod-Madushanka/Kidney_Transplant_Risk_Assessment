@@ -1,89 +1,97 @@
+# app/extraction/hla.py
+import re
 from app.extraction.geometry import box_center_y, box_left_x
+from app.extraction.common import cluster_columns_by_x
+from app.reference_data.hla_loci import HLA_LOCI
 
-# Hardcoded column boundaries, calibrated from this report template's real
-# coordinates. Locus order follows medical convention (standard HLA typing
-# panel order), not something we expect to vary between reports from the
-# same lab — but a genuinely different table layout would need recalibration.
-LOCUS_COLUMNS = [
-    ("HLA-A*", 176, 251),
-    ("HLA-B*", 251, 350),
-    ("HLA-C*", 350, 446),
-    ("HLA-DRB1*", 446, 535),
-    ("HLA-DRB3/4/5*", 535, 645),
-    ("HLA-DQA1*", 645, 760),
-    ("HLA-DQB1*", 760, 862),
-    ("HLA-DPA1*", 862, 973),
-    ("HLA-DPB1*", 973, 1250),
-]
-
-# How far below a row label's Y-center we still consider a box part of
-# that row — generous enough to catch a wrapped second line underneath.
 ROW_TOLERANCE_ABOVE = 10
 ROW_TOLERANCE_BELOW = 45
 
-SKIP_LABELS = {"Patient", "Donor", "Locus"}
+# How far apart two header boxes can be (x-axis) and still count as the
+# same column, e.g. a header wrapping "HLA" / "DRB1*" onto two lines.
+# First-pass estimate — tune against real box coordinates once you have them.
+COLUMN_X_TOLERANCE = 55
+
+SKIP_ROW_LABELS = {"patient", "donor", "locus"}
 
 
-def _locus_for_x(x_left: int) -> str | None:
-    for name, start, end in LOCUS_COLUMNS:
-        if start <= x_left < end:
-            return name
+def _squash(text: str) -> str:
+    """'HLA-DRB3,4,5*' -> 'DRB345' so header text can be matched against
+    canonical locus codes regardless of punctuation/spacing differences."""
+    return re.sub(r"[^A-Z0-9,]", "", text.upper()).replace(",", "")
+
+
+def _canonical_locus_lookup() -> dict[str, str]:
+    return {_squash(locus): locus for locus in HLA_LOCI}
+
+
+def _find_row_anchor(texts: list[str], boxes: list[list[int]], target: str, after_y: float = -1.0) -> int | None:
+    for i, text in enumerate(texts):
+        if text.strip().lower() == target and box_center_y(boxes[i]) > after_y:
+            return i
     return None
 
 
 def extract_hla(texts: list[str], boxes: list[list[int]]) -> dict:
-    patient_row_y = None
-    donor_row_y = None
-    for i, text in enumerate(texts):
-        if text.strip() == "Patient":
-            patient_row_y = box_center_y(boxes[i])
-        elif text.strip() == "Donor":
-            donor_row_y = box_center_y(boxes[i])
+    locus_idx = _find_row_anchor(texts, boxes, "locus")
+    if locus_idx is None:
+        return {"patient_hla": [], "donor_hla": [], "warning": "locus_header_not_found"}
+    locus_y = box_center_y(boxes[locus_idx])
 
-    if patient_row_y is None or donor_row_y is None:
-        return {"patient_hla": [], "donor_hla": []}
+    patient_idx = _find_row_anchor(texts, boxes, "patient", after_y=locus_y)
+    donor_idx = _find_row_anchor(texts, boxes, "donor", after_y=locus_y)
+    if patient_idx is None or donor_idx is None:
+        return {"patient_hla": [], "donor_hla": [], "warning": "patient_or_donor_row_not_found"}
 
-    patient_cells: dict[str, list[tuple[float, int, str]]] = {}
-    donor_cells: dict[str, list[tuple[float, int, str]]] = {}
+    patient_y = box_center_y(boxes[patient_idx])
+    donor_y = box_center_y(boxes[donor_idx])
 
-    for i, text in enumerate(texts):
-        stripped = text.strip()
-        if stripped in SKIP_LABELS:
-            continue
+    header_zone = [
+        i for i, box in enumerate(boxes)
+        if locus_y - ROW_TOLERANCE_ABOVE <= box_center_y(box) < patient_y - ROW_TOLERANCE_ABOVE
+    ]
+    columns = cluster_columns_by_x(header_zone, boxes, COLUMN_X_TOLERANCE)
 
-        box = boxes[i]
-        x_left = box_left_x(box)
-        y_center = box_center_y(box)
+    locus_lookup = _canonical_locus_lookup()
+    column_loci: list[tuple[float, str]] = []
+    for col in columns:
+        col_sorted = sorted(col, key=lambda i: box_center_y(boxes[i]))  # top-to-bottom within the cell
+        label_text = " ".join(texts[i] for i in col_sorted)
+        canonical = locus_lookup.get(_squash(label_text))
+        if canonical:
+            x_center = sum(box_left_x(boxes[i]) for i in col_sorted) / len(col_sorted)
+            column_loci.append((x_center, canonical))
 
-        if x_left < LOCUS_COLUMNS[0][1]:
-            continue  # to the left of the first data column — not a table value
+    if not column_loci:
+        return {"patient_hla": [], "donor_hla": [], "warning": "no_locus_columns_matched"}
 
-        if patient_row_y - ROW_TOLERANCE_ABOVE <= y_center <= patient_row_y + ROW_TOLERANCE_BELOW:
-            target = patient_cells
-        elif donor_row_y - ROW_TOLERANCE_ABOVE <= y_center <= donor_row_y + ROW_TOLERANCE_BELOW:
-            target = donor_cells
-        else:
-            continue  # part of the header row, or unrelated content
+    column_loci.sort(key=lambda pair: pair[0])
 
-        locus = _locus_for_x(x_left)
-        if locus is None:
-            continue
-
-        target.setdefault(locus, []).append((y_center, x_left, stripped))
-
-
-    def _cells_to_list(cells: dict) -> list[dict]:
-        result = []
-        for locus_name, _, _ in LOCUS_COLUMNS:
-            entries = cells.get(locus_name)
-            if not entries:
-                result.append({"locus": locus_name, "allele_1": "", "allele_2": ""})
+    def _extract_row(row_y: float, next_row_y: float | None) -> dict[str, list[tuple[float, str]]]:
+        upper = (next_row_y - ROW_TOLERANCE_ABOVE) if next_row_y else (row_y + ROW_TOLERANCE_BELOW)
+        by_column: dict[str, list[tuple[float, str]]] = {locus: [] for _, locus in column_loci}
+        for i, box in enumerate(boxes):
+            y = box_center_y(box)
+            if not (row_y - ROW_TOLERANCE_ABOVE <= y < upper):
                 continue
-            entries.sort(key=lambda e: (e[0], e[1]))  # top-to-bottom, then left-to-right
-            combined = " ".join(e[2] for e in entries)
-            parts = [p.strip() for p in combined.split(",")]
+            if texts[i].strip().lower() in SKIP_ROW_LABELS:
+                continue
+            x = box_left_x(box)
+            nearest_locus = min(column_loci, key=lambda pair: abs(pair[0] - x))[1]
+            by_column[nearest_locus].append((x, texts[i].strip()))
+        return by_column
+
+    patient_cells = _extract_row(patient_y, donor_y)
+    donor_cells = _extract_row(donor_y, None)
+
+    def _cells_to_list(cells: dict[str, list[tuple[float, str]]]) -> list[dict]:
+        result = []
+        for _, locus in column_loci:
+            ordered = sorted(cells.get(locus, []), key=lambda p: p[0])
+            raw = " ".join(text for _, text in ordered)
+            parts = [p.strip() for p in raw.split(",") if p.strip()]
             result.append({
-                "locus": locus_name,
+                "locus": locus,
                 "allele_1": parts[0] if len(parts) > 0 else "",
                 "allele_2": parts[1] if len(parts) > 1 else "",
             })
