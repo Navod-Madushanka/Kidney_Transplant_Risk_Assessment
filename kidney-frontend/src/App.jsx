@@ -59,8 +59,10 @@ function App() {
           <Route path="sensitization" element={<SensitizationStep />} handle={{ title: "New Check" }} />
           <Route path="bead-chart" element={<BeadSpecificityStep />} handle={{ title: "New Check" }} />
           <Route path="review" element={<ReviewStep />} handle={{ title: "New Check" }} />
-          <Route path="/reports/:reportId" element={<ReportDetailPage />} handle={{ title: "Report" }} />
         </Route>
+
+        {/* Standalone Report Details Page (Fixed: Moved out of the wizard structure) */}
+        <Route path="/reports/:reportId" element={<ReportDetailPage />} handle={{ title: "Report" }} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
