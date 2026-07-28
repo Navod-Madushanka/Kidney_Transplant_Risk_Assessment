@@ -7,10 +7,14 @@ from pydantic import BaseModel, ConfigDict
 from app.models.enums import BloodType
 
 
+from app.models.enums import BloodType, RhFactor
+
+
 class DonorCreate(BaseModel):
     full_name: str
     date_of_birth: date
     blood_type: BloodType
+    rh_factor: RhFactor
     nic_number: str | None = None
 
 
@@ -20,6 +24,7 @@ class DonorResponse(BaseModel):
     full_name: str
     date_of_birth: date
     blood_type: BloodType
+    rh_factor: RhFactor
     nic_number: str | None
     created_at: datetime
     updated_at: datetime

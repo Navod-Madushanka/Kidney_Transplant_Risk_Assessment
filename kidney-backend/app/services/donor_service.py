@@ -1,4 +1,3 @@
-# app/services/donor_service.py
 import uuid
 
 from sqlalchemy import select
@@ -16,6 +15,7 @@ async def create_donor(
         full_name=payload.full_name,
         date_of_birth=payload.date_of_birth,
         blood_type=payload.blood_type,
+        rh_factor=payload.rh_factor,
         nic_number=payload.nic_number,
     )
     db.add(donor)

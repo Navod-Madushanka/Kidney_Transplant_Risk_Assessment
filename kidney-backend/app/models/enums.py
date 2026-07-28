@@ -11,6 +11,10 @@ class BloodType(str, enum.Enum):
     B = "B"
     AB = "AB"
 
+class RhFactor(str, enum.Enum):
+    POSITIVE = "+"
+    NEGATIVE = "-"
+
 
 class HLALocusEnum(str, enum.Enum):
     DRB1 = "DRB1"
