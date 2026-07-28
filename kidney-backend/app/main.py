@@ -5,14 +5,14 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import router as auth_router
+from app.api.compatibility import router as compatibility_router
+from app.api.dashboard import router as dashboard_router
+from app.api.donors import router as donors_router
+from app.api.ocr import router as ocr_router
+from app.api.patients import router as patients_router
 from app.core.dependencies import get_current_user
 from app.db.session import get_db
 from app.models.doctor import Doctor
-from app.api.patients import router as patients_router
-from app.api.donors import router as donors_router
-from app.api.compatibility import router as compatibility_router
-from app.api.dashboard import router as dashboard_router
-from app.api.ocr import router as ocr_router
 
 app = FastAPI(title="Kidney Transplant Compatibility System")
 

@@ -1,4 +1,4 @@
-// src/components/domain/hla/HlaTypingEditor.jsx (updated)
+// src/components/domain/hla/HlaTypingEditor.jsx
 import { useState } from "react"
 import Select from "../../ui/Select"
 import InputField from "../../ui/InputField"
@@ -17,10 +17,7 @@ function makeRow(entry) {
 }
 
 /**
- * loadState: "loading" | "loaded" | "not_available" | "error"
- *   "not_available" means the GET endpoint 404'd (doesn't exist on the
- *   backend yet) — in that case we refuse to render an editable form, since
- *   Save is a full replace and we can't prove nothing would be lost.
+ * loadState: "loading" | "loaded" | "error"
  *
  * Usage:
  *   <HlaTypingEditor
@@ -73,22 +70,6 @@ export default function HlaTypingEditor({ loadState, initialEntries = [], onSave
         <Card.Header title="HLA typing" />
         <div className="flex justify-center py-8">
           <div className="h-6 w-6 rounded-full border-2 border-border border-t-accent animate-spin" role="status" aria-label="Loading" />
-        </div>
-      </Card>
-    )
-  }
-
-  if (loadState === "not_available") {
-    return (
-      <Card>
-        <Card.Header title="HLA typing" />
-        <div className="rounded-md bg-moderate-subtle border border-moderate/30 p-4">
-          <p className="text-[14px] text-text font-medium">Editing isn't available yet</p>
-          <p className="text-[13px] text-text-muted mt-1">
-            The system can't yet confirm whether HLA typing was already saved for this patient, and
-            saving here replaces all existing data. This will unlock once the backend adds a way to
-            retrieve existing typings.
-          </p>
         </div>
       </Card>
     )

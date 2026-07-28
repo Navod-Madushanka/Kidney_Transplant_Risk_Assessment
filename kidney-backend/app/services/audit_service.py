@@ -2,7 +2,7 @@
 import uuid
 from typing import Optional
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.audit_log import AuditLog
@@ -66,4 +66,4 @@ async def get_audit_logs(
     total_result = await db.execute(count_query)
     total_count = total_result.scalar_one()
 
-    return rows, total_count  
+    return rows, total_count

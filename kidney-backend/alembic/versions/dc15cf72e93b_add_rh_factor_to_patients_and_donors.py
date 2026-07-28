@@ -29,17 +29,21 @@ def upgrade() -> None:
 
     # 2. Add column as nullable first so existing rows don't break
     op.add_column('patients', sa.Column('rh_factor', rh_factor_enum, nullable=True))
+    op.add_column('donors', sa.Column('rh_factor', rh_factor_enum, nullable=True))
 
     # 3. Populate existing rows with a default value (e.g., '+')
     op.execute("UPDATE patients SET rh_factor = '+' WHERE rh_factor IS NULL")
+    op.execute("UPDATE donors SET rh_factor = '+' WHERE rh_factor IS NULL")
 
     # 4. Now safely enforce NOT NULL constraint
     op.alter_column('patients', 'rh_factor', nullable=False)
+    op.alter_column('donors', 'rh_factor', nullable=False)
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    # 1. Drop the column first
+    # 1. Drop the columns first
+    op.drop_column('donors', 'rh_factor')
     op.drop_column('patients', 'rh_factor')
 
     # 2. Drop the enum type from PostgreSQL

@@ -6,7 +6,7 @@ from sqlalchemy import Enum, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
-from app.models.enums import BloodType
+from app.models.enums import BloodType, RhFactor
 from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 
 
@@ -23,6 +23,14 @@ class Donor(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         Enum(
             BloodType,
             name="blood_type_enum",
+            values_callable=lambda enum_class: [member.value for member in enum_class],
+        ),
+        nullable=False,
+    )
+    rh_factor: Mapped[RhFactor] = mapped_column(
+        Enum(
+            RhFactor,
+            name="rh_factor_enum",
             values_callable=lambda enum_class: [member.value for member in enum_class],
         ),
         nullable=False,

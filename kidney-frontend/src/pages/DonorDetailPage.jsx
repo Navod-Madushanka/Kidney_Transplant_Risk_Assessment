@@ -2,7 +2,6 @@
 import { useEffect, useState } from "react"
 import { useParams } from "react-router-dom"
 import { getDonor, getDonorHlaTypings, replaceDonorHlaTypings } from "../api/donors"
-import { ApiError } from "../api/client"
 import Badge from "../components/ui/Badge"
 import HlaTypingEditor from "../components/domain/hla/HlaTypingEditor"
 
@@ -21,11 +20,7 @@ export default function DonorDetailPage() {
 
     getDonorHlaTypings(donorId)
       .then((data) => !cancelled && setHlaState({ state: "loaded", data }))
-      .catch((err) => {
-        if (cancelled) return
-        if (err instanceof ApiError && err.status === 404) setHlaState({ state: "not_available", data: [] })
-        else setHlaState({ state: "error", data: [] })
-      })
+      .catch(() => !cancelled && setHlaState({ state: "error", data: [] }))
 
     return () => {
       cancelled = true

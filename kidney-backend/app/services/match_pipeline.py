@@ -16,8 +16,10 @@ from app.services.dsa_service import DEFAULT_MFI_CUTOFF, DSAResult, PatientAntib
 from app.services.hla_scoring_service import HLAScoringResult, calculate_hla_risk_score
 from app.services.hla_typing_service import (
     get_donor_hla_typing_dict,
+    get_donor_hla_typing_entries,
     get_patient_hla_typing_dict,
     get_population_hla_profiles,
+    hla_antigen_designation,
 )
 from app.services.risk_tier_service import get_risk_tier
 from app.services.sensitization_event_service import get_patient_sensitization_event_types
@@ -59,9 +61,16 @@ async def run_match_pipeline(
         for row in antibody_rows
     ]
 
-    donor_hla_typing = await get_donor_hla_typing_dict(db, donor.id)
+    # DSA only needs whatever donor typing happens to be on file so far, not
+    # a complete panel — use the permissive "entries" lookup here rather than
+    # get_donor_hla_typing_dict, which raises if any locus is missing. That
+    # completeness requirement only makes sense once we know we're going on
+    # to run full HLA scoring, i.e. after the DSA halt check below.
+    donor_hla_entries = await get_donor_hla_typing_entries(db, donor.id)
     donor_hla_antigens = [
-        allele for alleles in donor_hla_typing.values() for allele in alleles
+        hla_antigen_designation(row.locus.value, allele)
+        for row in donor_hla_entries
+        for allele in (row.allele_1, row.allele_2)
     ]
 
     dsa_result = check_dsa(
@@ -78,6 +87,7 @@ async def run_match_pipeline(
             dsa_result=dsa_result,
         )
 
+    donor_hla_typing = await get_donor_hla_typing_dict(db, donor.id)
     patient_hla_typing = await get_patient_hla_typing_dict(db, patient.id)
     hla_scoring_result = calculate_hla_risk_score(patient_hla_typing, donor_hla_typing)
     risk_tier = get_risk_tier(hla_scoring_result.total_score)

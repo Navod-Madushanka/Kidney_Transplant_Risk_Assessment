@@ -10,6 +10,20 @@ from app.reference_data.hla_loci import HLA_LOCI
 from app.schemas.hla_typing import HLATypingEntry
 
 
+def hla_antigen_designation(locus: str, allele: str) -> str:
+    """Combines a locus and a raw allele string into the antigen
+    "designation" used everywhere antibody antigens are named (e.g. locus
+    "B" + allele "07" -> "B7"). HLA typing rows store the locus and allele
+    separately with zero-padded allele numbers (see COMPATIBLE_DONOR_HLA in
+    app/tests/conftest.py), while antibody-profile antigens are recorded
+    against the combined, non-padded designation (see
+    app/schemas/antibody_profile.py / the DSA test data). This is the single
+    place that bridges the two so callers doing antigen-based matching (DSA
+    checks, cPRA) don't each reimplement it slightly differently.
+    """
+    return f"{locus}{allele.lstrip('0') or '0'}"
+
+
 async def get_patient_hla_typing_dict(
     db: AsyncSession, patient_id: uuid.UUID
 ) -> dict[str, list[str]]:

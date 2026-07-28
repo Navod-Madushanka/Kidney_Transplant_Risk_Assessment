@@ -9,10 +9,7 @@ import { SENSITIZATION_EVENT_OPTIONS } from "../../../constants/clinicalEnums"
 const EVENT_LABELS = Object.fromEntries(SENSITIZATION_EVENT_OPTIONS.map((o) => [o.value, o.label]))
 
 /**
- * loadState: "loading" | "loaded" | "not_available" | "error"
- *   "not_available" here just means the history list can't be shown yet
- *   (no GET endpoint) — adding new events still works fine since that
- *   endpoint is a create, not a replace.
+ * loadState: "loading" | "loaded" | "error"
  *
  * Usage:
  *   <SensitizationEventEditor
@@ -58,13 +55,6 @@ export default function SensitizationEventEditor({ loadState, existingEvents = [
         title="Sensitization events"
         subtitle="Previous transplant, pregnancy, or transfusion — feeds the sensitization score"
       />
-
-      {loadState === "not_available" && existingEvents.length === 0 && (
-        <p className="text-[13px] text-text-muted mb-4">
-          Events added in this session are shown below. Full history isn't retrievable yet — the
-          backend needs a list endpoint to show events added in previous sessions.
-        </p>
-      )}
 
       <form onSubmit={handleAdd} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2 items-start mb-4">
         <Select

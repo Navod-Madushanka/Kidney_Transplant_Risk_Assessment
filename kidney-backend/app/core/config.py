@@ -6,6 +6,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     database_url: str
+    # Reserved for future use (e.g. caching, rate limiting, session storage).
+    # Provisioned in local setup but not read anywhere in the app yet — see
+    # the roadmap's Phase 1 note before adding a new use for it.
     redis_url: str
     secret_key: str
     environment: str = "local"

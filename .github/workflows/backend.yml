@@ -1,0 +1,59 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "kidney-backend/**"
+      - ".github/workflows/backend.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "kidney-backend/**"
+      - ".github/workflows/backend.yml"
+
+defaults:
+  run:
+    working-directory: kidney-backend
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: devpass
+          POSTGRES_DB: kidney_transplant_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Lint with ruff
+        run: uv run ruff check .
+
+      - name: Run pytest
+        env:
+          TEST_DATABASE_URL: postgresql+asyncpg://postgres:devpass@localhost:5432/kidney_transplant_test
+        run: uv run pytest -v

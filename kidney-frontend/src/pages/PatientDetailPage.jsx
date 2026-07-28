@@ -11,7 +11,6 @@ import {
   createSensitizationEvents,
   getPatientReports,
 } from "../api/patients"
-import { ApiError } from "../api/client"
 import Card from "../components/ui/Card"
 import Badge from "../components/ui/Badge"
 import Button from "../components/ui/Button"
@@ -19,14 +18,11 @@ import HlaTypingEditor from "../components/domain/hla/HlaTypingEditor"
 import AntibodyProfileEditor from "../components/domain/antibody/AntibodyProfileEditor"
 import SensitizationEventEditor from "../components/domain/sensitization/SensitizationEventEditor"
 
-// Calls a not-yet-guaranteed GET endpoint. Treats 404 as "not built yet"
-// (shows the locked editor state) rather than a hard page error.
-async function loadOptional(fetchFn) {
+async function loadEditorData(fetchFn) {
   try {
     const data = await fetchFn()
     return { state: "loaded", data }
-  } catch (err) {
-    if (err instanceof ApiError && err.status === 404) return { state: "not_available", data: [] }
+  } catch {
     return { state: "error", data: [] }
   }
 }
@@ -48,9 +44,9 @@ export default function PatientDetailPage() {
       .then((data) => !cancelled && (setPatient(data), setPatientLoadState("loaded")))
       .catch(() => !cancelled && setPatientLoadState("error"))
 
-    loadOptional(() => getPatientHlaTypings(patientId)).then((r) => !cancelled && setHlaState(r))
-    loadOptional(() => getPatientAntibodyProfiles(patientId)).then((r) => !cancelled && setAntibodyState(r))
-    loadOptional(() => listPatientSensitizationEvents(patientId)).then((r) => !cancelled && setSensitizationState(r))
+    loadEditorData(() => getPatientHlaTypings(patientId)).then((r) => !cancelled && setHlaState(r))
+    loadEditorData(() => getPatientAntibodyProfiles(patientId)).then((r) => !cancelled && setAntibodyState(r))
+    loadEditorData(() => listPatientSensitizationEvents(patientId)).then((r) => !cancelled && setSensitizationState(r))
     getPatientReports(patientId).then((r) => !cancelled && setReports(r)).catch(() => {})
 
     return () => {

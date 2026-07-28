@@ -10,8 +10,7 @@ function makeRow(entry) {
 }
 
 /**
- * Same load-state contract as HlaTypingEditor — see that file for why
- * "not_available" exists and refuses to render an editable form.
+ * Same load-state contract as HlaTypingEditor: "loading" | "loaded" | "error".
  *
  * Usage:
  *   <AntibodyProfileEditor
@@ -75,21 +74,6 @@ export default function AntibodyProfileEditor({ loadState, initialEntries = [], 
         <Card.Header title="Antibody profile (bead chart)" />
         <div className="flex justify-center py-8">
           <div className="h-6 w-6 rounded-full border-2 border-border border-t-accent animate-spin" role="status" aria-label="Loading" />
-        </div>
-      </Card>
-    )
-  }
-
-  if (loadState === "not_available") {
-    return (
-      <Card>
-        <Card.Header title="Antibody profile (bead chart)" />
-        <div className="rounded-md bg-moderate-subtle border border-moderate/30 p-4">
-          <p className="text-[14px] text-text font-medium">Editing isn't available yet</p>
-          <p className="text-[13px] text-text-muted mt-1">
-            Saving here replaces the full antibody profile, and the system can't yet confirm what's
-            already stored. This unlocks once the backend adds a way to retrieve existing entries.
-          </p>
         </div>
       </Card>
     )

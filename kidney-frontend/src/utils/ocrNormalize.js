@@ -25,7 +25,7 @@ export function parseOcrDate(raw) {
   }
 
   // DD.MM.YYYY or DD/MM/YYYY, e.g. "21.03.1976"
-  const numericMatch = trimmed.match(/^(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})$/)
+  const numericMatch = trimmed.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/)
   if (numericMatch) {
     const [, day, month, year] = numericMatch
     return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`

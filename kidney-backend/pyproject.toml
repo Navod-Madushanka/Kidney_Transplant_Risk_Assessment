@@ -22,6 +22,7 @@ dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
     "httpx>=0.27.0",
+    "ruff>=0.7.0",
 ]
 
 [build-system]
@@ -30,3 +31,38 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
+
+[tool.pytest.ini_options]
+testpaths = ["app/tests"]
+asyncio_mode = "auto"
+# Both the test-schema engine (app/tests/conftest.py::_test_engine) and the
+# app's own DB engine (app/db/session.py::engine) are created ONCE as
+# module-level globals, not per-test. asyncpg connections are bound to the
+# event loop they were opened on, so with pytest-asyncio's default
+# function-scoped loops, a connection opened in test 1's loop gets reused
+# (via the SQLAlchemy pool) in test 2's *different* loop — asyncpg then
+# raises "cannot perform operation: another operation is in progress" (or
+# similar) once that stale connection is touched from a foreign loop.
+# Pinning both fixtures and tests to a single session-scoped loop means
+# there's only ever one loop for the whole run, matching how the engines
+# are actually constructed.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+# Sensible defaults for a young codebase: pyflakes + pycodestyle + import
+# sorting. Not turning on stricter rule sets yet (docstrings, complexity,
+# etc.) so CI doesn't start red on day one — tighten this later.
+select = ["E", "F", "I", "W"]
+
+[tool.ruff.lint.per-file-ignores]
+# app/models/__init__.py exists purely to re-export every model in one place
+# (see the app.models import in tests/conftest.py) so Base.metadata sees
+# every mapped class. Each import there is "unused" by design.
+"app/models/__init__.py" = ["F401"]
+

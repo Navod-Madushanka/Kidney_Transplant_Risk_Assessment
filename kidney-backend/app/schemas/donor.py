@@ -4,9 +4,6 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict
 
-from app.models.enums import BloodType
-
-
 from app.models.enums import BloodType, RhFactor
 
 

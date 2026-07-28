@@ -4,9 +4,9 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from app.core.dependencies import get_current_user
 from app.models.doctor import Doctor
-from app.schemas.ocr import OcrExtractResponse, OcrBatchExtractResponse
-from app.services.ocr_client import call_ocr_service
+from app.schemas.ocr import OcrBatchExtractResponse, OcrExtractResponse
 from app.services.ocr_batch_service import run_batch_extraction
+from app.services.ocr_client import call_ocr_service
 
 router = APIRouter(prefix="/ocr", tags=["ocr"])
 
@@ -38,7 +38,10 @@ async def extract_batch(
     provided = {name: f for name, f in slots.items() if f is not None}
 
     if not provided:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one image must be provided.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one image must be provided.",
+        )
 
     for f in provided.values():
         _validate_file(f)
@@ -72,12 +75,23 @@ async def extract_lab_report(
     contents = await file.read()
 
     try:
-        result = await call_ocr_service(contents, file.filename, file.content_type, "hla_typing_report")
+        result = await call_ocr_service(
+            contents, file.filename, file.content_type, "hla_typing_report"
+        )
     except httpx.TimeoutException:
-        raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail="OCR service timed out, please try again")
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="OCR service timed out, please try again",
+        )
     except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"OCR service returned an error: {exc.response.status_code}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"OCR service returned an error: {exc.response.status_code}",
+        )
     except httpx.HTTPError:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="OCR service unavailable")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="OCR service unavailable",
+        )
 
     return result["structured"]

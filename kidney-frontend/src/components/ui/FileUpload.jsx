@@ -1,5 +1,5 @@
 // src/components/ui/FileUpload.jsx
-import { useEffect, useId, useRef, useState } from "react"
+import { useId, useRef, useState } from "react"
 
 /**
  * Usage:
@@ -42,11 +42,18 @@ export default function FileUpload({
   const [isDragActive, setIsDragActive] = useState(false)
 
   // Keep the preview in sync with externally-owned state (e.g. wizard
-  // context). Doesn't fire on purely-internal selections, since those
+  // context). This uses React's documented "adjust state during render"
+  // pattern (https://react.dev/reference/react/useState#storing-information-from-previous-renders)
+  // rather than a useEffect — setting state directly inside an effect body
+  // causes an extra render-then-effect cascade (and a brief flash of stale
+  // content); adjusting during render applies in the same render initialFile
+  // changes in. Doesn't fire on purely-internal selections, since those
   // already update selectedFile directly in handleFiles/handleClear.
-  useEffect(() => {
+  const [prevInitialFile, setPrevInitialFile] = useState(initialFile)
+  if (initialFile !== prevInitialFile) {
+    setPrevInitialFile(initialFile)
     setSelectedFile(initialFile)
-  }, [initialFile])
+  }
 
   function handleFiles(fileList) {
     const file = fileList?.[0]

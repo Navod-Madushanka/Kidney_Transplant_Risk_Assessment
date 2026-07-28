@@ -6,7 +6,7 @@ from app.reference_data.sensitization_weights import SENSITIZATION_EVENT_WEIGHTS
 
 
 class BloodType(str, enum.Enum):
-    O = "O"
+    O = "O"  # noqa: E741 — real ABO blood type, not an ambiguous variable name
     A = "A"
     B = "B"
     AB = "AB"

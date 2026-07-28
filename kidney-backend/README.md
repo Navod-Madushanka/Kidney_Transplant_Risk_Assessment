@@ -1,58 +1,99 @@
-# Backend — Phase 1: Skeleton
+# Kidney Transplant Compatibility System — Backend
 
-Proves FastAPI can run and can actually talk to Postgres, before any real
-domain models exist.
+FastAPI service handling auth, patient/donor records, and the kidney
+compatibility check pipeline (ABO → sensitization → DSA → HLA risk scoring →
+cPRA). This is one of three services in the project — the other two are
+`kidney-frontend` (React/Vite) and `ocr-service` (a separate FastAPI +
+PaddleOCR microservice this backend calls out to for document extraction).
 
-## What's in this phase
+## What's here
 
 ```
-backend/
+kidney-backend/
 ├── app/
-│   ├── main.py            # FastAPI app + /health and /health/db endpoints
+│   ├── main.py                 # FastAPI app, router registration, /health endpoints
 │   ├── core/
-│   │   └── config.py       # Settings, loaded from .env
-│   └── db/
-│       ├── base.py         # Empty declarative Base (models added in Phase 4)
-│       └── session.py      # Async engine + get_db() dependency
-├── alembic/
-│   ├── env.py               # Wired to use app.core.config.Settings
-│   ├── script.py.mako
-│   └── versions/            # Empty for now — first migration comes in Phase 4
+│   │   ├── config.py            # Settings, loaded from .env
+│   │   ├── security.py          # Password hashing, JWT create/decode
+│   │   └── dependencies.py      # get_current_user and friends
+│   ├── db/
+│   │   ├── base.py              # Declarative Base
+│   │   └── session.py           # Async engine + get_db() dependency
+│   ├── models/                  # SQLAlchemy models (doctor, hospital, patient,
+│   │                             # donor, HLA typing, antibody profile,
+│   │                             # sensitization events, match reports, audit log)
+│   ├── schemas/                 # Pydantic request/response models
+│   ├── api/                     # Route modules: auth, patients, donors,
+│   │                             # compatibility, dashboard, ocr
+│   ├── services/                # Business logic: ABO/DSA/HLA-scoring/cPRA/
+│   │                             # sensitization services, the match pipeline
+│   │                             # that chains them, ocr_client (calls
+│   │                             # ocr-service), dashboard/audit services
+│   ├── reference_data/           # Static clinical reference tables (ABO
+│   │                             # compatibility, HLA loci, mismatch buckets,
+│   │                             # risk tiers) sourced from the project's
+│   │                             # clinical spec
+│   └── tests/unit/               # pytest unit tests for the scoring services
+├── alembic/versions/              # Migrations (initial schema → hospitals/doctors
+│                                   # → patients/donors → audit logs → NIC numbers)
 ├── alembic.ini
 ├── pyproject.toml
-├── .env.example
-└── .gitignore
+└── .env.example
 ```
 
-## Setup (run these on your own machine — this was scaffolded in a sandbox without network/Docker access, so it hasn't been executed yet)
+## What's implemented
 
-### 1. Start Postgres and Redis
+- **Auth**: hospital-scoped doctor accounts, register/login, JWT bearer tokens
+  (`app/api/auth.py`, `app/core/security.py`).
+- **Patients & donors**: CRUD, plus per-patient/donor HLA typing, antibody
+  profiles, and sensitization events (`app/api/patients.py`,
+  `app/api/donors.py`).
+- **Compatibility pipeline** (`app/services/match_pipeline.py`): runs ABO
+  compatibility first (halts immediately on failure), then sensitization
+  scoring, then a donor-specific-antibody (DSA) check (halts if triggered),
+  then HLA mismatch risk scoring and risk-tier classification, then cPRA.
+  Every run is persisted as a `MatchReport` and logged to `audit_logs`.
+- **Dashboard**: patients with their latest report status, and recent reports
+  across a doctor's patients, for the frontend dashboard.
+- **OCR integration**: `app/api/ocr.py` proxies uploaded lab report images to
+  the separate `ocr-service` and returns structured extraction results
+  (demographics, HLA typing, MFI/bead-specificity tables, crossmatch).
+
+See `app/tests/unit/` for the scoring-service test suite — it's the best
+place to check expected behavior for ABO, DSA, sensitization, HLA scoring,
+risk tiering, and cPRA.
+
+## Setup
+
+### 1. Start Postgres
 
 ```bash
 docker run --name kt-postgres -e POSTGRES_PASSWORD=devpass -p 5432:5432 -d postgres:16
-docker run --name kt-redis -p 6379:6379 -d redis:7
-```
-
-Create the actual database (the container starts with a default `postgres` db, but we want our own):
-
-```bash
 docker exec -it kt-postgres psql -U postgres -c "CREATE DATABASE kidney_transplant_db;"
 ```
+
+Redis is present in `Settings` (`redis_url`) and mentioned here for
+completeness, but nothing in the app reads from it yet — it's reserved for a
+future use (caching, rate limiting, etc.), not required to run the service
+today. Skip starting a Redis container unless you're working on something
+that needs it.
 
 ### 2. Configure environment
 
 ```bash
-cd backend
+cd kidney-backend
 cp .env.example .env
 ```
 
-Generate a real secret key and put it in `.env`:
+Generate a real secret key:
 
 ```bash
 openssl rand -hex 32
 ```
 
-The default `DATABASE_URL` in `.env.example` already matches the Docker command above, so if you used those exact values you don't need to change it.
+Set `DATABASE_URL` to match the Postgres container above, and
+`OCR_SERVICE_API_KEY` to match whatever `ocr-service` is configured with
+(see its own `.env` / `docker-compose.yml`) if you're testing the OCR flow.
 
 ### 3. Install dependencies
 
@@ -62,59 +103,44 @@ source .venv/bin/activate          # on Windows: .venv\Scripts\activate
 uv pip install -e ".[dev]"
 ```
 
-### 4. Run the server
+### 4. Run migrations
+
+```bash
+alembic upgrade head
+```
+
+This applies all current migrations (initial schema → hospitals/doctors →
+patients/donors → audit logs → NIC numbers).
+
+### 5. Run the server
 
 ```bash
 uvicorn app.main:app --reload
 ```
 
-## Verification checklist (Phase 1 is done when all of these are true)
+### 6. Run tests
 
-1. **`GET http://localhost:8000/health`** returns:
-   ```json
-   {"status": "ok"}
-   ```
-   This proves FastAPI itself is running, independent of the database.
+```bash
+pytest
+```
 
-2. **`GET http://localhost:8000/health/db`** returns:
-   ```json
-   {"status": "ok", "database": "connected", "result": 1}
-   ```
-   This proves FastAPI can execute a real query against Postgres through
-   the async SQLAlchemy session. If you get `{"status": "error", ...}`
-   instead, check in this order:
-   - Is the Postgres container actually running? `docker ps`
-   - Does `DATABASE_URL` in `.env` match the container's credentials/port?
-   - Does the `kidney_transplant_db` database exist? (Step 1 above creates it.)
+## Verifying it's up
 
-3. **`http://localhost:8000/docs`** loads the Swagger UI and shows both
-   endpoints listed.
+1. `GET http://localhost:8000/health` → `{"status": "ok"}` — liveness, no DB
+   dependency.
+2. `GET http://localhost:8000/health/db` → `{"status": "ok", "result": 1}` —
+   confirms the async SQLAlchemy session can reach Postgres.
+3. `http://localhost:8000/docs` — Swagger UI listing every route.
 
-4. **Alembic is wired correctly** (no migrations exist yet — this just
-   confirms the plumbing works ahead of Phase 4):
-   ```bash
-   alembic current
-   ```
-   Should run without error and print nothing (no migrations applied yet),
-   rather than throwing a connection or import error.
+## Notes
 
-## Why things are structured this way
-
-- **Settings in one place (`core/config.py`)**: every later phase that needs
-  config (JWT secret, Redis URL, etc.) reads from this same `Settings` object.
-  Nothing should ever call `os.environ.get(...)` directly elsewhere in the app.
-- **`/health` vs `/health/db` are separate**: a load balancer or orchestrator
-  doing liveness checks should hit `/health` (cheap, no DB dependency). Only
-  hit `/health/db` for deeper readiness checks, since it adds DB load on
-  every call.
-- **`app/db/base.py` exists now, empty**: so that Alembic's `env.py` never
-  needs to be touched again once real models are added in Phase 4 — the
-  import target is already correct.
-- **Alembic reads the URL from `Settings`, not from `alembic.ini` directly**:
-  one source of truth for the connection string. Editing `.env` is enough;
-  you never need to remember to also update `alembic.ini`.
-
-## Next: Phase 2
-
-Once all four verification steps above pass, move to the frontend skeleton
-(React + Tailwind hitting `/health/db` and showing "Backend connected").
+- All config lives in `core/config.py`'s `Settings` — nothing should read
+  `os.environ` directly elsewhere in the app.
+- `/ocr/*` routes require `ocr-service` to be running and reachable at
+  `OCR_SERVICE_URL` (defaults to `http://localhost:8001`); without it, the
+  photo-upload/OCR-extract step in the frontend wizard will fail, but
+  everything else (manual entry, the compatibility pipeline itself) works
+  fine without it.
+- See the project-level development roadmap for what's still outstanding
+  (CI, frontend tests, a unified docker-compose across all three services,
+  crossmatch persistence, etc.).
