@@ -3,6 +3,11 @@
 // Values here are confirmed against the backend's app/models/enums.py.
 // If the backend enums ever change, update both places together.
 
+export const RH_FACTOR_OPTIONS = [
+  { value: "+", label: "Positive (+)" },
+  { value: "-", label: "Negative (-)" },
+]
+
 export const BLOOD_TYPE_OPTIONS = [
   { value: "A", label: "A" },
   { value: "B", label: "B" },

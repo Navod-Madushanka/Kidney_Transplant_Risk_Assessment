@@ -1,11 +1,10 @@
-// src/components/domain/donor/DonorForm.jsx
 import { useState } from "react"
 import InputField from "../../ui/InputField"
 import Select from "../../ui/Select"
 import Button from "../../ui/Button"
-import { BLOOD_TYPE_OPTIONS } from "../../../constants/clinicalEnums"
+import { BLOOD_TYPE_OPTIONS, RH_FACTOR_OPTIONS } from "../../../constants/clinicalEnums"
 
-const emptyForm = { fullName: "", dateOfBirth: "", bloodType: "", nicNumber: "" }
+const emptyForm = { fullName: "", dateOfBirth: "", bloodType: "", rhFactor: "", nicNumber: "" }
 
 /**
  * Usage:
@@ -30,6 +29,7 @@ export default function DonorForm({
     if (!form.fullName.trim()) next.fullName = "Full name is required"
     if (!form.dateOfBirth) next.dateOfBirth = "Date of birth is required"
     if (!form.bloodType) next.bloodType = "Blood group is required"
+    if (!form.rhFactor) next.rhFactor = "Rh factor is required"
     setErrors(next)
     return Object.keys(next).length === 0
   }
@@ -44,6 +44,7 @@ export default function DonorForm({
         full_name: form.fullName.trim(),
         date_of_birth: form.dateOfBirth,
         blood_type: form.bloodType,
+        rh_factor: form.rhFactor,
         nic_number: form.nicNumber.trim() || null,
       })
     } catch (err) {
@@ -76,6 +77,15 @@ export default function DonorForm({
           value={form.bloodType}
           onChange={updateField("bloodType")}
           error={errors.bloodType}
+          required
+        />
+        <Select
+          label="Rh factor"
+          placeholder="Select Rh factor"
+          options={RH_FACTOR_OPTIONS}
+          value={form.rhFactor}
+          onChange={updateField("rhFactor")}
+          error={errors.rhFactor}
           required
         />
       </div>
