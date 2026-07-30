@@ -17,8 +17,15 @@ SKIP_ROW_LABELS = {"patient", "donor", "locus"}
 
 def _squash(text: str) -> str:
     """'HLA-DRB3,4,5*' -> 'DRB345' so header text can be matched against
-    canonical locus codes regardless of punctuation/spacing differences."""
-    return re.sub(r"[^A-Z0-9,]", "", text.upper()).replace(",", "")
+    canonical locus codes regardless of punctuation/spacing differences.
+    Real report headers are printed as "HLA-A*", "HLA DQB1*", etc. — not
+    just the bare locus code — so a leading "HLA" is stripped too, otherwise
+    it never matches any entry in HLA_LOCI and the whole table silently
+    comes back empty."""
+    squashed = re.sub(r"[^A-Z0-9,]", "", text.upper()).replace(",", "")
+    if squashed.startswith("HLA"):
+        squashed = squashed[3:]
+    return squashed
 
 
 def _canonical_locus_lookup() -> dict[str, str]:

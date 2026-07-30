@@ -21,16 +21,28 @@ def extract_mfi_table(texts: list[str], boxes: list[list[int]]) -> dict:
     header_zone = [i for i in header_candidates if box_center_y(boxes[i]) <= header_top_y + HEADER_ZONE_HEIGHT]
     columns = cluster_columns_by_x(header_zone, boxes, COLUMN_X_TOLERANCE)
 
-    sero_x = mfi_x = None
+    # Classify every header column we can see (bead / sero / allele+equiv /
+    # mfi+baseline), not just sero and mfi. The real chart has four columns;
+    # comparing a data box against only two reference points meant "Bead"
+    # numbers and "Allele Equiv" text always got glued onto whichever of
+    # sero/mfi happened to be nearer — usually sero, polluting the antigen
+    # field with stray bead numbers and allele codes.
+    column_roles: list[tuple[float, str]] = []
     for col in columns:
         label = " ".join(_squash(texts[i]) for i in col)
         x_center = sum(box_left_x(boxes[i]) for i in col) / len(col)
         if "sero" in label:
-            sero_x = x_center
-        if "mfi" in label or "baseline" in label:
-            mfi_x = x_center
+            column_roles.append((x_center, "sero"))
+        elif "mfi" in label or "baseline" in label:
+            column_roles.append((x_center, "mfi"))
+        elif "bead" in label:
+            column_roles.append((x_center, "bead"))
+        elif "allele" in label or "equiv" in label:
+            column_roles.append((x_center, "allele_equiv"))
 
-    if sero_x is None or mfi_x is None:
+    has_sero = any(role == "sero" for _, role in column_roles)
+    has_mfi = any(role == "mfi" for _, role in column_roles)
+    if not has_sero or not has_mfi:
         return {"bead_specificity": [], "warning": "sero_or_mfi_column_not_found"}
 
     header_bottom_y = max(box_center_y(boxes[i]) for i in header_zone)
@@ -45,10 +57,13 @@ def extract_mfi_table(texts: list[str], boxes: list[list[int]]) -> dict:
             text = texts[i].strip()
             if not text:
                 continue
-            if abs(x - sero_x) <= abs(x - mfi_x):
+            nearest_role = min(column_roles, key=lambda pair: abs(pair[0] - x))[1]
+            if nearest_role == "sero":
                 sero_val = text if sero_val is None else f"{sero_val} {text}"
-            else:
+            elif nearest_role == "mfi":
                 mfi_val = text if mfi_val is None else f"{mfi_val} {text}"
+            # "bead" and "allele_equiv" columns are deliberately dropped —
+            # we only need the antigen (sero) and MFI value per row.
         if sero_val and mfi_val and re.search(r"\d", mfi_val):
             entries.append({"antigen": sero_val, "mfi": mfi_val})
 

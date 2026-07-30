@@ -1,5 +1,10 @@
 // src/api/client.js
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8090"
+// Falls back to 8000 (the backend's actual default: see kidney-backend's
+// Dockerfile EXPOSE/CMD and README uvicorn command) when VITE_API_BASE_URL
+// isn't set. This used to default to 8090, which doesn't match the backend
+// anywhere — every request would 404/fail-to-connect out of the box unless
+// a .env explicitly overrode it.
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000"
 const SESSION_KEY = "kts_session" // { access_token, email, full_name?, hospital_name? }
 
 let onAuthExpired = null
