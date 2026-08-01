@@ -58,10 +58,17 @@ export function buildInitialWizardState() {
 
     // Phase 7 — Payload 3
     bead_specificity: [],
-    // Populated by OCR extraction on the photos step (not part of the
-    // submission payload today — surfaced read-only in Review for the
-    // doctor's context, since there's no MatchReport field for it yet).
+    // t_cell_result / b_cell_result / interpretation / remarks / test_date
+    // may get pre-filled by OCR extraction on the photos step, giving the
+    // doctor a head start rather than a blank form. is_positive is never
+    // OCR-filled — it's the doctor's own confirmed reading of the
+    // crossmatch result, entered on the Review step, and is what actually
+    // gates Step 6 of the backend pipeline (see
+    // CompatibilityCheckRequest.crossmatch in app/schemas/match_report.py).
+    // interpretation and test_date stay reference-only — the backend's
+    // CrossmatchInput schema doesn't have fields for them.
     crossmatch: {
+      is_positive: null,
       t_cell_result: "",
       b_cell_result: "",
       interpretation: "",
@@ -85,6 +92,7 @@ export const WIZARD_ACTIONS = {
   SET_SENSITIZATION: "SET_SENSITIZATION",
   SET_MFI_CUTOFF: "SET_MFI_CUTOFF",
   SET_BEAD_SPECIFICITY: "SET_BEAD_SPECIFICITY",
+  SET_CROSSMATCH: "SET_CROSSMATCH",
   HYDRATE_FROM_OCR: "HYDRATE_FROM_OCR",
   UNLOCK_STEP: "UNLOCK_STEP",
   RESET: "RESET",
@@ -138,6 +146,12 @@ export function wizardReducer(state, action) {
 
     case WIZARD_ACTIONS.SET_BEAD_SPECIFICITY:
       return { ...state, bead_specificity: action.rows };
+
+    case WIZARD_ACTIONS.SET_CROSSMATCH:
+      return {
+        ...state,
+        crossmatch: { ...state.crossmatch, ...action.patch },
+      };
 
     case WIZARD_ACTIONS.HYDRATE_FROM_OCR: {
       const { patientDetails, donorDetails, patientHla, donorHla, beadSpecificity, crossmatch } =

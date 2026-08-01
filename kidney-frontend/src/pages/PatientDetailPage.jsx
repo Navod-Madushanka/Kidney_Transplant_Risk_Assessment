@@ -17,6 +17,7 @@ import Button from "../components/ui/Button"
 import HlaTypingEditor from "../components/domain/hla/HlaTypingEditor"
 import AntibodyProfileEditor from "../components/domain/antibody/AntibodyProfileEditor"
 import SensitizationEventEditor from "../components/domain/sensitization/SensitizationEventEditor"
+import { reportBadgeProps } from "../constants/reportStatus"
 
 async function loadEditorData(fetchFn) {
   try {
@@ -91,21 +92,22 @@ export default function PatientDetailPage() {
           <p className="text-[14px] text-text-muted">No compatibility checks run yet.</p>
         ) : (
           <ul className="flex flex-col divide-y divide-border">
-            {reports.map((report) => (
-              <li key={report.id}>
-                <Link
-                  to={`/reports/${report.id}`}
-                  className="flex items-center justify-between py-2.5 hover:bg-bg -mx-1 px-1 rounded transition-colors"
-                >
-                  <span className="text-[14px] text-text-muted">
-                    {new Date(report.created_at).toLocaleDateString()}
-                  </span>
-                  <Badge status={report.overall_status?.toLowerCase().replace(/_/g, "-")}>
-                    {report.overall_status}
-                  </Badge>
-                </Link>
-              </li>
-            ))}
+            {reports.map((report) => {
+              const { status, label } = reportBadgeProps(report)
+              return (
+                <li key={report.id}>
+                  <Link
+                    to={`/reports/${report.id}`}
+                    className="flex items-center justify-between py-2.5 hover:bg-bg -mx-1 px-1 rounded transition-colors"
+                  >
+                    <span className="text-[14px] text-text-muted">
+                      {new Date(report.created_at).toLocaleDateString()}
+                    </span>
+                    <Badge status={status}>{label}</Badge>
+                  </Link>
+                </li>
+              )
+            })}
           </ul>
         )}
       </Card>

@@ -34,7 +34,21 @@ async def test_dashboard_patients_shows_latest_report_summary(auth_client: Async
     await auth_client.put(f"/donors/{donor['id']}/hla-typings", json=COMPATIBLE_DONOR_HLA)
     await auth_client.post(
         "/compatibility/check",
-        json={"patient_id": patient["id"], "donor_id": donor["id"]},
+        json={
+            "patient_id": patient["id"],
+            "donor_id": donor["id"],
+            # Step 6 (crossmatch) now gates "completed" — without one the
+            # pipeline stops at "pending_crossmatch" (see
+            # test_compatibility.py::test_check_without_crossmatch_stops_at_pending).
+            # This test is about the dashboard summary shape, not the
+            # crossmatch gate itself, so submit a negative result to reach
+            # "completed" like it always used to.
+            "crossmatch": {
+                "is_positive": False,
+                "t_cell_result": "Negative",
+                "b_cell_result": "Negative",
+            },
+        },
     )
 
     response = await auth_client.get("/dashboard/patients")
@@ -45,7 +59,14 @@ async def test_dashboard_patients_shows_latest_report_summary(auth_client: Async
     assert body[0]["latest_report"]["overall_status"] == "completed"
     # Same worked-example typing pair used in test_compatibility.py: total
     # score 6.5 -> "High-Moderate Risk" (app/reference_data/risk_tiers.py).
+    # This is the legacy continuous-score tier, kept for reference.
     assert body[0]["latest_report"]["risk_tier"] == "High-Moderate Risk"
+    # The new Step 7 classification, by contrast, is None here: a lone
+    # patient/donor pair in a freshly-truncated test DB is nowhere near
+    # cPRA's 100-person minimum sample size, so there's no PRA bucket to
+    # combine with the mismatch bucket (see
+    # test_compatibility.py::test_full_pipeline_run_reaches_hla_scoring_and_risk_tier).
+    assert body[0]["latest_report"]["final_risk_level"] is None
 
 
 async def test_dashboard_recent_reports_empty_for_new_doctor(auth_client: AsyncClient):

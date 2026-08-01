@@ -10,7 +10,7 @@ from app.models.doctor import Doctor
 from app.schemas.match_report import CompatibilityCheckRequest, MatchReportResponse
 from app.services.audit_service import create_audit_log
 from app.services.donor_service import get_donor_by_id_for_doctor
-from app.services.match_pipeline import run_match_pipeline
+from app.services.match_pipeline import CrossmatchInputData, run_match_pipeline
 from app.services.match_report_service import (
     create_match_report,
     get_match_report_by_id,
@@ -40,7 +40,16 @@ async def check_compatibility(
             detail="Donor not found",
         )
 
-    pipeline_result = await run_match_pipeline(db, patient, donor)
+    crossmatch_input = None
+    if payload.crossmatch is not None:
+        crossmatch_input = CrossmatchInputData(
+            is_positive=payload.crossmatch.is_positive,
+            t_cell_result=payload.crossmatch.t_cell_result,
+            b_cell_result=payload.crossmatch.b_cell_result,
+            remarks=payload.crossmatch.remarks,
+        )
+
+    pipeline_result = await run_match_pipeline(db, patient, donor, crossmatch_input=crossmatch_input)
 
     report = await create_match_report(
         db, payload.patient_id, payload.donor_id, pipeline_result

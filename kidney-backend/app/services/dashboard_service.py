@@ -65,6 +65,7 @@ async def get_patients_with_latest_report(
                 id=report.id,
                 overall_status=report.overall_status,
                 risk_tier=_derive_risk_tier(report.hla_scoring_result),
+                final_risk_level=report.final_risk_level,
                 created_at=report.created_at,
             )
 
@@ -104,6 +105,7 @@ async def get_recent_reports_for_doctor(
                 donor_full_name=donor.full_name,
                 overall_status=report.overall_status,
                 risk_tier=_derive_risk_tier(report.hla_scoring_result),
+                final_risk_level=report.final_risk_level,
                 created_at=report.created_at,
             )
         )

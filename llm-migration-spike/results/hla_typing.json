@@ -1,0 +1,110 @@
+{
+  "patient_details": {
+    "full_name": "Rev.A.Premarathna Thero",
+    "nic_number": "198001610076",
+    "date_of_birth": "16-Jan-1980",
+    "blood_type": "B Positive",
+    "hla_ref_no": "847/26M"
+  },
+  "donor_details": {
+    "full_name": "K.R.Bandara",
+    "nic_number": "823275544v",
+    "date_of_birth": "22-Nov-1982",
+    "blood_type": "B Positive",
+    "hla_ref_no": "848/26M"
+  },
+  "patient_hla": [
+    {
+      "locus": "A",
+      "allele_1": "29",
+      "allele_2": "33"
+    },
+    {
+      "locus": "B",
+      "allele_1": "07",
+      "allele_2": "58"
+    },
+    {
+      "locus": "C",
+      "allele_1": "03",
+      "allele_2": "15"
+    },
+    {
+      "locus": "DRB1",
+      "allele_1": "03",
+      "allele_2": "04"
+    },
+    {
+      "locus": "DRB3,4,5",
+      "allele_1": "DRB3*02",
+      "allele_2": "DRB4*01"
+    },
+    {
+      "locus": "DQA1",
+      "allele_1": "03",
+      "allele_2": "05"
+    },
+    {
+      "locus": "DQB1",
+      "allele_1": "02",
+      "allele_2": "03"
+    },
+    {
+      "locus": "DPA1",
+      "allele_1": "01",
+      "allele_2": "01"
+    },
+    {
+      "locus": "DPB1",
+      "allele_1": "04",
+      "allele_2": "04"
+    }
+  ],
+  "donor_hla": [
+    {
+      "locus": "A",
+      "allele_1": "33",
+      "allele_2": "33"
+    },
+    {
+      "locus": "B",
+      "allele_1": "40",
+      "allele_2": "40"
+    },
+    {
+      "locus": "C",
+      "allele_1": "12",
+      "allele_2": "15"
+    },
+    {
+      "locus": "DRB1",
+      "allele_1": "13",
+      "allele_2": "14"
+    },
+    {
+      "locus": "DRB3,4,5",
+      "allele_1": "DRB3*01",
+      "allele_2": "DRB3*02"
+    },
+    {
+      "locus": "DQA1",
+      "allele_1": "01",
+      "allele_2": "01"
+    },
+    {
+      "locus": "DQB1",
+      "allele_1": "05",
+      "allele_2": "06"
+    },
+    {
+      "locus": "DPA1",
+      "allele_1": "02",
+      "allele_2": "02"
+    },
+    {
+      "locus": "DPB1",
+      "allele_1": "04",
+      "allele_2": "13"
+    }
+  ]
+}

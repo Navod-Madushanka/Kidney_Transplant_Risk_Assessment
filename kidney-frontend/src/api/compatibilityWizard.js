@@ -72,6 +72,9 @@ export async function submitCompatibilityCheck(
       const report = await apiPost("/compatibility/check", {
         patient_id: next.patientId,
         donor_id: next.donorId,
+        ...(buildCrossmatchPayload(wizardState.crossmatch)
+          ? { crossmatch: buildCrossmatchPayload(wizardState.crossmatch) }
+          : {}),
       })
       await completeStep({ reportId: report.id, report })
       return report
@@ -92,6 +95,25 @@ function buildPersonPayload(details) {
     date_of_birth: details.date_of_birth,
     blood_type: details.blood_type,
     nic_number: details.nic_number.trim() || null,
+  }
+}
+
+// Mirrors app/schemas/match_report.py's CrossmatchInput — only is_positive/
+// t_cell_result/b_cell_result/remarks are sent; interpretation and
+// test_date are reference-only fields the backend has no column for. Sent
+// only once the doctor has actually confirmed a positive/negative reading
+// (is_positive !== null) — the wizard's ReviewStep requires this before
+// letting the check submit at all, but this function stays defensive so a
+// resumed/retried submission never sends a half-confirmed crossmatch.
+function buildCrossmatchPayload(crossmatch) {
+  if (!crossmatch || crossmatch.is_positive === null || crossmatch.is_positive === undefined) {
+    return null
+  }
+  return {
+    is_positive: crossmatch.is_positive,
+    t_cell_result: crossmatch.t_cell_result?.trim() || null,
+    b_cell_result: crossmatch.b_cell_result?.trim() || null,
+    remarks: crossmatch.remarks?.trim() || null,
   }
 }
 

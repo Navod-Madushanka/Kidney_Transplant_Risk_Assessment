@@ -8,30 +8,13 @@ import Badge from "../components/ui/Badge"
 import Button from "../components/ui/Button"
 import HaltedReportBanner from "../components/domain/dashboard/HaltedReportBanner"
 import RecentReportRow from "../components/domain/dashboard/RecentReportRow"
+import { reportBadgeProps } from "../constants/reportStatus"
 
 const PATIENT_LIST_CAP = 5
 const RECENT_REPORTS_CAP = 5
 
-const RISK_TIER_TO_BADGE_STATUS = {
-  "Low Risk": "low",
-  "Moderate Risk": "moderate",
-  "High-Moderate Risk": "high-moderate",
-  "High Genetic Risk": "high-risk",
-}
-
-function patientTierBadge(patient) {
-  const report = patient.latest_report
-  if (!report) return { status: "neutral", label: "No check yet" }
-  if (report.overall_status === "halted_abo_fail") return { status: "fail", label: "ABO Fail" }
-  if (report.overall_status === "halted_dsa_trigger") return { status: "halt", label: "DSA Halt" }
-  if (report.risk_tier) {
-    return { status: RISK_TIER_TO_BADGE_STATUS[report.risk_tier] ?? "neutral", label: report.risk_tier }
-  }
-  return { status: "neutral", label: "No check yet" }
-}
-
 function DashboardPatientRow({ patient }) {
-  const { status, label } = patientTierBadge(patient)
+  const { status, label } = reportBadgeProps(patient.latest_report)
 
   return (
     <Link

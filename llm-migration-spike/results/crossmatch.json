@@ -1,0 +1,23 @@
+{
+  "patient_details": {
+    "full_name": "D.G.I.D.Jeevananda",
+    "nic_number": "765811562V",
+    "date_of_birth": "21.03.1976",
+    "blood_type": "B Positive",
+    "hla_ref_no": "102/26"
+  },
+  "donor_details": {
+    "full_name": "J.A.R.Kumara",
+    "nic_number": "199315003570",
+    "date_of_birth": "29.05.1993",
+    "blood_type": "B Positive",
+    "hla_ref_no": "103/26"
+  },
+  "crossmatch": {
+    "t_cell_result": "Compatible",
+    "b_cell_result": "Compatible",
+    "interpretation": "Leukocyte cross match by microlymphocytotoxicity test is Compatible.",
+    "remarks": "LDKT is recommended following appropriate desensitization.",
+    "test_date": "19/06/2026"
+  }
+}

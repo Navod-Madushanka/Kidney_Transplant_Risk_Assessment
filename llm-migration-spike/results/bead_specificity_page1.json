@@ -1,0 +1,424 @@
+{
+  "bead_specificity": [
+    {
+      "antigen": "A23",
+      "mfi": 490.5
+    },
+    {
+      "antigen": "B45,Bw6",
+      "mfi": 187.5
+    },
+    {
+      "antigen": "DQ4",
+      "mfi": 187.5
+    },
+    {
+      "antigen": "DP1",
+      "mfi": 187.5
+    },
+    {
+      "antigen": "A*23:01",
+      "mfi": null
+    },
+    {
+      "antigen": "DQB1*04:02,DQA1*02:01",
+      "mfi": null
+    },
+    {
+      "antigen": "A23",
+      "mfi": 23706.91
+    },
+    {
+      "antigen": "A24",
+      "mfi": 23582.88
+    },
+    {
+      "antigen": "A2",
+      "mfi": 23521.13
+    },
+    {
+      "antigen": "A2",
+      "mfi": 23091.81
+    },
+    {
+      "antigen": "A68",
+      "mfi": 22867.48
+    },
+    {
+      "antigen": "B45,Bw6",
+      "mfi": 22566.77
+    },
+    {
+      "antigen": "A2",
+      "mfi": 22479.27
+    },
+    {
+      "antigen": "A1",
+      "mfi": 22371.17
+    },
+    {
+      "antigen": "B70,Bw6",
+      "mfi": 22342.49
+    },
+    {
+      "antigen": "A68",
+      "mfi": 22189.39
+    },
+    {
+      "antigen": "D44,Bw4",
+      "mfi": 21842.04
+    },
+    {
+      "antigen": "B44, Bw4",
+      "mfi": 20933.78
+    },
+    {
+      "antigen": "A68",
+      "mfi": 20301.71
+    },
+    {
+      "antigen": "A68",
+      "mfi": 17526.33
+    },
+    {
+      "antigen": "B45,Bw6",
+      "mfi": 16301.74
+    },
+    {
+      "antigen": "B45,Bw6",
+      "mfi": 13413.13
+    },
+    {
+      "antigen": "D44,Bw4",
+      "mfi": 12703.88
+    },
+    {
+      "antigen": "B45,Bw6",
+      "mfi": 12295.11
+    },
+    {
+      "antigen": "B45,Bw6",
+      "mfi": 11647.72
+    },
+    {
+      "antigen": "B45,Bw6",
+      "mfi": 11562.08
+    },
+    {
+      "antigen": "B45,Bw6",
+      "mfi": 11386.9
+    },
+    {
+      "antigen": "B41.Bw6",
+      "mfi": 12707.48
+    },
+    {
+      "antigen": "B41.Bw6",
+      "mfi": 12293.11
+    },
+    {
+      "antigen": "B40.01",
+      "mfi": 11647.72
+    },
+    {
+      "antigen": "B40.01",
+      "mfi": 11642.85
+    },
+    {
+      "antigen": "B40.01",
+      "mfi": 11386.9
+    },
+    {
+      "antigen": "B40.01",
+      "mfi": 10837.29
+    },
+    {
+      "antigen": "B40.01",
+      "mfi": 9581.73
+    },
+    {
+      "antigen": "B40.01",
+      "mfi": 6529.59
+    },
+    {
+      "antigen": "B40.01",
+      "mfi": 4395.46
+    },
+    {
+      "antigen": "B40.01",
+      "mfi": 3111.63
+    },
+    {
+      "antigen": "B40.01",
+      "mfi": 2758.44
+    },
+    {
+      "antigen": "B40.01",
+      "mfi": 2518.37
+    },
+    {
+      "antigen": "B40.01",
+      "mfi": 2475.04
+    },
+    {
+      "antigen": "B40.01",
+      "mfi": 2283.37
+    },
+    {
+      "antigen": "B40.01",
+      "mfi": 1734.34
+    },
+    {
+      "antigen": "B40.01",
+      "mfi": 1454.81
+    },
+    {
+      "antigen": "B40.01",
+      "mfi": 1449.12
+    },
+    {
+      "antigen": "B40.01",
+      "mfi": 1290.69
+    },
+    {
+      "antigen": "B40.01",
+      "mfi": 1208.81
+    },
+    {
+      "antigen": "B40.01",
+      "mfi": 1115.36
+    },
+    {
+      "antigen": "B40.01",
+      "mfi": 905.78
+    },
+    {
+      "antigen": "B40.01",
+      "mfi": 670.14
+    },
+    {
+      "antigen": "B40.01",
+      "mfi": 626.43
+    },
+    {
+      "antigen": "B40.01",
+      "mfi": 484.77
+    },
+    {
+      "antigen": "B40.01",
+      "mfi": 423.83
+    },
+    {
+      "antigen": "B40.01",
+      "mfi": 414.7
+    },
+    {
+      "antigen": "A23",
+      "mfi": 670.14
+    },
+    {
+      "antigen": "B52,Bw4",
+      "mfi": 628.43
+    },
+    {
+      "antigen": "B37,Bw4",
+      "mfi": 484.77
+    },
+    {
+      "antigen": "B27,Bw4",
+      "mfi": 423.83
+    },
+    {
+      "antigen": "B75,Bw6",
+      "mfi": 414.7
+    },
+    {
+      "antigen": "Cw8",
+      "mfi": 414.2
+    },
+    {
+      "antigen": "Cw7",
+      "mfi": 303.14
+    },
+    {
+      "antigen": "B77,Bw6",
+      "mfi": 241.55
+    },
+    {
+      "antigen": "A30",
+      "mfi": 238.43
+    },
+    {
+      "antigen": "Cw2",
+      "mfi": 215.6
+    },
+    {
+      "antigen": "Cw14",
+      "mfi": 200.52
+    },
+    {
+      "antigen": "A31",
+      "mfi": 177.74
+    },
+    {
+      "antigen": "A11",
+      "mfi": 155.14
+    },
+    {
+      "antigen": "Cw4",
+      "mfi": 92.07
+    },
+    {
+      "antigen": "Cw17",
+      "mfi": 64.46
+    },
+    {
+      "antigen": "Cw1",
+      "mfi": 50.57
+    },
+    {
+      "antigen": "B38,Bw6",
+      "mfi": 44.39
+    },
+    {
+      "antigen": "A33",
+      "mfi": 30.11
+    },
+    {
+      "antigen": "B84,Bw6",
+      "mfi": 24.15
+    },
+    {
+      "antigen": "A43",
+      "mfi": 17.73
+    },
+    {
+      "antigen": "Cw18",
+      "mfi": 16.73
+    },
+    {
+      "antigen": "Cw6",
+      "mfi": 0.0
+    },
+    {
+      "antigen": "A34",
+      "mfi": 0.0
+    },
+    {
+      "antigen": "B57,Bw4",
+      "mfi": 0.0
+    },
+    {
+      "antigen": "B27,Bw6",
+      "mfi": 0.0
+    },
+    {
+      "antigen": "Cw15",
+      "mfi": 0.0
+    },
+    {
+      "antigen": "A11",
+      "mfi": 0.0
+    },
+    {
+      "antigen": "A29",
+      "mfi": 0.0
+    },
+    {
+      "antigen": "B63,Bw4",
+      "mfi": 0.0
+    },
+    {
+      "antigen": "B55,Bw6",
+      "mfi": 0.0
+    },
+    {
+      "antigen": "A25",
+      "mfi": 0.0
+    },
+    {
+      "antigen": "A32",
+      "mfi": 0.0
+    },
+    {
+      "antigen": "B67,Bw5",
+      "mfi": 0.0
+    },
+    {
+      "antigen": "Cw5",
+      "mfi": 0.0
+    },
+    {
+      "antigen": "Cw8",
+      "mfi": 0.0
+    },
+    {
+      "antigen": "B75,Bw5",
+      "mfi": 0.0
+    },
+    {
+      "antigen": "A30",
+      "mfi": 0.0
+    },
+    {
+      "antigen": "A66",
+      "mfi": 0.0
+    },
+    {
+      "antigen": "B8,Bw1",
+      "mfi": 0.0
+    },
+    {
+      "antigen": "B55,Bw4",
+      "mfi": 0.0
+    },
+    {
+      "antigen": "B45,Bw6",
+      "mfi": 23706.91
+    },
+    {
+      "antigen": "DQ4",
+      "mfi": 23706.91
+    },
+    {
+      "antigen": "DP1",
+      "mfi": 23706.91
+    },
+    {
+      "antigen": "A*23:01",
+      "mfi": 23706.91
+    },
+    {
+      "antigen": "DQB1*04:02,DQA1*02:01",
+      "mfi": 23706.91
+    },
+    {
+      "antigen": "Bw6",
+      "mfi": null
+    },
+    {
+      "antigen": "DQ4",
+      "mfi": null
+    },
+    {
+      "antagen": "DP1",
+      "mfi": null
+    },
+    {
+      "antigen": "A23",
+      "mfi": 1054.9
+    },
+    {
+      "antigen": "B45,Bw6",
+      "mfi": 87.5
+    },
+    {
+      "antigen": "DQ4",
+      "mfi": 10.5
+    },
+    {
+      "antigen": "DP1",
+      "mfi": 23.7
+    }
+  ]
+}

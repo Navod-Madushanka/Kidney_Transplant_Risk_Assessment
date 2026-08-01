@@ -171,3 +171,21 @@ async def get_donor_hla_typing_entries(
         select(DonorHLATyping).where(DonorHLATyping.donor_id == donor_id)
     )
     return list(result.scalars().all())
+
+
+def build_partial_typing_dict(entries: list, loci: tuple[str, ...]) -> dict[str, list[str]]:
+    """Builds a locus -> [allele_1, allele_2] dict restricted to `loci`,
+    from either PatientHLATyping or DonorHLATyping rows — permissive like
+    get_*_hla_typing_entries (an entirely missing locus just gets an empty
+    list), unlike get_patient_hla_typing_dict / get_donor_hla_typing_dict
+    which require a complete 9-locus panel and raise otherwise.
+
+    Used by Step 3 of the sequential pipeline (hla_mismatch_service.py),
+    which only ever needs A/B/DRB1 and must not block on the other 6 loci
+    being filled in yet.
+    """
+    typing_dict: dict[str, list[str]] = {locus: [] for locus in loci}
+    for row in entries:
+        if row.locus.value in typing_dict:
+            typing_dict[row.locus.value] = [row.allele_1, row.allele_2]
+    return typing_dict

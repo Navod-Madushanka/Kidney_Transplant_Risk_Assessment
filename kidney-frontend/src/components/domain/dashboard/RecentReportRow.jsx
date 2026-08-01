@@ -1,26 +1,7 @@
 // src/components/domain/dashboard/RecentReportRow.jsx
 import { Link } from "react-router-dom"
 import Badge from "../../ui/Badge"
-
-const RISK_TIER_TO_BADGE_STATUS = {
-  "Low Risk": "low",
-  "Moderate Risk": "moderate",
-  "High-Moderate Risk": "high-moderate",
-  "High Genetic Risk": "high-risk",
-}
-
-function badgeProps(report) {
-  if (report.overall_status === "halted_abo_fail") {
-    return { status: "fail", label: "ABO Fail" }
-  }
-  if (report.overall_status === "halted_dsa_trigger") {
-    return { status: "halt", label: "DSA Halt" }
-  }
-  if (report.risk_tier) {
-    return { status: RISK_TIER_TO_BADGE_STATUS[report.risk_tier] ?? "neutral", label: report.risk_tier }
-  }
-  return { status: "neutral", label: "—" }
-}
+import { reportBadgeProps } from "../../../constants/reportStatus"
 
 /**
  * One row in the dashboard's "Recent reports" list — patient → donor, date,
@@ -31,7 +12,7 @@ function badgeProps(report) {
  *   <RecentReportRow report={report} />
  */
 export default function RecentReportRow({ report }) {
-  const { status, label } = badgeProps(report)
+  const { status, label } = reportBadgeProps(report)
 
   return (
     <Link

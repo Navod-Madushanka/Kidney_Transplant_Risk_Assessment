@@ -26,3 +26,15 @@ class MatchReport(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     sensitization_result: Mapped[dict] = mapped_column(JSONB, nullable=True)
     hla_scoring_result: Mapped[dict] = mapped_column(JSONB, nullable=True)
     cpra_result: Mapped[dict] = mapped_column(JSONB, nullable=True)
+
+    # Added for the Step 1-7 sequential pipeline (see the roadmap's Phase 3,
+    # "Clinical Pipeline Redesign"). mismatch_result/pra_bucket_result are
+    # Steps 3 and 4; crossmatch_result is Step 6; final_risk_level is the
+    # Step 7 classification (Low Risk / Low-Average Risk / High-Average
+    # Risk / High Risk) — kept as its own string column, unlike the legacy
+    # risk_tier, which was never persisted and is only re-derived on the
+    # frontend from hla_scoring_result.
+    mismatch_result: Mapped[dict] = mapped_column(JSONB, nullable=True)
+    pra_bucket_result: Mapped[dict] = mapped_column(JSONB, nullable=True)
+    crossmatch_result: Mapped[dict] = mapped_column(JSONB, nullable=True)
+    final_risk_level: Mapped[str] = mapped_column(String(50), nullable=True)

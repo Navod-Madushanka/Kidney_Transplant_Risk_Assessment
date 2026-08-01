@@ -15,6 +15,16 @@ describe("buildInitialWizardState", () => {
       true
     )
   })
+
+  it("starts crossmatch.is_positive unset, so ReviewStep knows to require it", () => {
+    const state = buildInitialWizardState()
+
+    // null, not false — this is "not yet confirmed", distinct from a
+    // confirmed negative result. ReviewStep's validation relies on this
+    // three-state distinction to block submission until the doctor has
+    // actually made a call either way.
+    expect(state.crossmatch.is_positive).toBeNull()
+  })
 })
 
 describe("UNLOCK_STEP", () => {
@@ -67,6 +77,38 @@ describe("SET_PATIENT_HLA_ROW", () => {
     const rowB = next.patient_hla.find((row) => row.locus === "B")
     expect(rowA.allele_1).toBe("29")
     expect(rowB.allele_1).toBe("")
+  })
+})
+
+describe("SET_CROSSMATCH", () => {
+  it("merges the patch into crossmatch without touching other fields", () => {
+    const state = buildInitialWizardState()
+
+    const next = wizardReducer(state, {
+      type: WIZARD_ACTIONS.SET_CROSSMATCH,
+      patch: { is_positive: false, t_cell_result: "Negative" },
+    })
+
+    expect(next.crossmatch.is_positive).toBe(false)
+    expect(next.crossmatch.t_cell_result).toBe("Negative")
+    // b_cell_result wasn't part of this patch — stays at its prior value.
+    expect(next.crossmatch.b_cell_result).toBe("")
+  })
+
+  it("can flip a confirmed result back and forth without losing other fields", () => {
+    const withNegative = wizardReducer(buildInitialWizardState(), {
+      type: WIZARD_ACTIONS.SET_CROSSMATCH,
+      patch: { is_positive: false, remarks: "Repeat crossmatch clear" },
+    })
+
+    const withPositive = wizardReducer(withNegative, {
+      type: WIZARD_ACTIONS.SET_CROSSMATCH,
+      patch: { is_positive: true },
+    })
+
+    expect(withPositive.crossmatch.is_positive).toBe(true)
+    // Doctor's earlier remarks aren't wiped out just by changing the result.
+    expect(withPositive.crossmatch.remarks).toBe("Repeat crossmatch clear")
   })
 })
 

@@ -40,6 +40,9 @@ export function WizardProvider({ children }) {
       setBeadSpecificity: (rows) =>
         dispatch({ type: WIZARD_ACTIONS.SET_BEAD_SPECIFICITY, rows }),
 
+      setCrossmatch: (patch) =>
+        dispatch({ type: WIZARD_ACTIONS.SET_CROSSMATCH, patch }),
+
       unlockStep: (index) =>
         dispatch({ type: WIZARD_ACTIONS.UNLOCK_STEP, index }),
       

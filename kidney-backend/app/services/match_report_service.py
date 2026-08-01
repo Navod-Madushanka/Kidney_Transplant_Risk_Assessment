@@ -28,9 +28,13 @@ async def create_match_report(
         overall_status=pipeline_result.overall_status,
         abo_result=asdict(pipeline_result.abo_result),
         sensitization_result=_to_json(pipeline_result.sensitization_result),
+        mismatch_result=_to_json(pipeline_result.mismatch_result),
+        pra_bucket_result=_to_json(pipeline_result.pra_bucket_result),
         dsa_result=_to_json(pipeline_result.dsa_result),
+        crossmatch_result=_to_json(pipeline_result.crossmatch_result),
         hla_scoring_result=_to_json(pipeline_result.hla_scoring_result),
         cpra_result=_to_json(pipeline_result.cpra_result),
+        final_risk_level=pipeline_result.final_risk_level,
     )
     db.add(report)
     await db.commit()

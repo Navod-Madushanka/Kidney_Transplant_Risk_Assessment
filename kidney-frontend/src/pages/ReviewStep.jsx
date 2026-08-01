@@ -8,6 +8,17 @@ import Card from "../components/ui/Card"
 import Table from "../components/ui/Table"
 import Badge from "../components/ui/Badge"
 import Button from "../components/ui/Button"
+import SegmentedControl from "../components/ui/SegmentedControl"
+import InputField from "../components/ui/InputField"
+
+// Step 6 of the backend pipeline (see app/services/crossmatch_service.py) —
+// is_positive is the only field that actually gates anything; positive =
+// reject, negative = proceed. This is standard clinical convention, not a
+// judgment call the doctors needed to weigh in on.
+const CROSSMATCH_RESULT_OPTIONS = [
+  { value: "negative", label: "Negative" },
+  { value: "positive", label: "Positive" },
+]
 
 const SUBMISSION_STEPS = [
   { key: "patientId", label: "Creating patient record" },
@@ -94,6 +105,13 @@ export default function ReviewStep() {
       return
     }
 
+    if (state.crossmatch.is_positive === null) {
+      setValidationError(
+        "Confirm the crossmatch result (Negative or Positive) below before running the check."
+      )
+      return
+    }
+
     setIsSubmitting(true)
     try {
       const report = await submitCompatibilityCheck(state, progress, setProgress)
@@ -173,35 +191,50 @@ export default function ReviewStep() {
         )}
       </Card>
 
-      {/* Crossmatch read-only preview card */}
-      {state.crossmatch && Object.values(state.crossmatch).some(Boolean) && (
-        <Card>
-          <Card.Header 
-            title="Crossmatch (from uploaded report)" 
-            subtitle="Reference only — not sent with this check" 
+      <Card>
+        <Card.Header
+          title="Crossmatch"
+          subtitle="Required — this is Step 6 of the compatibility check and gates the final result"
+        />
+        <div className="flex flex-col gap-4">
+          <SegmentedControl
+            label="Crossmatch result"
+            required
+            options={CROSSMATCH_RESULT_OPTIONS}
+            value={
+              state.crossmatch.is_positive === null
+                ? undefined
+                : state.crossmatch.is_positive
+                  ? "positive"
+                  : "negative"
+            }
+            onChange={(value) => actions.setCrossmatch({ is_positive: value === "positive" })}
+            helperText="A positive crossmatch halts the check — the patient's serum reacted against donor cells."
           />
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[14px]">
-            <span className="text-text-muted">T-cell result</span>
-            <span className="text-text font-medium">{state.crossmatch.t_cell_result || "—"}</span>
-            <span className="text-text-muted">B-cell result</span>
-            <span className="text-text font-medium">{state.crossmatch.b_cell_result || "—"}</span>
-            <span className="text-text-muted">Interpretation</span>
-            <span className="text-text font-medium">{state.crossmatch.interpretation || "—"}</span>
-            {state.crossmatch.remarks && (
-              <>
-                <span className="text-text-muted">Remarks</span>
-                <span className="text-text font-medium">{state.crossmatch.remarks}</span>
-              </>
-            )}
-            {state.crossmatch.test_date && (
-              <>
-                <span className="text-text-muted">Test date</span>
-                <span className="text-text font-medium">{state.crossmatch.test_date}</span>
-              </>
-            )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <InputField
+              label="T-cell result"
+              value={state.crossmatch.t_cell_result}
+              onChange={(e) => actions.setCrossmatch({ t_cell_result: e.target.value })}
+              placeholder="e.g. Negative"
+            />
+            <InputField
+              label="B-cell result"
+              value={state.crossmatch.b_cell_result}
+              onChange={(e) => actions.setCrossmatch({ b_cell_result: e.target.value })}
+              placeholder="e.g. Negative"
+            />
           </div>
-        </Card>
-      )}
+
+          <InputField
+            label="Remarks"
+            value={state.crossmatch.remarks}
+            onChange={(e) => actions.setCrossmatch({ remarks: e.target.value })}
+            placeholder="Optional — any additional lab notes"
+          />
+        </div>
+      </Card>
 
       <Card>
         <Card.Header

@@ -1,20 +1,18 @@
 // src/components/domain/dashboard/HaltedReportBanner.jsx
 import { Link } from "react-router-dom"
 import { useReviewedReports } from "../../../hooks/useReviewedReports"
-
-const HALTED_STATUSES = new Set(["halted_abo_fail", "halted_dsa_trigger"])
-
-const HALTED_LABELS = {
-  halted_abo_fail: "ABO incompatible",
-  halted_dsa_trigger: "Donor-specific antibody detected",
-}
+import { HALTED_STATUSES, HALT_DESCRIPTIONS } from "../../../constants/reportStatus"
 
 /**
- * Slim, unmissable alert banner for halted reports (ABO fail / DSA trigger)
- * the doctor hasn't opened yet this session. Sits above everything else on
- * the dashboard — the one thing that shouldn't require scrolling to notice.
+ * Slim, unmissable alert banner for halted reports (any of the pipeline's
+ * five reject gates — ABO, mismatches, PRA, DSA, or crossmatch) the doctor
+ * hasn't opened yet this session. Sits above everything else on the
+ * dashboard — the one thing that shouldn't require scrolling to notice.
  * Renders nothing once there's nothing unreviewed, so it never adds empty
- * whitespace to the top of the screen.
+ * whitespace to the top of the screen. Deliberately excludes
+ * "pending_crossmatch" — that status means the check is incomplete, not
+ * rejected, so it surfaces as a neutral "pending" badge on the report row
+ * instead of this urgent banner.
  *
  * Usage:
  *   <HaltedReportBanner reports={recentReports} />
@@ -50,7 +48,7 @@ export default function HaltedReportBanner({ reports = [] }) {
                 {report.patient_full_name} → {report.donor_full_name}
               </span>
               <span className="text-high-risk shrink-0">
-                {HALTED_LABELS[report.overall_status] ?? report.overall_status}
+                {HALT_DESCRIPTIONS[report.overall_status] ?? report.overall_status}
               </span>
             </Link>
           </li>
