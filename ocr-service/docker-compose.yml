@@ -6,10 +6,60 @@ services:
       - "8001:8001"
     environment:
       - OCR_SERVICE_API_KEY=${OCR_SERVICE_API_KEY}
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=qwen3-vl:4b-nothink
     volumes:
       - ./app:/app/app
-      - paddlex-models:/root/.paddlex   # persists downloaded models across rebuilds
+    depends_on:
+      ollama:
+        condition: service_healthy
     restart: unless-stopped
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    volumes:
+      - ollama-models:/root/.ollama
+      - ./docker/ollama-entrypoint.sh:/ollama-entrypoint.sh:ro
+    entrypoint: ["/bin/bash", "/ollama-entrypoint.sh"]
+    healthcheck:
+      # Only reports healthy once the -nothink model variant actually
+      # exists (see docker/ollama-entrypoint.sh) — ocr-service's
+      # depends_on above waits on this rather than racing a real request
+      # against a half-provisioned Ollama on first boot.
+      #
+      # interval/retries sized generously (up to ~1 hour) because the FIRST
+      # run has to pull a 3.3GB model — confirmed 2026-08-01 that this can
+      # take considerably longer through Docker Desktop's virtualized
+      # network than a direct host-side `ollama pull` of the same model
+      # does, and the original 10.5-minute budget here false-failed on a
+      # real run even though the pull was progressing fine the whole time
+      # (`docker compose logs` just doesn't render Ollama's progress
+      # percentages without a TTY, which made it look stalled when it
+      # wasn't). This only costs real wall-clock time once per machine —
+      # the model persists in the ollama-models volume after that, so a
+      # normal restart reports healthy within seconds.
+      test: ["CMD-SHELL", "ollama list | grep -q qwen3-vl:4b-nothink"]
+      interval: 15s
+      timeout: 5s
+      retries: 240
+      start_period: 30s
+    restart: unless-stopped
+    # Dev machines with a GPU (e.g. the RTX 2060 used for Phase 1
+    # validation) should add GPU passthrough via a local, gitignored
+    # docker-compose.override.yml:
+    #   services:
+    #     ollama:
+    #       deploy:
+    #         resources:
+    #           reservations:
+    #             devices:
+    #               - driver: nvidia
+    #                 count: 1
+    #                 capabilities: [gpu]
+    # This base file intentionally has no such block — it's the CPU-only
+    # default, which is also what Phase 5's prod VPS deployment needs
+    # unchanged (see claude/ocr-to-local-llm-migration-plan.md).
+
 volumes:
-  paddlex-models:
+  ollama-models:

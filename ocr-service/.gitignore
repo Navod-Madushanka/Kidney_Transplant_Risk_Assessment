@@ -3,3 +3,8 @@
 __pycache__
 .env
 app/test_images/
+
+# Dev-machine-specific (e.g. GPU passthrough for a local RTX 2060) — not
+# meant to travel with the repo or apply to the prod deployment target.
+# See claude/ocr-to-local-llm-migration-plan.md.
+docker-compose.override.yml

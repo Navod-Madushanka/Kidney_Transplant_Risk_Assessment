@@ -1,15 +1,18 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
-from app.ocr.engine import OCREngine
 from app.api.routes import router as ocr_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Runs once at startup — this is where the expensive model load happens
-    app.state.ocr_engine = OCREngine()
+    # No more expensive in-process model load here — that's what this hook
+    # used to do for PaddleOCR (app.state.ocr_engine = OCREngine()).
+    # Extraction now calls out to a separate Ollama service (see
+    # docker-compose.yml) instead, so there's nothing to warm up at
+    # startup. Kept as a lifespan context in case a future need (e.g. a
+    # startup check that Ollama + the -nothink model are actually reachable
+    # before accepting traffic) wants this hook.
     yield
-    # Code after "yield" would run on shutdown — nothing needed here yet
 
 app = FastAPI(title="Kidney Risk OCR Service", lifespan=lifespan)
 app.include_router(ocr_router)

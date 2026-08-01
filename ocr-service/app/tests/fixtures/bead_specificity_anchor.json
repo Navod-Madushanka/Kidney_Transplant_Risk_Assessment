@@ -1,0 +1,34 @@
+{
+  "_source_images": ["sample_mfi_page1.jpg", "sample_mfi_page2.jpg"],
+  "_confidence": "LOW-MEDIUM AND PARTIAL — this is a spot-check anchor set, not a full ground truth. Transcribed by eye from a blurry, low-contrast phone photo (the same image that produced garbled OCR output) — the same font-blur ambiguities that break OCR (2 vs 3, 6 vs 8, decimal digits) also affect a human reader, including me. Antigen names below are cross-checked against the clearer 'Allele Equiv' column and are reasonably trustworthy; MFI values are best-effort and may be off by a digit or two in the decimals. This table has ~150-200 rows total across both pages — only a subset of clearly-legible high-signal rows (highest MFI on page 1, top rows on page 2) is transcribed here. DO NOT treat this as complete. Use it only as a rough sanity-check anchor (does the model find these antigens at roughly the right MFI, especially relative to the DSA_MFI_THRESHOLD=1000 cutoff), and independently eyeball the model's full output against the actual chart yourself before trusting this data for anything beyond the Phase 1 spike.",
+  "_scoring_guidance": "Compare by antigen name (case-insensitive, ignore punctuation) and treat MFI as matching if within ~15% or both values fall on the same side of the 1000 MFI clinical threshold used elsewhere in this system (app/reference_data/dsa_threshold.py) — exact decimal match is not the goal here.",
+  "page1_anchors": [
+    {"antigen": "A23", "mfi": 23706.91},
+    {"antigen": "A24", "mfi": 23582.09},
+    {"antigen": "A24", "mfi": 23590.10},
+    {"antigen": "A2", "mfi": 23727.12},
+    {"antigen": "A2", "mfi": 22913.81},
+    {"antigen": "A68", "mfi": 22867.48},
+    {"antigen": "B45,Bw6", "mfi": 22566.73},
+    {"antigen": "A2", "mfi": 22479.27},
+    {"antigen": "A1", "mfi": 22371.17},
+    {"antigen": "B76,Bw6", "mfi": 22362.49},
+    {"antigen": "A68", "mfi": 22189.33},
+    {"antigen": "B44,Bw4", "mfi": 21882.04},
+    {"antigen": "B44,Bw4", "mfi": 20933.78}
+  ],
+  "page2_anchors": [
+    {"antigen": "DP1", "mfi": 457.08},
+    {"antigen": "DQ4", "mfi": 179.54},
+    {"antigen": "DQ4", "mfi": 146.28},
+    {"antigen": "DQ5", "mfi": 87.46},
+    {"antigen": "DP3", "mfi": 81.47},
+    {"antigen": "DR53", "mfi": 75.28},
+    {"antigen": "DP3", "mfi": 70.01},
+    {"antigen": "DQ6", "mfi": 68.48},
+    {"antigen": "DP5", "mfi": 61.83},
+    {"antigen": "DQ6", "mfi": 53.14},
+    {"antigen": "DQ4", "mfi": 50.69},
+    {"antigen": "DR52", "mfi": 45.93}
+  ]
+}

@@ -1,14 +1,9 @@
 # app/api/routes.py
-from fastapi import APIRouter, UploadFile, File, Form, Header, HTTPException, Request
-import shutil
-import uuid
-import os
+from fastapi import APIRouter, UploadFile, File, Form, Header, HTTPException
 
 from app.core.config import settings
-from app.extraction.demographics import extract_demographics
-from app.extraction.hla import extract_hla
-from app.extraction.mfi_extraction import extract_mfi_table
-from app.extraction.crossmatch_extraction import extract_crossmatch
+from app.extraction.llm_extract import extract_bead_specificity, extract_crossmatch, extract_hla_typing
+from app.llm.client import LLMExtractionError
 
 router = APIRouter()
 
@@ -16,21 +11,18 @@ ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png"}
 VALID_DOCUMENT_TYPES = {"hla_typing_report", "bead_specificity", "crossmatch"}
 
 
-def _run_extraction(document_type: str, texts: list[str], boxes: list[list[int]]) -> dict:
+async def _run_extraction(document_type: str, image_bytes: bytes) -> dict:
     if document_type == "hla_typing_report":
-        structured = extract_demographics(texts, boxes)
-        structured.update(extract_hla(texts, boxes))
-        return structured
+        return await extract_hla_typing(image_bytes)
     if document_type == "bead_specificity":
-        return extract_mfi_table(texts, boxes)
+        return await extract_bead_specificity(image_bytes)
     if document_type == "crossmatch":
-        return extract_crossmatch(texts, boxes)
+        return await extract_crossmatch(image_bytes)
     raise ValueError(f"Unhandled document_type: {document_type}")
 
 
 @router.post("/extract")
 async def extract_report(
-    request: Request,
     file: UploadFile = File(...),
     document_type: str = Form(...),
     x_internal_api_key: str = Header(...),
@@ -58,25 +50,28 @@ async def extract_report(
             detail=f"File too large. Max size is {settings.max_upload_size_mb}MB.",
         )
 
-    temp_filename = f"/tmp/{uuid.uuid4()}_{file.filename}"
-    with open(temp_filename, "wb") as f:
-        f.write(contents)
-
+    # No more temp-file-on-disk step — that existed only because PaddleOCR's
+    # predict() took a file path. The LLM client works directly off the
+    # in-memory bytes (base64-encoded for the Ollama request), so this is a
+    # straight simplification, not a functional change.
     try:
-        ocr_engine = request.app.state.ocr_engine
-        raw_result = ocr_engine.extract_raw(temp_filename)
-        texts = raw_result["rec_texts"]
-        boxes = raw_result["rec_boxes"].tolist()
-        structured = _run_extraction(document_type, texts, boxes)
-    finally:
-        os.remove(temp_filename)
+        structured = await _run_extraction(document_type, contents)
+    except LLMExtractionError as exc:
+        # Hard failure (Ollama unreachable, model missing, or never returned
+        # valid JSON even after a retry) — this is the same failure class
+        # kidney-backend's ocr_client.py already handles as a 502/503/504,
+        # so surface it as a real HTTP error rather than a silent empty
+        # result. Soft/partial extraction issues (a locus the validator
+        # rejected, a bead-specificity tile that degenerated) stay inside
+        # structured["warning"] instead — see app/extraction/llm_extract.py.
+        raise HTTPException(status_code=502, detail=f"OCR extraction failed: {exc}") from exc
 
     return {
         "document_type": document_type,
         "structured": structured,
-        "raw": {
-            "texts": texts,
-            "scores": raw_result["rec_scores"],
-            "boxes": boxes,
-        },
+        # `raw` previously carried PaddleOCR's per-box texts/boxes/scores.
+        # Confirmed via grep against kidney-backend and kidney-frontend
+        # (2026-08-01): nothing reads any of those fields, so this is safe
+        # to repurpose rather than needing to fabricate equivalents.
+        "raw": {"model": settings.ollama_model},
     }
