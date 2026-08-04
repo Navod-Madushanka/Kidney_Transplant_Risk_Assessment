@@ -46,7 +46,9 @@ function PersonSummary({ title, details }) {
         <span className="text-text-muted">Date of birth</span>
         <span className="text-text font-medium">{details.date_of_birth || "—"}</span>
         <span className="text-text-muted">Blood group</span>
-        <span className="text-text font-medium">{details.blood_type || "—"}</span>
+        <span className="text-text font-medium">
+          {details.blood_type ? `${details.blood_type}${details.rh_factor || ""}` : "—"}
+        </span>
         <span className="text-text-muted">NIC number</span>
         <span className="text-text font-medium">{details.nic_number || "No NIC on file"}</span>
       </div>

@@ -1,15 +1,43 @@
 // src/pages/DonorDetailPage.jsx
 import { useEffect, useState } from "react"
-import { useParams } from "react-router-dom"
-import { getDonor, getDonorHlaTypings, replaceDonorHlaTypings } from "../api/donors"
+import { useNavigate, useParams } from "react-router-dom"
+import {
+  getDonor,
+  updateDonor,
+  deleteDonor,
+  getDonorHlaTypings,
+  replaceDonorHlaTypings,
+  updateDonorStatus,
+} from "../api/donors"
+import {
+  listDonorReportFiles,
+  uploadDonorReportFile,
+  deleteDonorReportFile,
+  downloadDonorReportFile,
+} from "../api/reportFiles"
 import Badge from "../components/ui/Badge"
+import Button from "../components/ui/Button"
+import Select from "../components/ui/Select"
+import Modal from "../components/ui/Modal"
+import DonorForm from "../components/domain/donor/DonorForm"
 import HlaTypingEditor from "../components/domain/hla/HlaTypingEditor"
+import ReportFilesCard from "../components/domain/reportFiles/ReportFilesCard"
+import { DONOR_STATUS_OPTIONS, donorStatusBadgeProps } from "../constants/donorStatus"
 
 export default function DonorDetailPage() {
   const { donorId } = useParams()
+  const navigate = useNavigate()
   const [donor, setDonor] = useState(null)
   const [donorLoadState, setDonorLoadState] = useState("loading")
   const [hlaState, setHlaState] = useState({ state: "loading", data: [] })
+  const [reportFilesState, setReportFilesState] = useState({ state: "loading", data: [] })
+
+  const [isEditOpen, setIsEditOpen] = useState(false)
+  const [isSavingEdit, setIsSavingEdit] = useState(false)
+
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState("")
 
   useEffect(() => {
     let cancelled = false
@@ -21,6 +49,10 @@ export default function DonorDetailPage() {
     getDonorHlaTypings(donorId)
       .then((data) => !cancelled && setHlaState({ state: "loaded", data }))
       .catch(() => !cancelled && setHlaState({ state: "error", data: [] }))
+
+    listDonorReportFiles(donorId)
+      .then((data) => !cancelled && setReportFilesState({ state: "loaded", data }))
+      .catch(() => !cancelled && setReportFilesState({ state: "error", data: [] }))
 
     return () => {
       cancelled = true
@@ -39,22 +71,117 @@ export default function DonorDetailPage() {
     return <p className="text-[15px] text-text-muted">Couldn't load this donor.</p>
   }
 
+  async function handleStatusChange(event) {
+    const status = event.target.value
+    const updated = await updateDonorStatus(donor.id, status)
+    setDonor(updated)
+  }
+
+  async function handleEditSubmit(payload) {
+    setIsSavingEdit(true)
+    try {
+      const updated = await updateDonor(donor.id, payload)
+      setDonor(updated)
+      setIsEditOpen(false)
+    } finally {
+      setIsSavingEdit(false)
+    }
+  }
+
+  async function handleDeleteConfirm() {
+    setDeleteError("")
+    setIsDeleting(true)
+    try {
+      await deleteDonor(donor.id)
+      navigate("/donors")
+    } catch (err) {
+      setDeleteError(err.message || "Couldn't delete this donor. Please try again.")
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  const { status: badgeStatus, label: badgeLabel } = donorStatusBadgeProps(donor.status)
+
   return (
     <div className="flex flex-col gap-6 max-w-2xl">
       <div>
-        <div className="flex items-center gap-3 mb-1">
-          <h1 className="text-[22px] font-bold text-text">{donor.full_name}</h1>
-          <Badge status="neutral">{donor.blood_type}</Badge>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 mb-1">
+            <h1 className="text-[22px] font-bold text-text">{donor.full_name}</h1>
+            <Badge status="neutral">{donor.blood_type}</Badge>
+            <Badge status={badgeStatus}>{badgeLabel}</Badge>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="secondary" size="sm" onClick={() => setIsEditOpen(true)}>
+              Edit details
+            </Button>
+            <Button variant="destructive" size="sm" onClick={() => setIsDeleteOpen(true)}>
+              Delete donor
+            </Button>
+          </div>
         </div>
         <p className="text-[14px] text-text-muted">
           {donor.nic_number || "No NIC on file"} · DOB {donor.date_of_birth}
         </p>
       </div>
 
+      <Modal open={isEditOpen} onClose={() => setIsEditOpen(false)} title="Edit donor details">
+        <DonorForm
+          mode="edit"
+          submitLabel="Save changes"
+          isSubmitting={isSavingEdit}
+          initialValues={{
+            fullName: donor.full_name,
+            dateOfBirth: donor.date_of_birth,
+            bloodType: donor.blood_type,
+            rhFactor: donor.rh_factor,
+            nicNumber: donor.nic_number || "",
+          }}
+          onSubmit={handleEditSubmit}
+        />
+      </Modal>
+
+      <Modal
+        open={isDeleteOpen}
+        onClose={() => setIsDeleteOpen(false)}
+        title={`Delete ${donor.full_name}?`}
+      >
+        <p className="text-[15px] text-text-muted">
+          This will remove {donor.full_name} from your donor list and cross-hospital search. This
+          can&apos;t be undone.
+        </p>
+        {deleteError && <p className="text-[13px] text-high-risk font-medium mt-2">{deleteError}</p>}
+        <div className="flex justify-end gap-2 mt-6">
+          <Button variant="secondary" onClick={() => setIsDeleteOpen(false)}>
+            Cancel
+          </Button>
+          <Button variant="destructive" loading={isDeleting} onClick={handleDeleteConfirm}>
+            Delete donor
+          </Button>
+        </div>
+      </Modal>
+
+      <Select
+        label="Availability status"
+        value={donor.status}
+        onChange={handleStatusChange}
+        options={DONOR_STATUS_OPTIONS}
+        helperText="Only 'Available' donors are visible to other doctors' cross-hospital searches."
+      />
+
       <HlaTypingEditor
         loadState={hlaState.state}
         initialEntries={hlaState.data}
         onSave={(entries) => replaceDonorHlaTypings(donor.id, entries)}
+      />
+
+      <ReportFilesCard
+        loadState={reportFilesState.state}
+        existingFiles={reportFilesState.data}
+        onUpload={(category, file) => uploadDonorReportFile(donor.id, category, file)}
+        onDelete={(id) => deleteDonorReportFile(donor.id, id)}
+        onDownload={(id, filename) => downloadDonorReportFile(donor.id, id, filename)}
       />
     </div>
   )

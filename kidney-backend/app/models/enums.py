@@ -16,6 +16,19 @@ class RhFactor(str, enum.Enum):
     NEGATIVE = "-"
 
 
+class DonorStatus(str, enum.Enum):
+    AVAILABLE = "available"
+    RESERVED = "reserved"
+    TRANSPLANTED = "transplanted"
+
+
+class ReportFileCategory(str, enum.Enum):
+    HLA_TYPING_REPORT = "hla_typing_report"
+    CROSSMATCH_REPORT = "crossmatch_report"
+    BEAD_SPECIFICITY_CHART = "bead_specificity_chart"
+    OTHER = "other"
+
+
 class HLALocusEnum(str, enum.Enum):
     DRB1 = "DRB1"
     B = "B"

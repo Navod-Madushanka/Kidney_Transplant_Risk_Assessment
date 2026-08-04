@@ -94,6 +94,7 @@ function buildPersonPayload(details) {
     full_name: details.full_name.trim(),
     date_of_birth: details.date_of_birth,
     blood_type: details.blood_type,
+    rh_factor: details.rh_factor,
     nic_number: details.nic_number.trim() || null,
   }
 }

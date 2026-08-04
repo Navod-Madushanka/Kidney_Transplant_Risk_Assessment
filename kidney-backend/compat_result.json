@@ -1,0 +1,216 @@
+{
+  "id": "161cfb1d-72cf-4cb3-a959-c71a74426114",
+  "patient_id": "1d48a2f9-b37a-4551-82c4-9ca202fb1ed0",
+  "donor_id": "2fa2bc54-3d70-4938-9fce-fb3a609c345c",
+  "overall_status": "completed",
+  "abo_result": {
+    "donor_type": "B",
+    "is_compatible": true,
+    "recipient_type": "B"
+  },
+  "sensitization_result": {
+    "total_score": 0.0,
+    "event_breakdown": [],
+    "adjusted_mfi_cutoff": 2000.0
+  },
+  "mismatch_result": {
+    "is_halted": false,
+    "bucket_name": "3-6 mismatches",
+    "locus_breakdown": [
+      {
+        "locus": "A",
+        "donor_alleles": [
+          "33",
+          "33"
+        ],
+        "patient_alleles": [
+          "29",
+          "33"
+        ],
+        "unique_mismatches": 0
+      },
+      {
+        "locus": "B",
+        "donor_alleles": [
+          "40",
+          "40"
+        ],
+        "patient_alleles": [
+          "07",
+          "58"
+        ],
+        "unique_mismatches": 1
+      },
+      {
+        "locus": "DRB1",
+        "donor_alleles": [
+          "13",
+          "14"
+        ],
+        "patient_alleles": [
+          "03",
+          "04"
+        ],
+        "unique_mismatches": 2
+      }
+    ],
+    "total_mismatches": 3
+  },
+  "pra_bucket_result": {
+    "percent": null,
+    "is_halted": false,
+    "bucket_name": null,
+    "has_sufficient_data": false
+  },
+  "dsa_result": {
+    "matches": [],
+    "is_halted": false
+  },
+  "crossmatch_result": {
+    "remarks": "test run",
+    "is_halted": false,
+    "is_positive": false,
+    "b_cell_result": "Compatible",
+    "t_cell_result": "Compatible"
+  },
+  "hla_scoring_result": {
+    "total_score": 6.25,
+    "locus_breakdown": [
+      {
+        "locus": "DRB1",
+        "points": 3.0,
+        "weight": 1.5,
+        "donor_alleles": [
+          "13",
+          "14"
+        ],
+        "patient_alleles": [
+          "03",
+          "04"
+        ],
+        "unique_mismatches": 2
+      },
+      {
+        "locus": "B",
+        "points": 1.0,
+        "weight": 1.0,
+        "donor_alleles": [
+          "40",
+          "40"
+        ],
+        "patient_alleles": [
+          "07",
+          "58"
+        ],
+        "unique_mismatches": 1
+      },
+      {
+        "locus": "DQB1",
+        "points": 1.0,
+        "weight": 0.5,
+        "donor_alleles": [
+          "05",
+          "06"
+        ],
+        "patient_alleles": [
+          "02",
+          "03"
+        ],
+        "unique_mismatches": 2
+      },
+      {
+        "locus": "C",
+        "points": 0.5,
+        "weight": 0.5,
+        "donor_alleles": [
+          "12",
+          "15"
+        ],
+        "patient_alleles": [
+          "03",
+          "15"
+        ],
+        "unique_mismatches": 1
+      },
+      {
+        "locus": "A",
+        "points": 0.0,
+        "weight": 0.5,
+        "donor_alleles": [
+          "33",
+          "33"
+        ],
+        "patient_alleles": [
+          "29",
+          "33"
+        ],
+        "unique_mismatches": 0
+      },
+      {
+        "locus": "DRB3,4,5",
+        "points": 0.0,
+        "weight": 0.25,
+        "donor_alleles": [
+          "01",
+          "02"
+        ],
+        "patient_alleles": [
+          "02",
+          "01"
+        ],
+        "unique_mismatches": 0
+      },
+      {
+        "locus": "DQA1",
+        "points": 0.25,
+        "weight": 0.25,
+        "donor_alleles": [
+          "01",
+          "01"
+        ],
+        "patient_alleles": [
+          "03",
+          "05"
+        ],
+        "unique_mismatches": 1
+      },
+      {
+        "locus": "DPA1",
+        "points": 0.25,
+        "weight": 0.25,
+        "donor_alleles": [
+          "02",
+          "02"
+        ],
+        "patient_alleles": [
+          "01",
+          "01"
+        ],
+        "unique_mismatches": 1
+      },
+      {
+        "locus": "DPB1",
+        "points": 0.25,
+        "weight": 0.25,
+        "donor_alleles": [
+          "04",
+          "13"
+        ],
+        "patient_alleles": [
+          "04",
+          "04"
+        ],
+        "unique_mismatches": 1
+      }
+    ]
+  },
+  "cpra_result": {
+    "message": "Not enough data yet to calculate cPRA",
+    "sample_size": 2,
+    "cpra_percentage": null,
+    "has_sufficient_data": false
+  },
+  "final_risk_level": null,
+  "created_at": "2026-08-02T14:27:00.827096Z",
+  "updated_at": "2026-08-02T14:27:00.827096Z"
+}

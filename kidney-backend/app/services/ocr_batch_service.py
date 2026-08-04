@@ -31,6 +31,8 @@ async def run_batch_extraction(files: dict[str, tuple[bytes, str, str]]) -> Batc
     recorded in `errors` and the rest of the batch still completes.
     """
     result = BatchExtractionResult()
+    hla_typing_structured: dict | None = None
+    crossmatch_structured: dict | None = None
 
     for slot, (file_bytes, filename, content_type) in files.items():
         document_type = SLOT_DOCUMENT_TYPES[slot]
@@ -45,6 +47,7 @@ async def run_batch_extraction(files: dict[str, tuple[bytes, str, str]]) -> Batc
             result.errors.append({"field": slot, "message": structured["warning"]})
 
         if document_type == "hla_typing_report":
+            hla_typing_structured = structured
             result.patient_details.update(structured.get("patient_details", {}))
             result.donor_details.update(structured.get("donor_details", {}))
             result.patient_hla = structured.get("patient_hla", result.patient_hla)
@@ -54,6 +57,7 @@ async def run_batch_extraction(files: dict[str, tuple[bytes, str, str]]) -> Batc
             result.bead_specificity.extend(structured.get("bead_specificity", []))
 
         elif document_type == "crossmatch":
+            crossmatch_structured = structured
             # Crossmatch demographics only fill gaps — never override what
             # the HLA typing report already found.
             for k, v in structured.get("patient_details", {}).items():
@@ -64,4 +68,47 @@ async def run_batch_extraction(files: dict[str, tuple[bytes, str, str]]) -> Batc
                     result.donor_details[k] = v
             result.crossmatch = structured.get("crossmatch", {})
 
+    result.errors.extend(
+        _check_cross_document_identity(hla_typing_structured, crossmatch_structured)
+    )
+
     return result
+
+
+def _check_cross_document_identity(
+    hla_typing_structured: dict | None, crossmatch_structured: dict | None
+) -> list[dict]:
+    """The HLA typing report and the crossmatch report are the only two
+    document types that each independently extract a patient/donor
+    identity. If a doctor uploads a crossmatch report for the wrong
+    patient (e.g. picked up someone else's scan), the gap-fill merge above
+    would otherwise silently keep the HLA typing report's identity while
+    quietly absorbing the other document's crossmatch result — no signal
+    that anything was wrong. NIC number is the most reliable identity
+    anchor available here (far less OCR-ambiguous than a name), so when
+    both documents produced one for the same role and they disagree,
+    surface it as a warning rather than staying silent. This is
+    deliberately non-blocking, consistent with every other warning in
+    `errors` — the doctor still gets the merged data back and decides
+    whether to proceed.
+    """
+    if not hla_typing_structured or not crossmatch_structured:
+        return []
+
+    warnings = []
+    for role, person in (("patient_details", "patient"), ("donor_details", "donor")):
+        hla_nic = (hla_typing_structured.get(role) or {}).get("nic_number", "")
+        crossmatch_nic = (crossmatch_structured.get(role) or {}).get("nic_number", "")
+        if hla_nic and crossmatch_nic and hla_nic.strip().upper() != crossmatch_nic.strip().upper():
+            warnings.append(
+                {
+                    "field": role,
+                    "message": (
+                        f"The {person}'s NIC on the crossmatch report ({crossmatch_nic}) "
+                        f"doesn't match the {person}'s NIC on the HLA typing report "
+                        f"({hla_nic}). These documents may belong to different people; "
+                        "please verify before continuing."
+                    ),
+                }
+            )
+    return warnings

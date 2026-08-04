@@ -26,14 +26,27 @@ os.environ.setdefault("SECRET_KEY", "test-secret-key-not-for-production-use")
 os.environ.setdefault("OCR_SERVICE_API_KEY", "test-ocr-service-key")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 
+import tempfile  # noqa: E402
+
+_REPORT_FILES_TEST_DIR = os.path.join(tempfile.gettempdir(), "kidney_test_uploads")
+os.environ.setdefault("REPORT_FILES_STORAGE_DIR", _REPORT_FILES_TEST_DIR)
+# Small on purpose so the oversized-file test doesn't need to allocate
+# a real 20MB+ payload.
+os.environ.setdefault("REPORT_FILES_MAX_SIZE_MB", "1")
+
+import shutil  # noqa: E402
 import uuid  # noqa: E402
-from typing import AsyncIterator  # noqa: E402
+from typing import AsyncIterator, Iterator  # noqa: E402
 
 import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 from sqlalchemy import text  # noqa: E402
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
+from sqlalchemy.ext.asyncio import (  # noqa: E402
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 import app.models  # noqa: E402,F401 — registers every mapped model on Base.metadata
 from app.db.base import Base  # noqa: E402
@@ -56,6 +69,17 @@ async def _test_schema() -> AsyncIterator[None]:
     await _test_engine.dispose()
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _report_files_scratch_dir_cleanup() -> Iterator[None]:
+    """Removes the scratch uploads directory (see REPORT_FILES_STORAGE_DIR
+    above) at the end of the test session — DB row cleanup is handled by
+    `_clean_tables`, but the files that back those rows live outside the DB
+    and need their own cleanup so repeated test runs don't accumulate them.
+    """
+    yield
+    shutil.rmtree(_REPORT_FILES_TEST_DIR, ignore_errors=True)
+
+
 @pytest_asyncio.fixture(autouse=True)
 async def _clean_tables() -> AsyncIterator[None]:
     """Runs after every test (unit and integration alike, though only
@@ -76,6 +100,14 @@ async def client() -> AsyncIterator[AsyncClient]:
     transport = ASGITransport(app=fastapi_app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
+
+
+@pytest_asyncio.fixture
+async def db_session() -> AsyncIterator[AsyncSession]:
+    """Direct DB access for assertions the HTTP API has no endpoint for yet
+    (e.g. reading back audit log rows — there's no GET /audit-logs)."""
+    async with _TestSessionLocal() as session:
+        yield session
 
 
 def _unique_email() -> str:
@@ -117,6 +149,36 @@ async def auth_client(client: AsyncClient, registered_doctor: dict) -> AsyncClie
     token = response.json()["access_token"]
     client.headers["Authorization"] = f"Bearer {token}"
     return client
+
+
+@pytest_asyncio.fixture
+async def second_auth_client() -> AsyncIterator[AsyncClient]:
+    """A second, independently-registered-and-logged-in doctor at a
+    different hospital, on its own AsyncClient — for cross-hospital donor
+    search/matching tests that need two distinct accounts talking to the
+    same app/DB. Separate from `auth_client` (which wraps the shared
+    `client` fixture) so both doctors' sessions can be used side by side in
+    the same test.
+    """
+    transport = ASGITransport(app=fastapi_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        payload = {
+            "hospital_name": "Second Test Hospital",
+            "email": _unique_email(),
+            "password": "correct-horse-battery-staple",
+            "full_name": "Dr. Second Doctor",
+        }
+        register_response = await ac.post("/auth/register", json=payload)
+        assert register_response.status_code == 201, register_response.text
+
+        login_response = await ac.post(
+            "/auth/login",
+            json={"email": payload["email"], "password": payload["password"]},
+        )
+        assert login_response.status_code == 200, login_response.text
+
+        ac.headers["Authorization"] = f"Bearer {login_response.json()['access_token']}"
+        yield ac
 
 
 def make_patient_payload(**overrides) -> dict:

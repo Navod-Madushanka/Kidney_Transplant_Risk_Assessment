@@ -2,7 +2,7 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useWizard } from "../hooks/useWizard"
-import { BLOOD_TYPE_OPTIONS } from "../constants/clinicalEnums"
+import { BLOOD_TYPE_OPTIONS, RH_FACTOR_OPTIONS } from "../constants/clinicalEnums"
 import Card from "../components/ui/Card"
 import InputField from "../components/ui/InputField"
 import SegmentedControl from "../components/ui/SegmentedControl"
@@ -13,6 +13,7 @@ function validatePerson(details) {
   if (!details.full_name.trim()) errors.full_name = "Full name is required"
   if (!details.date_of_birth) errors.date_of_birth = "Date of birth is required"
   if (!details.blood_type) errors.blood_type = "Blood group is required"
+  if (!details.rh_factor) errors.rh_factor = "Rh factor is required"
   return errors
 }
 
@@ -47,6 +48,14 @@ function PersonDetailsCard({ title, subtitle, details, onChange, errors }) {
             value={details.blood_type}
             onChange={(value) => onChange({ blood_type: value })}
             error={errors.blood_type}
+            required
+          />
+          <SegmentedControl
+            label="Rh factor"
+            options={RH_FACTOR_OPTIONS}
+            value={details.rh_factor}
+            onChange={(value) => onChange({ rh_factor: value })}
+            error={errors.rh_factor}
             required
           />
         </div>

@@ -74,6 +74,7 @@ from app.services.hla_typing_service import (
     get_patient_hla_typing_entries,
     get_population_hla_profiles,
     hla_antigen_designation,
+    normalize_antibody_antigen,
 )
 from app.services.pra_bucket_service import PRABucketResult, calculate_pra_bucket
 from app.services.risk_tier_service import get_risk_tier
@@ -176,7 +177,7 @@ async def run_match_pipeline(
     # the Sensitization score's adjusted_mfi_cutoff.
     antibody_rows = await get_patient_antibody_profiles(db, patient.id)
     patient_antibodies = [
-        PatientAntibody(antigen=row.antigen, mfi=float(row.mfi))
+        PatientAntibody(antigen=normalize_antibody_antigen(row.antigen), mfi=float(row.mfi))
         for row in antibody_rows
     ]
     donor_hla_antigens = [

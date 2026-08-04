@@ -1,9 +1,11 @@
 // src/api/patients.js
-import { apiGet, apiPost, apiPut } from "./client"
+import { apiDelete, apiGet, apiPost, apiPut } from "./client"
 
 export const listPatients = () => apiGet("/patients") // requires the list endpoint above
 export const createPatient = (payload) => apiPost("/patients", payload)
 export const getPatient = (id) => apiGet(`/patients/${id}`)
+export const updatePatient = (id, payload) => apiPut(`/patients/${id}`, payload)
+export const deletePatient = (id) => apiDelete(`/patients/${id}`)
 export const replacePatientHlaTypings = (id, entries) => apiPut(`/patients/${id}/hla-typings`, entries)
 export const replacePatientAntibodyProfiles = (id, entries) => apiPut(`/patients/${id}/antibody-profiles`, entries)
 export const createSensitizationEvents = (id, entries) => apiPost(`/patients/${id}/sensitization-events`, entries)

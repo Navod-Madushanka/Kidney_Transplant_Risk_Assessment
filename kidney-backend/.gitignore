@@ -23,3 +23,6 @@ build/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Uploaded report files (local dev storage — not committed)
+uploads/

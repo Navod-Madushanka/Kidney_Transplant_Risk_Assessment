@@ -119,7 +119,7 @@ export default function PhotoUploadsStep() {
             <ul className="mt-1 flex flex-col gap-0.5">
               {extractWarnings.map((warning, index) => (
                 <li key={index} className="text-[13px] text-text-muted">
-                  {warning.field}: couldn't read this clearly — check it manually in the next steps
+                  {warning.field}: {warning.message || "couldn't read this clearly — check it manually in the next steps"}
                 </li>
               ))}
             </ul>

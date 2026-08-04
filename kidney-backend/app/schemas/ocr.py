@@ -25,7 +25,12 @@ class OcrExtractResponse(BaseModel):
 
 class BeadSpecificityEntryOcr(BaseModel):
     antigen: str
-    mfi: str
+    # ocr-service emits this as a plain JSON number, or null for a row it
+    # couldn't read (see _coerce_mfi in ocr-service/app/extraction/
+    # llm_extract.py) -- this used to be typed `str`, which made
+    # /ocr/extract-batch 500 on every real bead-specificity chart, since a
+    # populated MFI value is the normal case, not an edge case.
+    mfi: float | None = None
 
 
 class CrossmatchOcr(BaseModel):

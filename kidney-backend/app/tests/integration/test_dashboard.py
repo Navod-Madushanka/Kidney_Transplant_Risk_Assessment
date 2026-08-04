@@ -69,6 +69,18 @@ async def test_dashboard_patients_shows_latest_report_summary(auth_client: Async
     assert body[0]["latest_report"]["final_risk_level"] is None
 
 
+async def test_dashboard_patients_excludes_deleted_patient(auth_client: AsyncClient):
+    patient = await create_patient(auth_client)
+
+    delete_response = await auth_client.delete(f"/patients/{patient['id']}")
+    assert delete_response.status_code == 204
+
+    response = await auth_client.get("/dashboard/patients")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
 async def test_dashboard_recent_reports_empty_for_new_doctor(auth_client: AsyncClient):
     response = await auth_client.get("/dashboard/reports/recent")
 
@@ -110,7 +122,63 @@ async def test_dashboard_recent_reports_respects_limit(auth_client: AsyncClient)
     assert len(response.json()) == 2
 
 
+async def test_dashboard_recent_reports_excludes_deleted_patient(auth_client: AsyncClient):
+    patient = await create_patient(auth_client, blood_type="O")
+    donor = await create_donor(auth_client, blood_type="A")
+    await auth_client.post(
+        "/compatibility/check",
+        json={"patient_id": patient["id"], "donor_id": donor["id"]},
+    )
+
+    delete_response = await auth_client.delete(f"/patients/{patient['id']}")
+    assert delete_response.status_code == 204
+
+    response = await auth_client.get("/dashboard/reports/recent")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+async def test_dashboard_recent_reports_excludes_deleted_donor(auth_client: AsyncClient):
+    patient = await create_patient(auth_client, blood_type="O")
+    donor = await create_donor(auth_client, blood_type="A")
+    await auth_client.post(
+        "/compatibility/check",
+        json={"patient_id": patient["id"], "donor_id": donor["id"]},
+    )
+
+    delete_response = await auth_client.delete(f"/donors/{donor['id']}")
+    assert delete_response.status_code == 204
+
+    response = await auth_client.get("/dashboard/reports/recent")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
 async def test_dashboard_requires_auth(client: AsyncClient):
     response = await client.get("/dashboard/patients")
 
     assert response.status_code in (401, 403)
+
+
+async def test_dashboard_recent_reports_masks_external_donor_name(
+    auth_client: AsyncClient, second_auth_client: AsyncClient
+):
+    # A cross-hospital check (see test_compatibility.py) puts a report on
+    # the requesting doctor's dashboard referencing a donor they don't own —
+    # that donor's real name must never leak onto this doctor's own view.
+    patient = await create_patient(auth_client, blood_type="AB")
+    donor = await create_donor(second_auth_client, blood_type="O", full_name="Secret Donor Name")
+    await auth_client.post(
+        "/compatibility/check",
+        json={"patient_id": patient["id"], "donor_id": donor["id"]},
+    )
+
+    response = await auth_client.get("/dashboard/reports/recent")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["donor_full_name"] == "External donor"
+    assert "Secret Donor Name" not in str(body)

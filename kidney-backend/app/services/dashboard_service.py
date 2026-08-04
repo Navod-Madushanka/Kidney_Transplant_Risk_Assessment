@@ -33,7 +33,7 @@ async def get_patients_with_latest_report(
 ) -> list[PatientWithLatestReport]:
     patients_result = await db.execute(
         select(Patient)
-        .where(Patient.doctor_id == doctor_id)
+        .where(Patient.doctor_id == doctor_id, Patient.is_deleted.is_(False))
         .order_by(Patient.full_name)
     )
     patients = list(patients_result.scalars().all())
@@ -89,20 +89,30 @@ async def get_recent_reports_for_doctor(
         select(MatchReport, Patient, Donor)
         .join(Patient, Patient.id == MatchReport.patient_id)
         .join(Donor, Donor.id == MatchReport.donor_id)
-        .where(Patient.doctor_id == doctor_id)
+        .where(
+            Patient.doctor_id == doctor_id,
+            Patient.is_deleted.is_(False),
+            Donor.is_deleted.is_(False),
+        )
         .order_by(MatchReport.created_at.desc())
         .limit(limit)
     )
 
     summaries = []
     for report, patient, donor in result.all():
+        # donor.doctor_id can differ from doctor_id for a cross-hospital
+        # match report (see donor_search_service.py) — never surface a
+        # non-owned donor's real identity on this doctor's own dashboard.
+        donor_full_name = (
+            donor.full_name if donor.doctor_id == doctor_id else "External donor"
+        )
         summaries.append(
             RecentReportSummary(
                 id=report.id,
                 patient_id=patient.id,
                 patient_full_name=patient.full_name,
                 donor_id=donor.id,
-                donor_full_name=donor.full_name,
+                donor_full_name=donor_full_name,
                 overall_status=report.overall_status,
                 risk_tier=_derive_risk_tier(report.hla_scoring_result),
                 final_risk_level=report.final_risk_level,

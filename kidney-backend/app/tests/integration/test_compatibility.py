@@ -20,8 +20,12 @@ Two of the seven steps' reject paths are deliberately NOT covered here:
   pairs just for this test isn't worth the runtime cost — the bucket
   math itself is covered precisely and quickly in test_pra_bucket_service.py.
 """
-from httpx import AsyncClient
+import uuid
 
+from httpx import AsyncClient
+from sqlalchemy import select
+
+from app.models.audit_log import AuditLog
 from app.tests.conftest import (
     COMPATIBLE_DONOR_HLA,
     COMPATIBLE_PATIENT_HLA,
@@ -99,6 +103,102 @@ async def test_dsa_match_halts_before_hla_scoring(auth_client: AsyncClient):
     assert body["overall_status"] == "halted_dsa_trigger"
     assert body["dsa_result"]["is_halted"] is True
     assert body["hla_scoring_result"] is None
+
+
+async def test_dsa_match_on_drb1_locus_halts(auth_client: AsyncClient):
+    # Regression test for a real bug (fixed 2026-08-02): DSA antigen
+    # designations for DRB1/DQB1/DPB1 used to be built as "DRB113" etc.
+    # instead of the serological "DR13" a real antibody screen actually
+    # uses, so a genuine donor-specific antibody at these loci was silently
+    # invisible to this gate. See hla_antigen_designation() in
+    # app/services/hla_typing_service.py.
+    patient = await create_patient(auth_client, blood_type="O")
+    donor = await create_donor(auth_client, blood_type="O")
+
+    await auth_client.put(
+        f"/patients/{patient['id']}/antibody-profiles",
+        json=[{"antigen": "DR13", "mfi": 3500}],
+    )
+    await auth_client.put(
+        f"/donors/{donor['id']}/hla-typings",
+        json=[{"locus": "DRB1", "allele_1": "13", "allele_2": "14"}],
+    )
+
+    response = await auth_client.post(
+        "/compatibility/check",
+        json={"patient_id": patient["id"], "donor_id": donor["id"]},
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["overall_status"] == "halted_dsa_trigger"
+    assert body["dsa_result"]["is_halted"] is True
+    assert body["dsa_result"]["matches"][0]["antigen"] == "DR13"
+
+
+async def test_dsa_match_on_c_locus_halts(auth_client: AsyncClient):
+    # Regression test for a real bug (found 2026-08-03 running the full
+    # pipeline against a real shared bead-specificity chart): unlike A/B,
+    # HLA-C's serological antigen names are conventionally prefixed "Cw"
+    # (Cw1..Cw18), not the bare locus letter -- hla_antigen_designation used
+    # to build "C3" for a C*03 donor allele, which never matches a real
+    # antibody screen's "Cw3". See hla_antigen_designation() in
+    # app/services/hla_typing_service.py.
+    patient = await create_patient(auth_client, blood_type="O")
+    donor = await create_donor(auth_client, blood_type="O")
+
+    await auth_client.put(
+        f"/patients/{patient['id']}/antibody-profiles",
+        json=[{"antigen": "Cw3", "mfi": 3500}],
+    )
+    await auth_client.put(
+        f"/donors/{donor['id']}/hla-typings",
+        json=[{"locus": "C", "allele_1": "03", "allele_2": "07"}],
+    )
+
+    response = await auth_client.post(
+        "/compatibility/check",
+        json={"patient_id": patient["id"], "donor_id": donor["id"]},
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["overall_status"] == "halted_dsa_trigger"
+    assert body["dsa_result"]["is_halted"] is True
+    assert body["dsa_result"]["matches"][0]["antigen"] == "Cw3"
+
+
+async def test_dsa_match_on_b_locus_with_bw_suffix_halts(auth_client: AsyncClient):
+    # Regression test for a real bug (found 2026-08-03 running the full
+    # pipeline against a real shared bead-specificity chart): real charts
+    # often record a B-locus antigen combined with its broad Bw4/Bw6
+    # cross-reactive group in one string ("B7,Bw6"), while
+    # hla_antigen_designation() only ever builds the bare antigen ("B7") --
+    # every single B-locus row on that real chart carried this suffix, so
+    # a genuine anti-B DSA was structurally unmatchable. See
+    # normalize_antibody_antigen() in app/services/hla_typing_service.py.
+    patient = await create_patient(auth_client, blood_type="O")
+    donor = await create_donor(auth_client, blood_type="O")
+
+    await auth_client.put(
+        f"/patients/{patient['id']}/antibody-profiles",
+        json=[{"antigen": "B7,Bw6", "mfi": 3500}],
+    )
+    await auth_client.put(
+        f"/donors/{donor['id']}/hla-typings",
+        json=[{"locus": "B", "allele_1": "07", "allele_2": "40"}],
+    )
+
+    response = await auth_client.post(
+        "/compatibility/check",
+        json={"patient_id": patient["id"], "donor_id": donor["id"]},
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["overall_status"] == "halted_dsa_trigger"
+    assert body["dsa_result"]["is_halted"] is True
+    assert body["dsa_result"]["matches"][0]["antigen"] == "B7"
 
 
 async def test_full_pipeline_run_reaches_hla_scoring_and_risk_tier(auth_client: AsyncClient):
@@ -257,3 +357,66 @@ async def test_cannot_get_another_doctors_report(auth_client: AsyncClient, clien
     response = await client.get(f"/compatibility/reports/{report_id}", headers=other_headers)
 
     assert response.status_code == 404
+
+
+async def test_full_check_allowed_against_non_owned_available_donor(
+    auth_client: AsyncClient, second_auth_client: AsyncClient
+):
+    patient = await create_patient(auth_client, blood_type="AB")
+    donor = await create_donor(second_auth_client, blood_type="O")
+
+    response = await auth_client.post(
+        "/compatibility/check",
+        json={"patient_id": patient["id"], "donor_id": donor["id"]},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["donor_id"] == donor["id"]
+
+
+async def test_full_check_still_blocked_for_non_owned_non_available_donor(
+    auth_client: AsyncClient, second_auth_client: AsyncClient
+):
+    patient = await create_patient(auth_client, blood_type="AB")
+    donor = await create_donor(second_auth_client, blood_type="O")
+    await second_auth_client.put(f"/donors/{donor['id']}/status", json={"status": "reserved"})
+
+    response = await auth_client.post(
+        "/compatibility/check",
+        json={"patient_id": patient["id"], "donor_id": donor["id"]},
+    )
+
+    assert response.status_code == 404
+
+
+async def test_cross_hospital_check_uses_distinct_audit_action(
+    auth_client: AsyncClient, second_auth_client: AsyncClient, db_session
+):
+    patient = await create_patient(auth_client, blood_type="AB")
+    donor = await create_donor(second_auth_client, blood_type="O")
+
+    response = await auth_client.post(
+        "/compatibility/check",
+        json={"patient_id": patient["id"], "donor_id": donor["id"]},
+    )
+    assert response.status_code == 201
+
+    result = await db_session.execute(
+        select(AuditLog).where(AuditLog.action == "ran_cross_hospital_compatibility_check")
+    )
+    entries = result.scalars().all()
+
+    assert len(entries) == 1
+    assert entries[0].details["cross_hospital"] is True
+    assert entries[0].details["donor_doctor_id"] == str(uuid.UUID(donor["doctor_id"]))
+
+    # The same-doctor path must still use the original action name, unchanged.
+    own_donor = await create_donor(auth_client, blood_type="O")
+    await auth_client.post(
+        "/compatibility/check",
+        json={"patient_id": patient["id"], "donor_id": own_donor["id"]},
+    )
+    result = await db_session.execute(
+        select(AuditLog).where(AuditLog.action == "ran_compatibility_check")
+    )
+    assert len(result.scalars().all()) == 1

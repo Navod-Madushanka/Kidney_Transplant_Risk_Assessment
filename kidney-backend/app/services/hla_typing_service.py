@@ -1,4 +1,5 @@
 # app/services/hla_typing_service.py
+import re
 import uuid
 
 from sqlalchemy import delete, select
@@ -8,6 +9,47 @@ from app.models.donor_hla_typing import DonorHLATyping
 from app.models.patient_hla_typing import PatientHLATyping
 from app.reference_data.hla_loci import HLA_LOCI
 from app.schemas.hla_typing import HLATypingEntry
+
+
+
+# Real-world antibody screens (bead-specificity charts, and any doctor
+# entering an antibody-profile row by hand) name DR/DQ/DP-locus antigens
+# using the classic serological group prefix, not the molecular typing
+# locus name -- "DR13", "DQ5", "DP4", never "DRB113"/"DQB105"/"DPB104". HLA-C
+# is the same story for a different historical reason: its serological
+# antigens are conventionally written "Cw1".."Cw18" (the "w" originally
+# distinguished them from complement component names), never a bare "C1"
+# etc. -- confirmed 2026-08-03 against a real bead-specificity chart, whose
+# C-locus rows were 100% "CwN", zero bare "CN". Only A and B's molecular
+# locus name genuinely matches their serological name unchanged. DQA1/DPA1
+# (and the composite DRB3,4,5 locus, allele values like "DRB3*02") aren't
+# part of this simple numeric scheme and are deliberately left unmapped
+# rather than guessed at.
+_SEROLOGICAL_LOCUS_PREFIX = {
+    "DRB1": "DR",
+    "DQB1": "DQ",
+    "DPB1": "DP",
+    "C": "Cw",
+}
+
+# Real bead-specificity charts often record a B-locus antigen combined with
+# its broad Bw4/Bw6 cross-reactive-group split in one string -- "B45,Bw6",
+# occasionally "B41.Bw6" (OCR reads a period instead of a comma) -- while
+# hla_antigen_designation() above only ever builds the bare specific antigen
+# ("B45"). The Bw4/Bw6 group is a separate serological classification, not
+# part of the antigen's identity, so it must be stripped before comparing
+# against a donor's designation or a real anti-B DSA is structurally
+# unmatchable. Confirmed 2026-08-03: every single B-locus row extracted from
+# a real chart carried this suffix (or was allele-level, out of scope -- see
+# below) -- none were bare "B<number>".
+#
+# Deliberately narrow: only strips a trailing ",Bw<digits>" / ".Bw<digits>",
+# so it never touches an allele-level designation ("B*07:02" -- a different,
+# unmapped naming scheme entirely, see the module docstring) or an unrelated
+# numeric suffix such as the OCR-mislabeling artifact "B40.01" seen on that
+# same real chart (a separate, already-known extraction-accuracy bug, not
+# this one -- fixing this pattern must not accidentally paper over that one).
+_BW_SUFFIX_RE = re.compile(r"^(.*?)[,.]Bw\d+$", re.IGNORECASE)
 
 
 def hla_antigen_designation(locus: str, allele: str) -> str:
@@ -20,8 +62,33 @@ def hla_antigen_designation(locus: str, allele: str) -> str:
     app/schemas/antibody_profile.py / the DSA test data). This is the single
     place that bridges the two so callers doing antigen-based matching (DSA
     checks, cPRA) don't each reimplement it slightly differently.
+
+    Real bug found 2026-08-02: A/B's molecular locus name already matches
+    their serological name, so this worked for them, but DRB1/DQB1/DPB1
+    don't -- a patient's real anti-DR13 antibody was silently invisible to
+    the DSA check because it built "DRB113" and never matched "DR13". See
+    _SEROLOGICAL_LOCUS_PREFIX above.
+
+    Second real bug found 2026-08-03, same class: HLA-C isn't like A/B
+    either -- its serological antigens need the "Cw" prefix, not the bare
+    locus letter. See _SEROLOGICAL_LOCUS_PREFIX above, and
+    normalize_antibody_antigen() below for the separate B-locus Bw4/Bw6
+    suffix problem this doesn't cover.
     """
-    return f"{locus}{allele.lstrip('0') or '0'}"
+    prefix = _SEROLOGICAL_LOCUS_PREFIX.get(locus, locus)
+    return f"{prefix}{allele.lstrip('0') or '0'}"
+
+
+def normalize_antibody_antigen(antigen: str) -> str:
+    """Strips a real chart's ",Bw4"/",Bw6" (or ".Bw4"/".Bw6") cross-reactive-
+    group suffix from a B-locus antibody antigen string, e.g. "B45,Bw6" ->
+    "B45", so it can exact-match a donor's bare hla_antigen_designation()
+    output. Antigens without that suffix pass through unchanged. See the
+    module-level comment on _BW_SUFFIX_RE for what this deliberately does
+    NOT touch.
+    """
+    match = _BW_SUFFIX_RE.match(antigen.strip())
+    return match.group(1) if match else antigen
 
 
 async def get_patient_hla_typing_dict(
@@ -171,6 +238,25 @@ async def get_donor_hla_typing_entries(
         select(DonorHLATyping).where(DonorHLATyping.donor_id == donor_id)
     )
     return list(result.scalars().all())
+
+
+async def get_donor_hla_typing_entries_bulk(
+    db: AsyncSession, donor_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, list[DonorHLATyping]]:
+    """Same rows as get_donor_hla_typing_entries but for many donors in one
+    query, grouped by donor_id — used by donor_search_service to avoid
+    firing one query per candidate donor in the pool.
+    """
+    if not donor_ids:
+        return {}
+
+    result = await db.execute(
+        select(DonorHLATyping).where(DonorHLATyping.donor_id.in_(donor_ids))
+    )
+    entries_by_donor: dict[uuid.UUID, list[DonorHLATyping]] = {}
+    for row in result.scalars().all():
+        entries_by_donor.setdefault(row.donor_id, []).append(row)
+    return entries_by_donor
 
 
 def build_partial_typing_dict(entries: list, loci: tuple[str, ...]) -> dict[str, list[str]]:

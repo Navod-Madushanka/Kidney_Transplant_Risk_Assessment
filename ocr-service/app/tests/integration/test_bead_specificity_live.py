@@ -8,15 +8,19 @@
 # COST WARNING, confirmed 2026-08-01: with tile concurrency bounded to 1
 # (see app/extraction/llm_extract.py's CONCURRENT_TILE_LIMIT -- a real,
 # necessary fix, not something to undo casually), each bead-specificity
-# call runs its 8 row-band tiles sequentially. A real run of this file at
-# RUNS=5 (5 repeats x 2 pages x 8 tiles = 80 real slow LLM calls, plus
-# HLA/crossmatch) took **73 minutes** on the dev RTX 2060. RUNS=3 below
-# cuts that to roughly 45 min for this file alone -- still genuinely slow,
-# because bead specificity itself is slow per the "30s-2min per document"
-# budget stated at the top of this doc, now paid 8x per page since tiles
-# no longer overlap in wall-clock time. Don't run this file casually; it's
-# for deliberately characterizing bead specificity's behavior, not a
-# routine check. `uv run pytest` (no -m integration) skips it entirely.
+# call runs its 8 row-band tiles sequentially (DEFAULT_NUM_TILES in
+# app/extraction/tiling.py -- briefly tried at 6 on 2026-08-03 to cut
+# runtime, reverted after it cost real row coverage without a reliably
+# faster full-batch result; see that file's docstring). A real run of
+# this file at RUNS=5 (5 repeats x 2 pages x 8 tiles = 80 real slow LLM
+# calls, plus HLA/crossmatch) took **73 minutes** on the dev RTX 2060.
+# RUNS=3 below cuts that to roughly 45 min for this file alone -- still
+# genuinely slow, because bead specificity itself is slow per the
+# "30s-2min per document" budget stated at the top of this doc, now paid
+# 8x per page since tiles no longer overlap in wall-clock time. Don't run
+# this file casually; it's for deliberately characterizing bead
+# specificity's behavior, not a routine check. `uv run pytest` (no -m
+# integration) skips it entirely.
 import statistics
 
 import pytest

@@ -18,6 +18,22 @@ services:
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
+    environment:
+      # Confirmed 2026-08-02 via Ollama's own load logs: on the dev RTX 2060,
+      # the scheduler's VRAM budget for this model was ~5.0 GiB, the model's
+      # full-precision weights alone are 4.5 GiB, leaving only ~0.5 GiB for
+      # KV cache + compute buffers — but an 8192-context KV cache needs
+      # 1-1.5 GiB at full f16 precision. That shortfall is what was forcing
+      # most of the model onto CPU (observed 17%/83% GPU/CPU split even with
+      # VRAM otherwise completely free — confirmed not an external-VRAM-
+      # contention problem by testing against a freshly cleared GPU).
+      # Quantizing the KV cache shrinks that requirement well below what's
+      # left after the weights, which should let far more (plausibly all)
+      # of the model's layers stay on GPU. Flash attention is required for
+      # OLLAMA_KV_CACHE_TYPE to actually take effect (without it Ollama
+      # silently keeps the cache at f16 regardless of this setting).
+      - OLLAMA_FLASH_ATTENTION=1
+      - OLLAMA_KV_CACHE_TYPE=q8_0
     volumes:
       - ollama-models:/root/.ollama
       - ./docker/ollama-entrypoint.sh:/ollama-entrypoint.sh:ro

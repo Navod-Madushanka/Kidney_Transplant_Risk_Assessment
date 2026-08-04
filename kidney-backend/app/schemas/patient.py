@@ -15,6 +15,16 @@ class PatientCreate(BaseModel):
     nic_number: str | None = None
 
 
+class PatientUpdate(BaseModel):
+    """Core demographic fields only — blood_type/rh_factor are permanent
+    once set (the compatibility engine and existing reports trust them),
+    so they're deliberately absent here rather than editable."""
+
+    full_name: str
+    date_of_birth: date
+    nic_number: str | None = None
+
+
 class PatientResponse(BaseModel):
     id: uuid.UUID
     doctor_id: uuid.UUID

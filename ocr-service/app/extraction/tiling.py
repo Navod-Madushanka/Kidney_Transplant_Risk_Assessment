@@ -12,6 +12,21 @@ is what Phase 1 validated as the better tradeoff over an initial 4-tile
 attempt — narrower bands substantially reduced a duplicate-row-collapse
 scoring issue, though they don't eliminate the hallucination failure mode
 entirely (roughly 1-in-8 tiles still degenerated in Phase 1 testing).
+
+TRIED AND REVERTED 2026-08-03: lowered 8 -> 6 for a session chasing full
+end-to-end extraction speed (individual tile calls were observed taking
+1-3 minutes each on the dev RTX 2060, and 8 sequential tiles reliably
+pushed a bead-specificity page past kidney-backend's OCR timeout). 6
+tiles did cut per-page time by roughly 25% in isolation (402s vs an
+implied ~536s for 8, measured against sample_mfi_page1.jpg's anchors) --
+but cost real row coverage (7/13 anchors matched, 60 rows, vs the
+project's established 8-tile range) and didn't produce a reliably faster
+full 4-image batch once real run-to-run variance was accounted for.
+Reverted to 8. The actual fix for the timeout problem was raising
+kidney-backend's ocr_service_timeout_seconds instead (see its config.py),
+not shrinking tile count. If revisiting this, measure against
+bead_specificity_anchor.json before changing the default again -- see
+test_bead_specificity_live.py.
 """
 import io
 

@@ -8,7 +8,8 @@ async def call_ocr_service(
     file_bytes: bytes, filename: str, content_type: str, document_type: str
 ) -> dict:
     settings = get_settings()
-    async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=5.0)) as client:
+    timeout = httpx.Timeout(settings.ocr_service_timeout_seconds, connect=5.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
         response = await client.post(
             f"{settings.ocr_service_url}/extract",
             headers={"X-Internal-API-Key": settings.ocr_service_api_key},

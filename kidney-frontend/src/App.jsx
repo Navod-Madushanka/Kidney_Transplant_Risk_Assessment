@@ -11,6 +11,7 @@ import PatientDetailPage from "./pages/PatientDetailPage"
 import DonorsListPage from "./pages/DonorsListPage"
 import NewDonorPage from "./pages/NewDonorPage"
 import DonorDetailPage from "./pages/DonorDetailPage"
+import DonorSearchPage from "./pages/DonorSearchPage"
 import ReportsListPage from "./pages/ReportsListPage"
 
 import { WizardProvider } from "./context/WizardProvider"
@@ -35,6 +36,11 @@ function App() {
           <Route path="/patients" element={<PatientsListPage />} handle={{ title: "Patients" }} />
           <Route path="/patients/new" element={<NewPatientPage />} handle={{ title: "Add patient" }} />
           <Route path="/patients/:patientId" element={<PatientDetailPage />} handle={{ title: "Patient" }} />
+          <Route
+            path="/patients/:patientId/donor-search"
+            element={<DonorSearchPage />}
+            handle={{ title: "Search donors" }}
+          />
           <Route path="/donors" element={<DonorsListPage />} handle={{ title: "Donors" }} />
           <Route path="/donors/new" element={<NewDonorPage />} handle={{ title: "Add donor" }} />
           <Route path="/donors/:donorId" element={<DonorDetailPage />} handle={{ title: "Donor" }} />

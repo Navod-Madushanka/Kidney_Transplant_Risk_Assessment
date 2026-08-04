@@ -43,8 +43,13 @@ export function parseOcrBloodType(raw) {
 }
 
 export function parseOcrMfi(raw) {
-  if (!raw) return null
-  const cleaned = raw.replace(/[^\d.]/g, "")
+  // The backend now sends this as a real JSON number (or null for a row
+  // the OCR couldn't read) rather than a formatted string -- handle both
+  // so a genuine MFI of 0 (common at the low end of a bead-specificity
+  // chart) survives instead of being treated as falsy and dropped.
+  if (raw === null || raw === undefined || raw === "") return null
+  if (typeof raw === "number") return Number.isFinite(raw) ? raw : null
+  const cleaned = String(raw).replace(/[^\d.]/g, "")
   const value = Number(cleaned)
   return Number.isFinite(value) && cleaned !== "" ? value : null
 }

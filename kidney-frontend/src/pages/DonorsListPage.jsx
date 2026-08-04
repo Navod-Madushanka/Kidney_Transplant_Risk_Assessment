@@ -4,8 +4,11 @@ import { Link } from "react-router-dom"
 import { listDonors } from "../api/donors"
 import Button from "../components/ui/Button"
 import Badge from "../components/ui/Badge"
+import { donorStatusBadgeProps } from "../constants/donorStatus"
 
 function DonorRow({ donor }) {
+  const { status: badgeStatus, label: badgeLabel } = donorStatusBadgeProps(donor.status)
+
   return (
     <Link
       to={`/donors/${donor.id}`}
@@ -17,7 +20,10 @@ function DonorRow({ donor }) {
           {donor.nic_number || "No NIC on file"} · DOB {donor.date_of_birth}
         </p>
       </div>
-      <Badge status="neutral">{donor.blood_type}</Badge>
+      <div className="flex items-center gap-2 shrink-0">
+        <Badge status="neutral">{donor.blood_type}</Badge>
+        <Badge status={badgeStatus}>{badgeLabel}</Badge>
+      </div>
     </Link>
   )
 }

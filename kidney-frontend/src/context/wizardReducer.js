@@ -31,12 +31,14 @@ export function buildInitialWizardState() {
       nic_number: "",
       date_of_birth: "",
       blood_type: "",
+      rh_factor: "",
     },
     donor_details: {
       full_name: "",
       nic_number: "",
       date_of_birth: "",
       blood_type: "",
+      rh_factor: "",
     },
 
     // Phase 5 — Payload 2

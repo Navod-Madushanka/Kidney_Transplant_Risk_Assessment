@@ -1,6 +1,8 @@
 # app/tests/integration/test_patients.py
 from httpx import AsyncClient
+from sqlalchemy import select
 
+from app.models.audit_log import AuditLog
 from app.tests.conftest import create_patient, make_patient_payload
 
 
@@ -25,6 +27,36 @@ async def test_create_patient_rejects_missing_required_fields(auth_client: Async
     response = await auth_client.post("/patients", json={"full_name": "Incomplete"})
 
     assert response.status_code == 422
+
+
+async def test_duplicate_nic_for_same_doctor_returns_clean_conflict(auth_client: AsyncClient):
+    # Regression test for a real bug (found 2026-08-03): this used to crash
+    # with an unhandled 500 (raw asyncpg.UniqueViolationError) instead of a
+    # clean error.
+    await create_patient(auth_client, nic_number="198001610076")
+
+    response = await auth_client.post(
+        "/patients", json=make_patient_payload(full_name="Someone Else", nic_number="198001610076")
+    )
+
+    assert response.status_code == 409
+
+
+async def test_two_different_doctors_can_use_the_same_nic(
+    auth_client: AsyncClient, second_auth_client: AsyncClient
+):
+    # Regression test for a real bug (found 2026-08-03): patients are
+    # strictly doctor-isolated everywhere else in this codebase (unlike
+    # donors), but nic_number used to be a GLOBAL unique constraint -- so
+    # two different doctors independently treating two different real
+    # people who happen to share an NIC (or re-running the same real
+    # patient's paperwork under a second doctor account) would crash. NIC
+    # uniqueness is now scoped per-doctor to match the isolation model.
+    first = await create_patient(auth_client, nic_number="198001610076")
+    second = await create_patient(second_auth_client, nic_number="198001610076")
+
+    assert first["id"] != second["id"]
+    assert first["nic_number"] == second["nic_number"] == "198001610076"
 
 
 async def test_list_patients_returns_only_this_doctors_patients(
@@ -148,3 +180,192 @@ async def test_get_patient_reports_empty_before_any_check(auth_client: AsyncClie
 
     assert response.status_code == 200
     assert response.json() == []
+
+
+# ---------------------------------------------------------------------
+# Update patient details — full_name/date_of_birth/nic_number only;
+# blood_type/rh_factor are permanent once set.
+# ---------------------------------------------------------------------
+
+
+async def test_update_patient_details(auth_client: AsyncClient):
+    patient = await create_patient(auth_client)
+
+    response = await auth_client.put(
+        f"/patients/{patient['id']}",
+        json={
+            "full_name": "Alice Renamed",
+            "date_of_birth": "1986-07-16",
+            "nic_number": "199012345678",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["full_name"] == "Alice Renamed"
+    assert body["date_of_birth"] == "1986-07-16"
+    assert body["nic_number"] == "199012345678"
+
+
+async def test_update_patient_details_ignores_blood_type_and_rh_factor(
+    auth_client: AsyncClient,
+):
+    patient = await create_patient(auth_client)  # blood_type=AB, rh_factor=+
+
+    response = await auth_client.put(
+        f"/patients/{patient['id']}",
+        json={
+            "full_name": "Alice Patient",
+            "date_of_birth": "1985-06-15",
+            "blood_type": "O",
+            "rh_factor": "-",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["blood_type"] == "AB"
+    assert body["rh_factor"] == "+"
+
+
+async def test_update_nonexistent_patient_is_404(auth_client: AsyncClient):
+    response = await auth_client.put(
+        "/patients/00000000-0000-0000-0000-000000000000",
+        json={"full_name": "Nobody", "date_of_birth": "2000-01-01"},
+    )
+
+    assert response.status_code == 404
+
+
+async def test_cannot_update_another_doctors_patient(
+    auth_client: AsyncClient, second_auth_client: AsyncClient
+):
+    patient = await create_patient(second_auth_client)
+
+    response = await auth_client.put(
+        f"/patients/{patient['id']}",
+        json={"full_name": "Hijacked", "date_of_birth": "2000-01-01"},
+    )
+
+    assert response.status_code == 404
+
+
+async def test_update_patient_details_rejects_missing_required_fields(
+    auth_client: AsyncClient,
+):
+    patient = await create_patient(auth_client)
+
+    response = await auth_client.put(
+        f"/patients/{patient['id']}", json={"full_name": "Incomplete"}
+    )
+
+    assert response.status_code == 422
+
+
+async def test_update_patient_details_writes_audit_log_entry(
+    auth_client: AsyncClient, db_session
+):
+    patient = await create_patient(auth_client)
+
+    response = await auth_client.put(
+        f"/patients/{patient['id']}",
+        json={"full_name": "Alice Renamed", "date_of_birth": "1985-06-15"},
+    )
+    assert response.status_code == 200
+
+    result = await db_session.execute(
+        select(AuditLog).where(AuditLog.action == "updated_patient_details")
+    )
+    entries = result.scalars().all()
+    assert len(entries) == 1
+    assert entries[0].details["full_name"] == "Alice Renamed"
+
+
+# ---------------------------------------------------------------------
+# Delete patient — soft delete: the row survives, but disappears from
+# every doctor-facing read path (get-by-id, list).
+# ---------------------------------------------------------------------
+
+
+async def test_delete_patient(auth_client: AsyncClient):
+    patient = await create_patient(auth_client)
+
+    response = await auth_client.delete(f"/patients/{patient['id']}")
+    assert response.status_code == 204
+
+    get_response = await auth_client.get(f"/patients/{patient['id']}")
+    assert get_response.status_code == 404
+
+    list_response = await auth_client.get("/patients")
+    assert list_response.json() == []
+
+
+async def test_delete_patient_requires_auth(auth_client: AsyncClient):
+    # auth_client wraps the same underlying httpx client as the plain
+    # `client` fixture (auth_client just sets the header on it), so drop
+    # the header rather than taking `client` as a separate param.
+    patient = await create_patient(auth_client)
+    del auth_client.headers["Authorization"]
+
+    response = await auth_client.delete(f"/patients/{patient['id']}")
+
+    assert response.status_code in (401, 403)
+
+
+async def test_delete_nonexistent_patient_is_404(auth_client: AsyncClient):
+    response = await auth_client.delete("/patients/00000000-0000-0000-0000-000000000000")
+
+    assert response.status_code == 404
+
+
+async def test_cannot_delete_another_doctors_patient(
+    auth_client: AsyncClient, second_auth_client: AsyncClient
+):
+    patient = await create_patient(second_auth_client)
+
+    response = await auth_client.delete(f"/patients/{patient['id']}")
+    assert response.status_code == 404
+
+    # Confirm it's still there for its actual owner (deletion didn't happen).
+    get_response = await second_auth_client.get(f"/patients/{patient['id']}")
+    assert get_response.status_code == 200
+
+
+async def test_delete_patient_is_not_idempotent(auth_client: AsyncClient):
+    patient = await create_patient(auth_client)
+
+    first = await auth_client.delete(f"/patients/{patient['id']}")
+    assert first.status_code == 204
+
+    second = await auth_client.delete(f"/patients/{patient['id']}")
+    assert second.status_code == 404
+
+
+async def test_delete_patient_writes_audit_log_entry(auth_client: AsyncClient, db_session):
+    patient = await create_patient(auth_client)
+
+    response = await auth_client.delete(f"/patients/{patient['id']}")
+    assert response.status_code == 204
+
+    result = await db_session.execute(
+        select(AuditLog).where(AuditLog.action == "deleted_patient")
+    )
+    entries = result.scalars().all()
+    assert len(entries) == 1
+    assert entries[0].details["full_name"] == patient["full_name"]
+
+
+async def test_deleted_patients_nic_number_can_be_reused(auth_client: AsyncClient):
+    # Found 2026-08-04: the (doctor_id, nic_number) unique constraint used
+    # to apply to every row regardless of is_deleted, so re-registering a
+    # real person after their old record was deleted hit a false-positive
+    # "already have a patient with this NIC number" 409.
+    patient = await create_patient(auth_client, nic_number="912345678v")
+
+    delete_response = await auth_client.delete(f"/patients/{patient['id']}")
+    assert delete_response.status_code == 204
+
+    response = await auth_client.post(
+        "/patients", json=make_patient_payload(nic_number="912345678v")
+    )
+    assert response.status_code == 201
