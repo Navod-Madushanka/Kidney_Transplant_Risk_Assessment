@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv run *)",
+      "Bash(docker compose *)",
+      "Bash(netstat -ano)",
+      "Bash(docker exec *)",
+      "Bash(docker port *)"
+    ]
+  }
+}

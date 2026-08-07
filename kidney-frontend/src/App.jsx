@@ -13,6 +13,7 @@ import NewDonorPage from "./pages/NewDonorPage"
 import DonorDetailPage from "./pages/DonorDetailPage"
 import DonorSearchPage from "./pages/DonorSearchPage"
 import ReportsListPage from "./pages/ReportsListPage"
+import NewCheckFromRecordsPage from "./pages/NewCheckFromRecordsPage"
 
 import { WizardProvider } from "./context/WizardProvider"
 import WizardLayout from "./layout/WizardLayout"
@@ -45,6 +46,11 @@ function App() {
           <Route path="/donors/new" element={<NewDonorPage />} handle={{ title: "Add donor" }} />
           <Route path="/donors/:donorId" element={<DonorDetailPage />} handle={{ title: "Donor" }} />
           <Route path="/reports" element={<ReportsListPage />} handle={{ title: "Reports" }} />
+          <Route
+            path="/checks/start-from-records"
+            element={<NewCheckFromRecordsPage />}
+            handle={{ title: "Start check from records" }}
+          />
         </Route>
 
         {/* Compatibility check wizard — its own full-screen layout branch,

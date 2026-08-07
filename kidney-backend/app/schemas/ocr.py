@@ -1,4 +1,6 @@
 # app/schemas/ocr.py
+import uuid
+
 from pydantic import BaseModel
 
 
@@ -54,3 +56,28 @@ class OcrBatchExtractResponse(BaseModel):
     bead_specificity: list[BeadSpecificityEntryOcr] = []
     crossmatch: CrossmatchOcr = CrossmatchOcr()
     errors: list[OcrBatchError] = []
+
+
+class OcrJobCreateResponse(BaseModel):
+    job_id: uuid.UUID
+
+
+class OcrJobDocumentStatus(BaseModel):
+    # "pending" (not started yet) | "in_progress" (see completed/total) | "done"
+    status: str
+    completed: int = 0
+    total: int = 1
+    patient_details: PersonDetailsOcr = PersonDetailsOcr()
+    donor_details: PersonDetailsOcr = PersonDetailsOcr()
+    patient_hla: list[HLAOcrEntry] = []
+    donor_hla: list[HLAOcrEntry] = []
+    bead_specificity: list[BeadSpecificityEntryOcr] = []
+    crossmatch: CrossmatchOcr = CrossmatchOcr()
+    errors: list[OcrBatchError] = []
+
+
+class OcrJobStatusResponse(BaseModel):
+    job_id: uuid.UUID
+    status: str  # "running" | "done" | "failed"
+    documents: dict[str, OcrJobDocumentStatus] = {}
+    error: str | None = None

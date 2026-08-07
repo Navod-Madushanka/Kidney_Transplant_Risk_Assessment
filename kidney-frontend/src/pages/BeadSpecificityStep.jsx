@@ -1,5 +1,5 @@
 // src/pages/BeadSpecificityStep.jsx
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useWizard } from "../hooks/useWizard"
 import InputField from "../components/ui/InputField"
@@ -30,6 +30,27 @@ export default function BeadSpecificityStep() {
 
   const [rows, setRows] = useState(() => rowsFromWizardState(state.bead_specificity))
   const [rowErrors, setRowErrors] = useState({})
+
+  // Bead charts routinely run to 50+ rows — these narrow what's rendered
+  // so a doctor reviewing/verifying OCR-extracted values isn't stuck
+  // scrolling through all of them to find one antigen or reach Continue.
+  // Separate fields (not a combined search) since MFI values are numeric
+  // and antigen names aren't, and a doctor typically knows which one
+  // they're looking up by.
+  const [antigenFilter, setAntigenFilter] = useState("")
+  const [mfiFilter, setMfiFilter] = useState("")
+  const hasActiveFilter = antigenFilter.trim() !== "" || mfiFilter.trim() !== ""
+
+  const visibleRows = useMemo(() => {
+    if (!hasActiveFilter) return rows
+    const antigenTerm = antigenFilter.trim().toLowerCase()
+    const mfiTerm = mfiFilter.trim().toLowerCase()
+    return rows.filter((row) => {
+      const matchesAntigen = !antigenTerm || row.antigen.toLowerCase().includes(antigenTerm)
+      const matchesMfi = !mfiTerm || row.mfi.toLowerCase().includes(mfiTerm)
+      return matchesAntigen && matchesMfi
+    })
+  }, [rows, antigenFilter, mfiFilter, hasActiveFilter])
 
   function updateRow(rowId, field, value) {
     setRows((prev) => {
@@ -101,7 +122,13 @@ export default function BeadSpecificityStep() {
     })
 
     setRowErrors(nextRowErrors)
-    if (Object.keys(nextRowErrors).length > 0) return
+    if (Object.keys(nextRowErrors).length > 0) {
+      // A row failing validation could be hidden behind an active search —
+      // clear it so the doctor can actually see what needs fixing.
+      setAntigenFilter("")
+      setMfiFilter("")
+      return
+    }
 
     actions.setBeadSpecificity(populatedRows)
     actions.unlockStep(5)
@@ -119,31 +146,64 @@ export default function BeadSpecificityStep() {
       </div>
 
       <Card>
-        <div className="flex flex-col gap-3">
-          {rows.map((row) => (
-            <div key={row.rowId} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-start">
-              <InputField
-                placeholder="Antigen (e.g. B*44:02)"
-                value={row.antigen}
-                onChange={(e) => updateRow(row.rowId, "antigen", e.target.value)}
-                error={rowErrors[row.rowId]}
-              />
-              <InputField
-                placeholder="MFI value"
-                inputMode="decimal"
-                value={row.mfi}
-                onChange={(e) => updateRow(row.rowId, "mfi", e.target.value)}
-              />
-              <button
-                type="button"
-                onClick={() => removeRow(row.rowId)}
-                aria-label="Remove row"
-                className="h-11 w-11 flex items-center justify-center text-text-muted hover:text-high-risk"
-              >
-                ✕
-              </button>
-            </div>
-          ))}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <InputField
+            label="Search by antigen/bead name"
+            placeholder="e.g. B*44:02"
+            value={antigenFilter}
+            onChange={(e) => setAntigenFilter(e.target.value)}
+          />
+          <InputField
+            label="Search by MFI value"
+            placeholder="e.g. 3500"
+            inputMode="decimal"
+            value={mfiFilter}
+            onChange={(e) => setMfiFilter(e.target.value)}
+          />
+        </div>
+
+        {hasActiveFilter && (
+          <p className="text-[13px] text-text-muted mt-3">
+            Showing {visibleRows.length} of {rows.length} rows
+          </p>
+        )}
+      </Card>
+
+      <Card>
+        {/* Bead charts routinely run to 50+ rows — scrolling this list
+            internally (rather than the whole page) keeps Back/Continue
+            reachable without hunting for them below a long list. */}
+        <div className="flex flex-col gap-3 max-h-105 overflow-y-auto pr-1">
+          {visibleRows.length === 0 ? (
+            <p className="text-[14px] text-text-muted text-center py-4">
+              No rows match your search.
+            </p>
+          ) : (
+            visibleRows.map((row) => (
+              <div key={row.rowId} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-start">
+                <InputField
+                  placeholder="Antigen (e.g. B*44:02)"
+                  value={row.antigen}
+                  onChange={(e) => updateRow(row.rowId, "antigen", e.target.value)}
+                  error={rowErrors[row.rowId]}
+                />
+                <InputField
+                  placeholder="MFI value"
+                  inputMode="decimal"
+                  value={row.mfi}
+                  onChange={(e) => updateRow(row.rowId, "mfi", e.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={() => removeRow(row.rowId)}
+                  aria-label="Remove row"
+                  className="h-11 w-11 flex items-center justify-center text-text-muted hover:text-high-risk"
+                >
+                  ✕
+                </button>
+              </div>
+            ))
+          )}
         </div>
       </Card>
 

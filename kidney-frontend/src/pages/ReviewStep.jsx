@@ -182,13 +182,17 @@ export default function ReviewStep() {
         {state.bead_specificity.length === 0 ? (
           <p className="text-[14px] text-text-muted">No bead specificity data entered.</p>
         ) : (
+          // Bead charts routinely run to 50+ rows — scrolling this table
+          // internally (rather than the whole page) keeps Back/Submit
+          // reachable without hunting for them below a long list.
           <Table
             columns={[
               { key: "antigen", label: "Antigen" },
               { key: "mfi", label: "MFI", align: "right" },
             ]}
             rows={state.bead_specificity}
-            getRowId={(row) => row.antigen}
+            getRowId={(row, index) => `${row.antigen}-${index}`}
+            className="max-h-105 overflow-y-auto"
           />
         )}
       </Card>

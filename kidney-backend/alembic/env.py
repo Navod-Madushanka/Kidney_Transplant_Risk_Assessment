@@ -16,6 +16,7 @@ from app.models import (  # noqa: F401
     DonorHLATyping,
     Hospital,
     MatchReport,
+    OcrExtractionJob,
     Patient,
     PatientHLATyping,
     SensitizationEvent,

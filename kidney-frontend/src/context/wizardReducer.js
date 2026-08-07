@@ -82,6 +82,23 @@ export function buildInitialWizardState() {
     // reached, so ProtectedRoute-style guards can block jumping ahead via a
     // typed URL, while still allowing free navigation backward.
     furthestStepIndex: 0,
+
+    // Tracks the current/last document-extraction job, if any. Lives here
+    // (rather than as PhotoUploadsStep local state) specifically so it
+    // survives navigating to another wizard step — extraction runs as a
+    // background job on kidney-backend (see app/services/ocr_job_service.py)
+    // that keeps going regardless of which page is open, and
+    // WizardProvider's polling effect (not any one step component) is what
+    // watches jobId and feeds completed documents into the fields above via
+    // HYDRATE_FROM_OCR. Without this living at the wizard level, navigating
+    // away from Photos mid-extraction used to silently kill every visible
+    // sign of progress even though the extraction itself kept running.
+    extraction: {
+      jobId: null,
+      status: "idle", // idle | running | done | failed
+      documents: {}, // { [document_type]: { status, completed, total, errors, ... } } -- last poll snapshot
+      error: null,
+    },
   };
 }
 
@@ -99,6 +116,9 @@ export const WIZARD_ACTIONS = {
   UNLOCK_STEP: "UNLOCK_STEP",
   RESET: "RESET",
   SET_SENSITIZATION_DATE: "SET_SENSITIZATION_DATE",
+  START_EXTRACTION_JOB: "START_EXTRACTION_JOB",
+  SET_EXTRACTION_JOB_STATUS: "SET_EXTRACTION_JOB_STATUS",
+  SET_EXTRACTION_JOB_ERROR: "SET_EXTRACTION_JOB_ERROR",
 };
 
 function updateHlaRow(rows, locus, patch) {
@@ -212,6 +232,45 @@ export function wizardReducer(state, action) {
           ...state.sensitization_dates,
           [action.eventType]: action.date,
         },
+      };
+
+    // Fired the moment POST /ocr/extract-batch/jobs returns a job_id --
+    // seeds one "pending" entry per requested document so the progress
+    // list has something to show immediately, before the background job
+    // has even started running.
+    case WIZARD_ACTIONS.START_EXTRACTION_JOB: {
+      const documents = {};
+      for (const documentType of action.documentTypes) {
+        documents[documentType] = { status: "pending", completed: 0, total: 1, errors: [] };
+      }
+      return {
+        ...state,
+        extraction: { jobId: action.jobId, status: "running", documents, error: null },
+      };
+    }
+
+    // Applies one GET .../jobs/{id} poll response -- a full snapshot, not
+    // a delta, so this just replaces extraction.documents/status wholesale
+    // rather than merging. WizardProvider's polling effect is what decides
+    // when a document has newly finished and dispatches HYDRATE_FROM_OCR
+    // for it separately; this action only updates the progress list itself.
+    case WIZARD_ACTIONS.SET_EXTRACTION_JOB_STATUS:
+      return {
+        ...state,
+        extraction: {
+          ...state.extraction,
+          status: action.status,
+          documents: action.documents,
+        },
+      };
+
+    // A poll request itself failed (network blip, server error) rather
+    // than the job failing -- distinct from a document-level error, which
+    // lives in extraction.documents[...].errors and doesn't stop the job.
+    case WIZARD_ACTIONS.SET_EXTRACTION_JOB_ERROR:
+      return {
+        ...state,
+        extraction: { ...state.extraction, status: "failed", error: action.error },
       };
 
     default:

@@ -1,7 +1,7 @@
 # app/models/patient_report_file.py
 import uuid
 
-from sqlalchemy import Enum, ForeignKey
+from sqlalchemy import Enum, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -11,6 +11,11 @@ from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 
 class PatientReportFile(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "patient_report_files"
+    __table_args__ = (
+        UniqueConstraint(
+            "patient_id", "category", name="uq_patient_report_files_patient_id_category"
+        ),
+    )
 
     patient_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("patients.id"), nullable=False, index=True

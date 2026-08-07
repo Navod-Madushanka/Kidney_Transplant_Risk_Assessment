@@ -163,6 +163,103 @@ describe("HYDRATE_FROM_OCR", () => {
   })
 })
 
+describe("buildInitialWizardState extraction", () => {
+  it("starts idle with no job and an empty document map", () => {
+    const state = buildInitialWizardState()
+
+    expect(state.extraction).toEqual({
+      jobId: null,
+      status: "idle",
+      documents: {},
+      error: null,
+    })
+  })
+})
+
+describe("START_EXTRACTION_JOB", () => {
+  it("seeds one pending entry per requested document type and marks the job running", () => {
+    const state = buildInitialWizardState()
+
+    const next = wizardReducer(state, {
+      type: WIZARD_ACTIONS.START_EXTRACTION_JOB,
+      jobId: "job-1",
+      documentTypes: ["hla_typing_report", "crossmatch_report"],
+    })
+
+    expect(next.extraction.jobId).toBe("job-1")
+    expect(next.extraction.status).toBe("running")
+    expect(next.extraction.documents).toEqual({
+      hla_typing_report: { status: "pending", completed: 0, total: 1, errors: [] },
+      crossmatch_report: { status: "pending", completed: 0, total: 1, errors: [] },
+    })
+  })
+
+  it("replaces a prior job's state entirely, discarding its old progress", () => {
+    const withOldJob = wizardReducer(buildInitialWizardState(), {
+      type: WIZARD_ACTIONS.SET_EXTRACTION_JOB_STATUS,
+      status: "done",
+      documents: { hla_typing_report: { status: "done", completed: 1, total: 1, errors: [] } },
+    })
+
+    const next = wizardReducer(withOldJob, {
+      type: WIZARD_ACTIONS.START_EXTRACTION_JOB,
+      jobId: "job-2",
+      documentTypes: ["bead_specificity_page_1"],
+    })
+
+    expect(next.extraction.jobId).toBe("job-2")
+    expect(next.extraction.status).toBe("running")
+    expect(next.extraction.documents).toEqual({
+      bead_specificity_page_1: { status: "pending", completed: 0, total: 1, errors: [] },
+    })
+  })
+})
+
+describe("SET_EXTRACTION_JOB_STATUS", () => {
+  it("replaces status and documents wholesale from a poll snapshot", () => {
+    const started = wizardReducer(buildInitialWizardState(), {
+      type: WIZARD_ACTIONS.START_EXTRACTION_JOB,
+      jobId: "job-1",
+      documentTypes: ["bead_specificity_page_1"],
+    })
+
+    const next = wizardReducer(started, {
+      type: WIZARD_ACTIONS.SET_EXTRACTION_JOB_STATUS,
+      status: "running",
+      documents: {
+        bead_specificity_page_1: { status: "in_progress", completed: 3, total: 8, errors: [] },
+      },
+    })
+
+    expect(next.extraction.jobId).toBe("job-1") // untouched by this action
+    expect(next.extraction.status).toBe("running")
+    expect(next.extraction.documents.bead_specificity_page_1).toEqual({
+      status: "in_progress",
+      completed: 3,
+      total: 8,
+      errors: [],
+    })
+  })
+})
+
+describe("SET_EXTRACTION_JOB_ERROR", () => {
+  it("marks the job failed and records the error message", () => {
+    const started = wizardReducer(buildInitialWizardState(), {
+      type: WIZARD_ACTIONS.START_EXTRACTION_JOB,
+      jobId: "job-1",
+      documentTypes: ["hla_typing_report"],
+    })
+
+    const next = wizardReducer(started, {
+      type: WIZARD_ACTIONS.SET_EXTRACTION_JOB_ERROR,
+      error: "Couldn't reach the server",
+    })
+
+    expect(next.extraction.status).toBe("failed")
+    expect(next.extraction.error).toBe("Couldn't reach the server")
+  })
+})
+
 describe("RESET", () => {
   it("returns a fresh initial state, discarding all progress", () => {
     const dirtyState = wizardReducer(buildInitialWizardState(), {

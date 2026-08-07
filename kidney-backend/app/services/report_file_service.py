@@ -93,9 +93,31 @@ def absolute_path_for(report_file: PatientReportFile | DonorReportFile) -> Path:
 async def create_patient_report_file(
     db: AsyncSession, patient_id: uuid.UUID, category: ReportFileCategory, file: UploadFile
 ) -> PatientReportFile:
+    """Create (or replace) the report file for this patient's category slot.
+
+    Each category is a dedicated, nullable slot rather than an open-ended
+    list — re-uploading to a filled slot replaces the previous file, both
+    the DB row and the bytes on disk.
+    """
     _validate_content_type(file.content_type)
+
+    existing = await db.execute(
+        select(PatientReportFile).where(
+            PatientReportFile.patient_id == patient_id,
+            PatientReportFile.category == category,
+        )
+    )
+    existing_report_file = existing.scalar_one_or_none()
+
     relative_path = _build_storage_path("patients", patient_id, file.content_type)
     size = await _save_upload(file, relative_path)
+
+    if existing_report_file is not None:
+        old_storage_path = existing_report_file.storage_path
+        await db.execute(
+            delete(PatientReportFile).where(PatientReportFile.id == existing_report_file.id)
+        )
+        _delete_from_disk(old_storage_path)
 
     report_file = PatientReportFile(
         patient_id=patient_id,
@@ -155,9 +177,31 @@ async def delete_patient_report_file(
 async def create_donor_report_file(
     db: AsyncSession, donor_id: uuid.UUID, category: ReportFileCategory, file: UploadFile
 ) -> DonorReportFile:
+    """Create (or replace) the report file for this donor's category slot.
+
+    Each category is a dedicated, nullable slot rather than an open-ended
+    list — re-uploading to a filled slot replaces the previous file, both
+    the DB row and the bytes on disk.
+    """
     _validate_content_type(file.content_type)
+
+    existing = await db.execute(
+        select(DonorReportFile).where(
+            DonorReportFile.donor_id == donor_id,
+            DonorReportFile.category == category,
+        )
+    )
+    existing_report_file = existing.scalar_one_or_none()
+
     relative_path = _build_storage_path("donors", donor_id, file.content_type)
     size = await _save_upload(file, relative_path)
+
+    if existing_report_file is not None:
+        old_storage_path = existing_report_file.storage_path
+        await db.execute(
+            delete(DonorReportFile).where(DonorReportFile.id == existing_report_file.id)
+        )
+        _delete_from_disk(old_storage_path)
 
     report_file = DonorReportFile(
         donor_id=donor_id,

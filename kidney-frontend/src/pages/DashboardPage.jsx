@@ -82,6 +82,12 @@ export default function DashboardPage() {
           New compatibility check
         </Button>
       </Link>
+      <Link
+        to="/checks/start-from-records"
+        className="text-[13px] font-semibold text-accent text-center -mt-3"
+      >
+        Start from an existing patient &amp; donor's records instead
+      </Link>
 
       {reportsState.status === "loaded" && <HaltedReportBanner reports={reportsState.reports} />}
 

@@ -7,6 +7,7 @@ from app.models.donor_hla_typing import DonorHLATyping
 from app.models.donor_report_file import DonorReportFile
 from app.models.hospital import Hospital
 from app.models.match_report import MatchReport
+from app.models.ocr_extraction_job import OcrExtractionJob
 from app.models.patient import Patient
 from app.models.patient_hla_typing import PatientHLATyping
 from app.models.patient_report_file import PatientReportFile

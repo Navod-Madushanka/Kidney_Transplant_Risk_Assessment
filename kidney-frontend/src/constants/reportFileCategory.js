@@ -5,7 +5,8 @@
 export const REPORT_FILE_CATEGORY_OPTIONS = [
   { value: "hla_typing_report", label: "HLA Typing Report" },
   { value: "crossmatch_report", label: "Crossmatch Report" },
-  { value: "bead_specificity_chart", label: "Bead Specificity Chart" },
+  { value: "bead_specificity_chart_page_1", label: "Bead Specificity Chart — Page 1" },
+  { value: "bead_specificity_chart_page_2", label: "Bead Specificity Chart — Page 2" },
   { value: "other", label: "Other" },
 ]
 

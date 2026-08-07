@@ -94,6 +94,56 @@ async def test_upload_requires_own_patient(
     assert response.status_code == 404
 
 
+async def test_uploading_to_a_filled_category_replaces_the_previous_file(
+    auth_client: AsyncClient,
+):
+    patient = await create_patient(auth_client)
+    first = await _upload(auth_client, "patients", patient["id"], filename="typing-v1.pdf")
+    assert first.status_code == 201
+    first_id = first.json()["id"]
+
+    second = await _upload(auth_client, "patients", patient["id"], filename="typing-v2.pdf")
+    assert second.status_code == 201
+    second_id = second.json()["id"]
+    assert second_id != first_id
+
+    listed = await auth_client.get(f"/patients/{patient['id']}/report-files")
+    assert listed.status_code == 200
+    files = listed.json()
+    assert len(files) == 1
+    assert files[0]["id"] == second_id
+    assert files[0]["original_filename"] == "typing-v2.pdf"
+
+    download = await auth_client.get(
+        f"/patients/{patient['id']}/report-files/{first_id}/download"
+    )
+    assert download.status_code == 404
+
+
+async def test_uploading_to_a_filled_category_removes_old_file_from_disk(
+    auth_client: AsyncClient,
+):
+    patient = await create_patient(auth_client)
+    await _upload(auth_client, "patients", patient["id"], filename="typing-v1.pdf")
+
+    settings = get_settings()
+    absolute_path = Path(settings.report_files_storage_dir) / f"patients/{patient['id']}"
+    assert len(list(absolute_path.glob("*"))) == 1
+
+    await _upload(auth_client, "patients", patient["id"], filename="typing-v2.pdf")
+
+    assert len(list(absolute_path.glob("*"))) == 1
+
+
+async def test_uploading_different_categories_keeps_both(auth_client: AsyncClient):
+    patient = await create_patient(auth_client)
+    await _upload(auth_client, "patients", patient["id"], category="hla_typing_report")
+    await _upload(auth_client, "patients", patient["id"], category="crossmatch_report")
+
+    listed = await auth_client.get(f"/patients/{patient['id']}/report-files")
+    assert len(listed.json()) == 2
+
+
 async def test_list_returns_only_this_doctors_files(
     auth_client: AsyncClient, second_auth_client: AsyncClient
 ):
@@ -222,6 +272,21 @@ async def test_upload_list_download_delete_donor_report_file(auth_client: AsyncC
 
     deleted = await auth_client.delete(f"/donors/{donor['id']}/report-files/{file_id}")
     assert deleted.status_code == 204
+
+
+async def test_donor_uploading_to_a_filled_category_replaces_the_previous_file(
+    auth_client: AsyncClient,
+):
+    donor = await create_donor(auth_client)
+    first = await _upload(auth_client, "donors", donor["id"], filename="typing-v1.pdf")
+    second = await _upload(auth_client, "donors", donor["id"], filename="typing-v2.pdf")
+
+    assert second.json()["id"] != first.json()["id"]
+
+    listed = await auth_client.get(f"/donors/{donor['id']}/report-files")
+    files = listed.json()
+    assert len(files) == 1
+    assert files[0]["original_filename"] == "typing-v2.pdf"
 
 
 async def test_donor_report_file_routes_require_ownership(

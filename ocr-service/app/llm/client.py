@@ -18,9 +18,12 @@ principle is "OCR fails loud, an LLM can fail quiet" — this client is
 written to fail loud too.
 """
 import json
+import logging
 import re
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 REQUEST_TIMEOUT_SECONDS = 180.0  # Widened 2026-08-01 after a real run: the FIRST
                                    # request after a container (re)start has to pay a
@@ -89,6 +92,9 @@ async def chat_json(
         "format": "json",
         "stream": False,
         "think": False,
+        "keep_alive": -1,  # never unload between calls — matches OLLAMA_KEEP_ALIVE=-1
+                            # on the container (docker-compose.yml); belt-and-suspenders
+                            # for the case this client ever talks to an untuned instance.
         "options": {
             "temperature": 0,
             "num_ctx": num_ctx,
@@ -153,6 +159,7 @@ async def _post(client: httpx.AsyncClient, base_url: str, payload: dict, label: 
         raise LLMExtractionError(f"Couldn't reach Ollama for {label}: {e}") from e
 
     body = response.json()
+    _log_timing(label, body)
     message = body.get("message", {})
     content = message.get("content", "")
     if not content:
@@ -171,6 +178,34 @@ async def _post(client: httpx.AsyncClient, base_url: str, payload: dict, label: 
             f"variant may not be built correctly."
         )
     return content
+
+
+# Phase 1 speed pass (2026-08-04, see claude/ocr-pipeline-optimization-plan.md
+# 0.2): Ollama returns these token/duration fields on every /api/chat
+# response for free. Logging them is what turns "does the speed pass help"
+# from a stopwatch guess into a real before/after number — without this,
+# there's no way to tell a GPU-resident 50 tok/s run from a CPU-offloaded
+# 8 tok/s one after the fact.
+def _log_timing(label: str, body: dict) -> None:
+    prompt_eval_count = body.get("prompt_eval_count")
+    eval_count = body.get("eval_count")
+    eval_duration = body.get("eval_duration")  # nanoseconds
+    load_duration = body.get("load_duration")  # nanoseconds
+
+    decode_tok_s = None
+    if eval_count and eval_duration:
+        decode_tok_s = eval_count / (eval_duration / 1e9)
+
+    logger.info(
+        "ollama_timing label=%s prompt_eval_count=%s eval_count=%s "
+        "eval_duration_s=%s load_duration_s=%s decode_tok_s=%s",
+        label,
+        prompt_eval_count,
+        eval_count,
+        f"{eval_duration / 1e9:.2f}" if eval_duration else None,
+        f"{load_duration / 1e9:.2f}" if load_duration else None,
+        f"{decode_tok_s:.1f}" if decode_tok_s else None,
+    )
 
 
 def _try_parse_json(text: str) -> dict | None:

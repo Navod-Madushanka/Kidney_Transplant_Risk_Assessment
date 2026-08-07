@@ -1,8 +1,16 @@
 # app/api/routes.py
+import json
+
 from fastapi import APIRouter, UploadFile, File, Form, Header, HTTPException
+from fastapi.responses import StreamingResponse
 
 from app.core.config import settings
-from app.extraction.llm_extract import extract_bead_specificity, extract_crossmatch, extract_hla_typing
+from app.extraction.llm_extract import (
+    extract_bead_specificity,
+    extract_bead_specificity_stream,
+    extract_crossmatch,
+    extract_hla_typing,
+)
 from app.llm.client import LLMExtractionError
 
 router = APIRouter()
@@ -21,12 +29,14 @@ async def _run_extraction(document_type: str, image_bytes: bytes) -> dict:
     raise ValueError(f"Unhandled document_type: {document_type}")
 
 
-@router.post("/extract")
-async def extract_report(
-    file: UploadFile = File(...),
-    document_type: str = Form(...),
-    x_internal_api_key: str = Header(...),
-) -> dict:
+async def _authorize_and_read(
+    file: UploadFile, document_type: str, x_internal_api_key: str
+) -> bytes:
+    """Shared upfront validation for both /extract and /extract/stream —
+    auth, document_type, content-type, and size checks all raise a normal
+    HTTPException, so they're done here BEFORE a streaming response ever
+    starts (once StreamingResponse begins, failures can no longer come back
+    as a clean JSON error body)."""
     if x_internal_api_key != settings.ocr_service_api_key:
         raise HTTPException(status_code=401, detail="Invalid API key")
 
@@ -49,6 +59,16 @@ async def extract_report(
             status_code=413,
             detail=f"File too large. Max size is {settings.max_upload_size_mb}MB.",
         )
+    return contents
+
+
+@router.post("/extract")
+async def extract_report(
+    file: UploadFile = File(...),
+    document_type: str = Form(...),
+    x_internal_api_key: str = Header(...),
+) -> dict:
+    contents = await _authorize_and_read(file, document_type, x_internal_api_key)
 
     # No more temp-file-on-disk step — that existed only because PaddleOCR's
     # predict() took a file path. The LLM client works directly off the
@@ -75,3 +95,64 @@ async def extract_report(
         # to repurpose rather than needing to fabricate equivalents.
         "raw": {"model": settings.ollama_model},
     }
+
+
+@router.post("/extract/stream")
+async def extract_report_stream(
+    file: UploadFile = File(...),
+    document_type: str = Form(...),
+    x_internal_api_key: str = Header(...),
+):
+    """Streaming variant of /extract, for bead_specificity only — the one
+    document type slow enough (8 sequential vision-model calls, 1.5-3 min
+    a page) that a caller waiting on a single request/response round trip
+    has no way to show real progress. Yields NDJSON lines: one
+    {"type": "progress", "completed": N, "total": 8} per tile completion
+    (starting at N=0 before any tile has run), then a final
+    {"type": "result", "document_type": ..., "structured": {...}, "raw":
+    {...}} in the same shape /extract returns. kidney-backend's
+    ocr_client.call_ocr_service_stream is the only caller today; HLA
+    typing/crossmatch are single LLM calls with no intermediate signal to
+    report, so they stay on /extract.
+    """
+    # Auth/content-type/size checks happen first, same order /extract uses
+    # — an unauthenticated or malformed request shouldn't get a different
+    # error just because it also picked the wrong document_type.
+    contents = await _authorize_and_read(file, document_type, x_internal_api_key)
+
+    if document_type != "bead_specificity":
+        raise HTTPException(
+            status_code=422,
+            detail="/extract/stream only supports document_type=bead_specificity; use /extract for others.",
+        )
+
+    async def _generate():
+        # No try/except around the tile loop here: _run_tile inside
+        # extract_bead_specificity_stream already catches LLMExtractionError
+        # per-tile (a bad tile becomes a None result + a failed-tile count
+        # in the final warning, not a raised exception) — see that
+        # function's docstring. If ocr-service dies mid-stream some other
+        # way, the connection just drops; kidney-backend's
+        # stream_batch_extraction already wraps its whole call to
+        # call_ocr_service_stream in a try/except and turns that into a
+        # per-document error chunk instead of failing the whole batch.
+        async for event in extract_bead_specificity_stream(contents):
+            if event["type"] == "progress":
+                yield json.dumps(
+                    {"type": "progress", "completed": event["completed"], "total": event["total"]}
+                ) + "\n"
+            else:
+                yield json.dumps(
+                    {
+                        "type": "result",
+                        "document_type": document_type,
+                        "structured": event["structured"],
+                        "raw": {"model": settings.ollama_model},
+                    }
+                ) + "\n"
+
+    return StreamingResponse(
+        _generate(),
+        media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

@@ -21,8 +21,10 @@ fields.
 import asyncio
 import base64
 import re
+from typing import AsyncIterator
 
 from app.core.config import settings
+from app.extraction.preprocessing import orient_image
 from app.extraction.tiling import make_row_band_tiles
 from app.llm.client import LLMExtractionError, chat_json
 from app.llm.prompts import BEAD_SPECIFICITY_PROMPT, CROSSMATCH_PROMPT, HLA_TYPING_PROMPT
@@ -36,6 +38,7 @@ def _b64(image_bytes: bytes) -> str:
 
 
 async def extract_hla_typing(image_bytes: bytes) -> dict:
+    image_bytes = orient_image(image_bytes)
     result = await chat_json(
         settings.ollama_model, settings.ollama_base_url, HLA_TYPING_PROMPT, _b64(image_bytes),
         label="hla_typing_report",
@@ -78,6 +81,7 @@ def _validate_hla_rows(rows) -> tuple[list[dict], str | None]:
 
 
 async def extract_crossmatch(image_bytes: bytes) -> dict:
+    image_bytes = orient_image(image_bytes)
     result = await chat_json(
         settings.ollama_model, settings.ollama_base_url, CROSSMATCH_PROMPT, _b64(image_bytes),
         label="crossmatch",
@@ -154,30 +158,63 @@ BEAD_SPECIFICITY_ALWAYS_VERIFY_WARNING = "ai_extracted_verify_against_source_ima
 CONCURRENT_TILE_LIMIT = 1
 
 
-async def extract_bead_specificity(image_bytes: bytes) -> dict:
-    """Tiles the page into row-bands and runs tiles with bounded
-    concurrency (see CONCURRENT_TILE_LIMIT above for why this isn't
-    unbounded asyncio.gather anymore). One tile failing (timeout,
-    repetition-loop JSON breakage) doesn't take down the others."""
-    tiles = make_row_band_tiles(image_bytes)
-    semaphore = asyncio.Semaphore(CONCURRENT_TILE_LIMIT)
+async def extract_bead_specificity_stream(image_bytes: bytes) -> AsyncIterator[dict]:
+    """Same extraction as extract_bead_specificity, but yields progress as
+    each of the 8 row-band tiles finishes instead of only returning once
+    the whole page is done. This is the one document type slow enough
+    (1.5-3 min, 8 sequential vision-model calls) that a caller waiting on
+    a single 0%->100% jump is a real UX problem — see routes.py's
+    /extract/stream, which this feeds.
 
-    async def _run_tile(index: int, tile_bytes: bytes):
+    Yields {"type": "progress", "completed": N, "total": len(tiles)} once
+    per tile completion (starting with N=0 before any tile has run, so a
+    caller knows the total immediately), then exactly one final
+    {"type": "result", "structured": {...}} with the same shape
+    extract_bead_specificity used to return directly.
+
+    Tiles still run with the same CONCURRENT_TILE_LIMIT-bounded concurrency
+    as before (see that constant's comment for why it's 1 today) — this
+    only adds a queue so completions can be observed and yielded as they
+    happen rather than all at once via asyncio.gather.
+    """
+    # Orient (EXIF rotation only) BEFORE tiling — make_row_band_tiles crops
+    # by raw pixel coordinates assuming the page is already upright. No
+    # pixel-count cap here (see preprocessing.py's module docstring — that
+    # part of the Phase 1 speed pass was reverted after it caused a real,
+    # reproducible clinical-data misread in testing).
+    image_bytes = orient_image(image_bytes)
+    tiles = make_row_band_tiles(image_bytes)
+    total = len(tiles)
+    semaphore = asyncio.Semaphore(CONCURRENT_TILE_LIMIT)
+    completions: asyncio.Queue = asyncio.Queue()
+
+    async def _run_tile(index: int, tile_bytes: bytes) -> None:
         async with semaphore:
             try:
                 result = await chat_json(
                     settings.ollama_model, settings.ollama_base_url, BEAD_SPECIFICITY_PROMPT, _b64(tile_bytes),
-                    label=f"bead_specificity tile {index + 1}/{len(tiles)}",
+                    label=f"bead_specificity tile {index + 1}/{total}",
                     num_ctx=8192, num_predict=1536,
                 )
                 rows = result.get("bead_specificity", [])
-                return rows if isinstance(rows, list) else []
+                rows = rows if isinstance(rows, list) else []
             except LLMExtractionError:
-                return None  # one bad tile shouldn't take down the whole page
+                rows = None  # one bad tile shouldn't take down the whole page
+        await completions.put((index, rows))
 
-    tile_results = await asyncio.gather(*(_run_tile(i, t) for i, t in enumerate(tiles)))
+    tasks = [asyncio.create_task(_run_tile(i, t)) for i, t in enumerate(tiles)]
+
+    yield {"type": "progress", "completed": 0, "total": total}
+
+    tile_results: list = [None] * total
+    for completed in range(1, total + 1):
+        index, rows = await completions.get()
+        tile_results[index] = rows
+        yield {"type": "progress", "completed": completed, "total": total}
+
+    await asyncio.gather(*tasks)  # already finished (each puts before returning); surfaces any stray exception
+
     failed_tiles = sum(1 for r in tile_results if r is None)
-
     all_rows = [row for rows in tile_results if rows for row in rows]
     merged = _dedupe_rows(all_rows)
 
@@ -185,7 +222,18 @@ async def extract_bead_specificity(image_bytes: bytes) -> dict:
     if failed_tiles:
         warning = f"{failed_tiles}_of_{len(tiles)}_tiles_failed_{warning}"
 
-    return {"bead_specificity": merged, "warning": warning}
+    yield {"type": "result", "structured": {"bead_specificity": merged, "warning": warning}}
+
+
+async def extract_bead_specificity(image_bytes: bytes) -> dict:
+    """Non-streaming callers (the /extract-batch batch endpoint): drains
+    extract_bead_specificity_stream and returns just the final structured
+    result, discarding the intermediate progress events."""
+    structured: dict = {}
+    async for event in extract_bead_specificity_stream(image_bytes):
+        if event["type"] == "result":
+            structured = event["structured"]
+    return structured
 
 
 def _dedupe_rows(rows: list[dict]) -> list[dict]:

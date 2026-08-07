@@ -25,8 +25,20 @@ class DonorStatus(str, enum.Enum):
 class ReportFileCategory(str, enum.Enum):
     HLA_TYPING_REPORT = "hla_typing_report"
     CROSSMATCH_REPORT = "crossmatch_report"
-    BEAD_SPECIFICITY_CHART = "bead_specificity_chart"
+    # Split into two dedicated pages (rather than one "bead_specificity_chart"
+    # slot) to mirror the compatibility-check wizard's own two bead-specificity
+    # upload slots (see PhotoUploadsStep.jsx's UPLOAD_SLOTS) -- a chart that
+    # runs to a second page needs both pages archived to feed OCR extraction
+    # completely.
+    BEAD_SPECIFICITY_CHART_PAGE_1 = "bead_specificity_chart_page_1"
+    BEAD_SPECIFICITY_CHART_PAGE_2 = "bead_specificity_chart_page_2"
     OTHER = "other"
+
+
+class OcrExtractionJobStatus(str, enum.Enum):
+    RUNNING = "running"
+    DONE = "done"
+    FAILED = "failed"
 
 
 class HLALocusEnum(str, enum.Enum):

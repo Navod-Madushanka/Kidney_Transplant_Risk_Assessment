@@ -172,3 +172,30 @@ export async function apiDownloadFile(path, filename) {
   anchor.remove()
   URL.revokeObjectURL(url)
 }
+
+// Same auth-aware fetch as apiDownloadFile, but hands the bytes back to the
+// caller as a Blob instead of triggering a save-as download -- for callers
+// that want to do something with the bytes themselves (e.g. re-wrap them as
+// a File to feed into another upload flow) rather than hand them to the
+// browser's download UI.
+export async function apiGetBlob(path) {
+  const session = readSession()
+  const headers = {}
+  if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`
+
+  const response = await fetch(`${BASE_URL}${path}`, { headers })
+
+  if (response.status === 401) {
+    clearSession()
+    onAuthExpired?.()
+  }
+
+  if (!response.ok) {
+    let data = null
+    const contentType = response.headers.get("content-type") || ""
+    if (contentType.includes("application/json")) data = await response.json()
+    throw new ApiError(extractErrorMessage(data, response.status), response.status, data)
+  }
+
+  return response.blob()
+}

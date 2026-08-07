@@ -1,18 +1,39 @@
 // src/context/WizardProvider.jsx
 import { useMemo, useReducer } from "react";
+import { useLocation } from "react-router-dom";
 import { WizardContext } from "./WizardContext";
 import {
   buildInitialWizardState,
   wizardReducer,
   WIZARD_ACTIONS,
 } from "./wizardReducer";
+import { useExtractionJobPolling } from "../hooks/useExtractionJobPolling";
 
 export function WizardProvider({ children }) {
+  // NewCheckFromRecordsPage.jsx navigates here with
+  // `state: { prefillPhotos }` when a doctor starts a check from an
+  // existing patient/donor's archived report files, so the Photos step
+  // opens with those slots already filled in -- same as if the doctor had
+  // picked the files themselves. Read via useReducer's lazy-init argument
+  // (not an effect) so it's applied exactly once, at the initial state
+  // construction, and never re-runs on later in-wizard navigation.
+  const location = useLocation();
+
   const [state, dispatch] = useReducer(
     wizardReducer,
-    undefined,
-    buildInitialWizardState
+    location.state?.prefillPhotos,
+    (prefillPhotos) => {
+      const initial = buildInitialWizardState();
+      if (!prefillPhotos) return initial;
+      return { ...initial, photos: { ...initial.photos, ...prefillPhotos } };
+    }
   );
+
+  // Lives here rather than in PhotoUploadsStep so the poll loop survives
+  // navigating to any other wizard step -- see
+  // useExtractionJobPolling.js's docstring and extraction's own comment in
+  // wizardReducer.js's buildInitialWizardState.
+  useExtractionJobPolling(dispatch, state.extraction.jobId, state.extraction.status);
 
   const actions = useMemo(
     () => ({
@@ -51,6 +72,9 @@ export function WizardProvider({ children }) {
 
       hydrateFromOcr: (payload) =>
         dispatch({ type: WIZARD_ACTIONS.HYDRATE_FROM_OCR, payload }),
+
+      startExtractionJob: (jobId, documentTypes) =>
+        dispatch({ type: WIZARD_ACTIONS.START_EXTRACTION_JOB, jobId, documentTypes }),
 
       reset: () => dispatch({ type: WIZARD_ACTIONS.RESET }),
     }),

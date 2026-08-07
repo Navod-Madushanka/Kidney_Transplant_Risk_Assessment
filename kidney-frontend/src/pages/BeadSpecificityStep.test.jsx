@@ -81,6 +81,51 @@ describe("BeadSpecificityStep", () => {
     expect(await screen.findByText("Review Step")).toBeInTheDocument()
   })
 
+  it("filters rows by antigen and by MFI search independently", async () => {
+    const user = userEvent.setup()
+    const wizardValue = {
+      state: {
+        bead_specificity: [
+          { antigen: "B*44:02", mfi: 3500 },
+          { antigen: "DQ7", mfi: 1200 },
+        ],
+      },
+      actions: { setBeadSpecificity: vi.fn(), unlockStep: vi.fn() },
+    }
+    renderStep(wizardValue)
+
+    expect(screen.getAllByPlaceholderText("Antigen (e.g. B*44:02)")).toHaveLength(3) // 2 rows + trailing blank
+
+    await user.type(screen.getByLabelText("Search by antigen/bead name"), "DQ7")
+    const antigenInputs = screen.getAllByPlaceholderText("Antigen (e.g. B*44:02)")
+    expect(antigenInputs).toHaveLength(1)
+    expect(antigenInputs[0]).toHaveValue("DQ7")
+
+    await user.clear(screen.getByLabelText("Search by antigen/bead name"))
+    await user.type(screen.getByLabelText("Search by MFI value"), "3500")
+    const antigenInputsAfterMfiSearch = screen.getAllByPlaceholderText("Antigen (e.g. B*44:02)")
+    expect(antigenInputsAfterMfiSearch).toHaveLength(1)
+    expect(antigenInputsAfterMfiSearch[0]).toHaveValue("B*44:02")
+  })
+
+  it("shows a no-match message and clears the search if Continue finds a row error hidden behind it", async () => {
+    const user = userEvent.setup()
+    const wizardValue = {
+      state: { bead_specificity: [{ antigen: "DQ7", mfi: 1200 }] },
+      actions: { setBeadSpecificity: vi.fn(), unlockStep: vi.fn() },
+    }
+    renderStep(wizardValue)
+
+    await user.type(screen.getAllByPlaceholderText("MFI value")[0], "not-a-number")
+    await user.type(screen.getByLabelText("Search by antigen/bead name"), "no-such-antigen")
+    expect(screen.getByText("No rows match your search.")).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: /continue/i }))
+
+    expect(await screen.findByText("MFI must be a number")).toBeInTheDocument()
+    expect(screen.getByLabelText("Search by antigen/bead name")).toHaveValue("")
+  })
+
   it("navigates back to the sensitization step without validating", async () => {
     const user = userEvent.setup()
     const wizardValue = makeWizardValue()

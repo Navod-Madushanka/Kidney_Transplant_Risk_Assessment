@@ -133,6 +133,34 @@ Rules:
 # wording regardless, since there's no evidence it needs to change — just
 # don't treat the earlier "prompt wording is the prime suspect" framing
 # above as confirmed; it wasn't.
+# TRIED AND REVERTED 2026-08-04 (Phase 1 speed pass): briefly switched this
+# prompt to a "rows_csv": "<mfi>,<antigen>\n..." single-string CSV envelope
+# instead of the JSON array below, on the theory that a CSV line costs
+# roughly half the tokens of a JSON object per row and output-token volume
+# is the confirmed real bottleneck (see project memory
+# ocr-extraction-speed-investigation). Real live test against
+# sample_mfi_page1.jpg (uv run pytest -m integration -v -s
+# test_bead_specificity_live.py) falsified this HARD: 0/13 anchors matched
+# on all 3 repeated runs (previously this page swung noisily between
+# 1/13-10/13 across attempts — a clean, deterministic zero every time is a
+# different, worse signature). Captured the raw model output directly: the
+# model correctly emitted the first 3 rows, then degenerated into repeating
+# the same "23706.91,DP1" line hundreds of times until hitting the
+# num_predict=1536 cap mid-string, on both the original attempt AND the
+# JSON-retry (eval_count=1536 exactly, both times) -- a repetition-loop
+# hallucination, the exact failure mode tiling+repeat_penalty=1.1 already
+# exist to fight for the JSON format. The CSV format's shorter, more
+# uniform per-row tokens appear to make the model MORE prone to this loop,
+# not less -- each JSON object's extra scaffolding tokens (quotes, keys,
+# colons) apparently break up the exact-repeat sequence better than bare
+# CSV lines do. Also much SLOWER end to end (86min vs the ~40min RUNS=3
+# baseline) from repeated failed-tile retries, not faster. Page 2 did not
+# fail as badly (7/12, consistent across runs) -- this is data-dependent,
+# not a wording typo, so don't just tweak the CSV wording and retry without
+# a real mechanism for why it'd behave differently. If output-token volume
+# is revisited again, a per-request retry-with-lower-repeat-penalty or a
+# hard mid-generation repeat detector is a more promising angle than
+# switching the wire format.
 BEAD_SPECIFICITY_PROMPT = """You are reading ONE PAGE of a "Bead Specificity Chart" — a dense lab
 report table with four columns: "Bead" (a 3-digit code), "Sero" (a short
 antigen name like "A23", "B45,Bw6", "DQ4", "DP1"), "Allele Equiv" (one or

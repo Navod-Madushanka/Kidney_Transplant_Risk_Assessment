@@ -1,7 +1,7 @@
 # app/models/donor_report_file.py
 import uuid
 
-from sqlalchemy import Enum, ForeignKey
+from sqlalchemy import Enum, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -11,6 +11,11 @@ from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 
 class DonorReportFile(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "donor_report_files"
+    __table_args__ = (
+        UniqueConstraint(
+            "donor_id", "category", name="uq_donor_report_files_donor_id_category"
+        ),
+    )
 
     donor_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("donors.id"), nullable=False, index=True

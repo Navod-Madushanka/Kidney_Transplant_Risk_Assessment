@@ -9,7 +9,7 @@
  *       { key: "confidence", label: "Confidence", align: "right" },
  *     ]}
  *     rows={extractedRows}
- *     getRowId={(row) => row.id}
+ *     getRowId={(row, index) => row.id ?? index}
  *     isRowFlagged={(row) => row.confidence < 0.8}
  *     renderCell={(row, col) =>
  *       col.key === "confidence" ? `${Math.round(row.confidence * 100)}%` : row[col.key]
@@ -56,11 +56,11 @@ export default function Table({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => {
+          {rows.map((row, index) => {
             const flagged = isRowFlagged?.(row)
             return (
               <tr
-                key={getRowId(row)}
+                key={getRowId(row, index)}
                 className={[
                   "border-b border-border last:border-b-0",
                   flagged ? "bg-moderate-subtle border-l-4 border-l-moderate" : "",

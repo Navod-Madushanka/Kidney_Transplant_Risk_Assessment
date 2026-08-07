@@ -1,7 +1,16 @@
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.api.routes import router as ocr_router
+
+# Python's root logger defaults to WARNING with no handler attached, so
+# app.llm.client's per-request timing logs (INFO level — see
+# app/llm/client.py::_log_timing, added in the Phase 1 speed pass) would
+# otherwise be silently dropped. Basic stdout config is enough here; this
+# runs under uvicorn, whose own process already writes to the container's
+# stdout, so `docker compose logs ocr-service` picks this up too.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

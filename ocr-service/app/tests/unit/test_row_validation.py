@@ -4,6 +4,13 @@
 # that sit between "whatever JSON the model returned" and the frozen
 # external `structured` contract: _validate_hla_rows (locus allowlist),
 # _dedupe_rows / _coerce_mfi (bead specificity tile merge). No network.
+#
+# NOTE: a _parse_csv_rows helper briefly lived here (Phase 1 speed pass,
+# 2026-08-04) for a CSV-envelope bead-specificity response format that was
+# tried and reverted after a real live test showed it triggering a worse
+# repetition-loop hallucination than the JSON-array format it replaced —
+# see BEAD_SPECIFICITY_PROMPT's own "TRIED AND REVERTED" comment in
+# app/llm/prompts.py for the full story. Removed along with the function.
 from app.extraction.llm_extract import _coerce_mfi, _dedupe_rows, _validate_hla_rows
 
 

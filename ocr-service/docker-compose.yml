@@ -34,6 +34,21 @@ services:
       # silently keeps the cache at f16 regardless of this setting).
       - OLLAMA_FLASH_ATTENTION=1
       - OLLAMA_KV_CACHE_TYPE=q8_0
+      # Phase 1 speed pass (2026-08-04): these were previously just an
+      # observed default (confirmed via the ollama container's own startup
+      # logs — see llm_extract.py's CONCURRENT_TILE_LIMIT comment), not an
+      # explicit setting. Pinning them so behavior doesn't silently change
+      # on an Ollama upgrade. NUM_PARALLEL=1/MAX_LOADED_MODELS=1 matches
+      # this GPU's real serialized-at-one-request reality (raising either
+      # on 6GB VRAM pushes the model back into CPU offload, per the same
+      # KV-cache-budget mechanism documented above for OLLAMA_KV_CACHE_TYPE).
+      # KEEP_ALIVE=-1 stops the model unloading between calls — each
+      # extraction batch makes several back-to-back requests, and a reload
+      # mid-batch costs real time (~88s observed cold-load on CPU, see
+      # ocr-service/app/llm/client.py::REQUEST_TIMEOUT_SECONDS).
+      - OLLAMA_KEEP_ALIVE=-1
+      - OLLAMA_NUM_PARALLEL=1
+      - OLLAMA_MAX_LOADED_MODELS=1
     volumes:
       - ollama-models:/root/.ollama
       - ./docker/ollama-entrypoint.sh:/ollama-entrypoint.sh:ro
