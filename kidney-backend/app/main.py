@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.audit_logs import router as audit_logs_router
 from app.api.auth import router as auth_router
 from app.api.compatibility import router as compatibility_router
 from app.api.dashboard import router as dashboard_router
@@ -30,6 +31,7 @@ app.include_router(donors_router)
 app.include_router(compatibility_router)
 app.include_router(dashboard_router)
 app.include_router(ocr_router)
+app.include_router(audit_logs_router)
 
 @app.get("/")
 def read_root():

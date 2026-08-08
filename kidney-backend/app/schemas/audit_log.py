@@ -14,5 +14,17 @@ class AuditLogResponse(BaseModel):
     donor_id: Optional[uuid.UUID] = None
     details: Optional[dict] = None
     created_at: datetime
+    prev_hash: str
+    hash: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AuditChainVerificationResponse(BaseModel):
+    is_valid: bool
+    checked_count: int
+    total_count: int
+    first_broken_id: Optional[uuid.UUID] = None
+    reason: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)

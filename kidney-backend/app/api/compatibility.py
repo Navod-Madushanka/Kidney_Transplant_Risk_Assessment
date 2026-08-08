@@ -53,8 +53,12 @@ async def check_compatibility(
         db, patient, donor, crossmatch_input=crossmatch_input
     )
 
+    # Both writes share this call's transaction (commit=False on each, one
+    # db.commit() here) so a failure between them can't leave a match report
+    # on record with no audit entry for it -- see create_match_report's and
+    # create_audit_log's docstrings.
     report = await create_match_report(
-        db, payload.patient_id, payload.donor_id, pipeline_result
+        db, payload.patient_id, payload.donor_id, pipeline_result, commit=False
     )
 
     is_cross_hospital = donor.doctor_id != current_doctor.id
@@ -72,7 +76,13 @@ async def check_compatibility(
             "cross_hospital": is_cross_hospital,
             "donor_doctor_id": str(donor.doctor_id),
         },
+        commit=False,
     )
+
+    # create_match_report already refreshed `report` from its flush, and the
+    # session is expire_on_commit=False (see app/db/session.py), so its
+    # attributes stay valid after this commit without another refresh.
+    await db.commit()
 
     return MatchReportResponse.model_validate(report)
 

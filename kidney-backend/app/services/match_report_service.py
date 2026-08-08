@@ -21,7 +21,12 @@ async def create_match_report(
     patient_id: uuid.UUID,
     donor_id: uuid.UUID,
     pipeline_result: MatchPipelineResult,
+    commit: bool = True,
 ) -> MatchReport:
+    """commit=False lets a caller fold this insert into a larger transaction
+    (see app/api/compatibility.py, which shares one commit with the
+    create_audit_log call right after this) so a failure between the two
+    can't leave a report on record with no matching audit entry."""
     report = MatchReport(
         patient_id=patient_id,
         donor_id=donor_id,
@@ -37,7 +42,9 @@ async def create_match_report(
         final_risk_level=pipeline_result.final_risk_level,
     )
     db.add(report)
-    await db.commit()
+    await db.flush()
+    if commit:
+        await db.commit()
     await db.refresh(report)
 
     return report
