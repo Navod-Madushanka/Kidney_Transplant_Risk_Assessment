@@ -79,8 +79,11 @@ const LEGACY_RISK_TIER_TO_BADGE_STATUS = {
  * returns the {status, label} pair to feed straight into <Badge>.
  *
  * Precedence: a halted status always wins (it's the most important thing
- * to surface) > pending-crossmatch > Step 7's final_risk_level > the
- * legacy score-derived risk_tier > a neutral "no check yet" placeholder.
+ * to surface) > pending-crossmatch > a weak/moderate DSA flagged for
+ * desensitization review (Step 5, see dsa_result.requires_review — present
+ * only on full report payloads, not the dashboard's lighter summary
+ * objects) > Step 7's final_risk_level > the legacy score-derived
+ * risk_tier > a neutral "no check yet" placeholder.
  *
  * Usage:
  *   const { status, label } = reportBadgeProps(report)
@@ -95,6 +98,10 @@ export function reportBadgeProps(report) {
 
   if (report.overall_status === PENDING_CROSSMATCH_STATUS) {
     return { status: "pending", label: "Awaiting Crossmatch" }
+  }
+
+  if (report.dsa_result?.requires_review) {
+    return { status: "pending", label: "DSA Review" }
   }
 
   if (report.final_risk_level) {

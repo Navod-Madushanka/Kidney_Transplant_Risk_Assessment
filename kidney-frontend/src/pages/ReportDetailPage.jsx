@@ -256,12 +256,30 @@ export default function ReportDetailPage() {
 
       {report.dsa_result && (
         <Card>
-          <Card.Header title="Step 5 — DSA" />
+          <Card.Header
+            title="Step 5 — DSA"
+            subtitle={
+              report.dsa_result.requires_review
+                ? "Weak/moderate DSA present — flagged for desensitization protocol review"
+                : undefined
+            }
+          />
           {report.dsa_result.is_halted ? (
             <p className="text-[14px] text-high-risk font-medium">Donor-specific antibody detected — see banner above.</p>
+          ) : report.dsa_result.requires_review ? (
+            <div className="flex flex-col gap-2">
+              {report.dsa_result.matches.map((match) => (
+                <div key={match.antigen} className="flex items-center justify-between text-[14px]">
+                  <span className="text-text-muted">
+                    Anti-{match.antigen} (MFI {match.mfi.toLocaleString()})
+                  </span>
+                  <Badge status="pending">{match.severity}</Badge>
+                </div>
+              ))}
+            </div>
           ) : (
             <p className="text-[14px] text-text-muted">
-              No donor-specific antibody detected above the MFI threshold.
+              No donor-specific antibody detected above the MFI floor.
             </p>
           )}
         </Card>

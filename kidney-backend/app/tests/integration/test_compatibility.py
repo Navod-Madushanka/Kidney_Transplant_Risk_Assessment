@@ -147,7 +147,7 @@ async def test_dsa_match_halts_before_hla_scoring(auth_client: AsyncClient):
     )
     await auth_client.put(
         f"/patients/{patient['id']}/antibody-profiles",
-        json=[{"antigen": "B7", "mfi": 3500}],
+        json=[{"antigen": "B7", "mfi": 6000}],
     )
     await auth_client.put(
         f"/donors/{donor['id']}/hla-typings",
@@ -194,7 +194,7 @@ async def test_dsa_match_on_drb1_locus_halts(auth_client: AsyncClient):
     )
     await auth_client.put(
         f"/patients/{patient['id']}/antibody-profiles",
-        json=[{"antigen": "DR13", "mfi": 3500}],
+        json=[{"antigen": "DR13", "mfi": 6000}],
     )
     await auth_client.put(
         f"/donors/{donor['id']}/hla-typings",
@@ -244,7 +244,7 @@ async def test_dsa_match_on_c_locus_halts(auth_client: AsyncClient):
     )
     await auth_client.put(
         f"/patients/{patient['id']}/antibody-profiles",
-        json=[{"antigen": "Cw3", "mfi": 3500}],
+        json=[{"antigen": "Cw3", "mfi": 6000}],
     )
     await auth_client.put(
         f"/donors/{donor['id']}/hla-typings",
@@ -294,7 +294,7 @@ async def test_dsa_match_on_b_locus_with_bw_suffix_halts(auth_client: AsyncClien
     )
     await auth_client.put(
         f"/patients/{patient['id']}/antibody-profiles",
-        json=[{"antigen": "B7,Bw6", "mfi": 3500}],
+        json=[{"antigen": "B7,Bw6", "mfi": 6000}],
     )
     await auth_client.put(
         f"/donors/{donor['id']}/hla-typings",
@@ -315,6 +315,42 @@ async def test_dsa_match_on_b_locus_with_bw_suffix_halts(auth_client: AsyncClien
     assert body["overall_status"] == "halted_dsa_trigger"
     assert body["dsa_result"]["is_halted"] is True
     assert body["dsa_result"]["matches"][0]["antigen"] == "B7"
+
+
+async def test_moderate_dsa_does_not_halt_but_flags_for_review(auth_client: AsyncClient):
+    # Regression test for the 2026-08-08 severity-grading fix
+    # (app/reference_data/dsa_threshold.py): a moderate-strength DSA (MFI
+    # 2000-4999.999) used to halt the pipeline outright under the old flat
+    # MFI-1000 cutoff. It should now proceed to crossmatch/completion with
+    # dsa_result.requires_review set, not halt.
+    patient = await create_patient(auth_client, blood_type="AB")
+    donor = await create_donor(auth_client, blood_type="O")
+
+    await auth_client.put(f"/patients/{patient['id']}/hla-typings", json=COMPATIBLE_PATIENT_HLA)
+    await auth_client.put(f"/donors/{donor['id']}/hla-typings", json=COMPATIBLE_DONOR_HLA)
+    # Donor typing carries B*40 on both alleles (see COMPATIBLE_DONOR_HLA in
+    # conftest.py) -> donor_hla_antigens includes "B40".
+    await auth_client.put(
+        f"/patients/{patient['id']}/antibody-profiles",
+        json=[{"antigen": "B40", "mfi": 3500}],
+    )
+
+    response = await auth_client.post(
+        "/compatibility/check",
+        json={
+            "patient_id": patient["id"],
+            "donor_id": donor["id"],
+            "crossmatch": NEGATIVE_CROSSMATCH,
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["overall_status"] == "completed"
+    assert body["dsa_result"]["is_halted"] is False
+    assert body["dsa_result"]["requires_review"] is True
+    assert body["dsa_result"]["matches"][0]["antigen"] == "B40"
+    assert body["dsa_result"]["matches"][0]["severity"] == "moderate"
 
 
 async def test_full_pipeline_run_reaches_hla_scoring_and_risk_tier(auth_client: AsyncClient):

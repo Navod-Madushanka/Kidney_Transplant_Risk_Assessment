@@ -33,6 +33,25 @@ describe("reportBadgeProps", () => {
     expect(HALTED_STATUSES.has(PENDING_CROSSMATCH_STATUS)).toBe(false)
   })
 
+  it("flags a completed report as needing DSA review when a weak/moderate DSA was found", () => {
+    // Weak/moderate DSA (see kidney-backend/app/services/dsa_service.py) no
+    // longer halts the pipeline, but it should still outrank the final risk
+    // level on the badge so a doctor scanning a list doesn't miss it.
+    const badge = reportBadgeProps({
+      overall_status: "completed",
+      final_risk_level: "Low Risk",
+      dsa_result: { is_halted: false, requires_review: true },
+    })
+
+    expect(badge).toEqual({ status: "pending", label: "DSA Review" })
+  })
+
+  it("does not flag DSA review when dsa_result is absent (dashboard summary payloads)", () => {
+    const badge = reportBadgeProps({ overall_status: "completed", final_risk_level: "Low Risk" })
+
+    expect(badge).toEqual({ status: "low", label: "Low Risk" })
+  })
+
   it("prefers the Step 7 final_risk_level over the legacy risk_tier when both are present", () => {
     const badge = reportBadgeProps({
       overall_status: "completed",

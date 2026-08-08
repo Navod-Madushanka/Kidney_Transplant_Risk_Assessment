@@ -19,9 +19,16 @@ proceeds to the next step. As of this pass:
                         Wired from app/reference_data/pra_buckets.py.
                         Computed and bucketed for every check, but never
                         halts, same as Step 2.
-  5. DSA             - real gate (CHANGED this pass). Flat MFI 1000 cutoff
-                        from app/reference_data/dsa_threshold.py, no longer
-                        adjusted by the Sensitization score.
+  5. DSA             - severity-graded gate (CHANGED again 2026-08-08 — see
+                        app/reference_data/dsa_threshold.py). Only a "strong"
+                        DSA (MFI >= 5000) halts; "weak"/"moderate" (MFI 1000-
+                        4999.999) no longer halt outright, they set
+                        dsa_result.requires_review and let the pipeline
+                        continue to crossmatch. Replaces the previous flat
+                        MFI 1000 halt/pass cutoff, which duplicated (with a
+                        different number) the Step 4 cPRA sensitization
+                        cutoff and halted transplants on weak/equivocal
+                        antibodies.
   6. Crossmatch      - real gate (NEW this pass). Submitted with the check
                         request rather than looked up, since it's a same-
                         day result tied to this specific pairing. If not
@@ -68,7 +75,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.donor import Donor
 from app.models.patient import Patient
-from app.reference_data.dsa_threshold import DSA_MFI_THRESHOLD
+from app.reference_data.dsa_threshold import DSA_MFI_FLOOR
 from app.reference_data.hla_antigen_frequencies import (
     HLA_ANTIGEN_FREQUENCIES,
     HLA_FREQUENCY_TABLE_CITATION,
@@ -197,8 +204,10 @@ async def run_match_pipeline(
     # pipeline; Steps 5/6 below are the real pair-specific gates.
 
     # --- Step 5: DSA -------------------------------------------------------
-    # Flat threshold now (DSA_MFI_THRESHOLD = 1000), no longer adjusted by
-    # the Sensitization score's adjusted_mfi_cutoff.
+    # Severity-graded (see app/reference_data/dsa_threshold.py) — only a
+    # "strong" match halts; weak/moderate set requires_review and the
+    # pipeline continues to crossmatch. Independent of the Sensitization
+    # score's adjusted_mfi_cutoff and of Step 4's DEFAULT_MFI_CUTOFF.
     antibody_rows = await get_patient_antibody_profiles(db, patient.id)
     patient_antibodies = [
         PatientAntibody(antigen=normalize_antibody_antigen(row.antigen), mfi=float(row.mfi))
@@ -213,7 +222,7 @@ async def run_match_pipeline(
     dsa_result = check_dsa(
         patient_antibodies=patient_antibodies,
         donor_hla_antigens=donor_hla_antigens,
-        mfi_cutoff_value=DSA_MFI_THRESHOLD,
+        floor=DSA_MFI_FLOOR,
     )
 
     if dsa_result.is_halted:
