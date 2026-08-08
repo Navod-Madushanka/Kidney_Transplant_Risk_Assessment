@@ -37,19 +37,34 @@ def test_bucket_boundaries():
     assert result.is_halted is False
 
 
-def test_maximum_reachable_mismatches_lands_in_top_bucket_without_halting():
-    # Each locus stores exactly 2 alleles, so the ceiling across A/B/DRB1 is
-    # 2 unique mismatches per locus x 3 loci = 6 total. That means the ">6
-    # mismatches" reject bucket can never actually be reached through normal
-    # two-allele typing data — MAX_ACCEPTABLE_MISMATCHES (6) is the true
-    # ceiling in practice, and this confirms it lands in the top defined
-    # bucket ("3-6 mismatches") and still proceeds rather than halting.
+def test_maximum_reachable_mismatches_halts_the_gate():
+    # Regression test: each locus stores exactly 2 alleles, so the ceiling
+    # across A/B/DRB1 is 2 unique mismatches per locus x 3 loci = 6 total --
+    # also exactly MAX_ACCEPTABLE_MISMATCHES. is_halted used to compare with
+    # a strict `>`, which made this genuine worst case land in the top
+    # bucket ("3-6 mismatches") and still proceed, i.e. the reject path was
+    # mathematically unreachable through any real two-allele typing data.
+    # `>=` fixes that: a full 6/6 mismatch now actually halts Step 3.
     patient = _typing(a=("01", "02"), b=("01", "02"), drb1=("01", "02"))
     donor = _typing(a=("11", "12"), b=("11", "12"), drb1=("11", "12"))
 
     result = calculate_mismatch_result(patient, donor)
 
     assert result.total_mismatches == 6
+    assert result.bucket_name == "3-6 mismatches"
+    assert result.is_halted is True
+
+
+def test_five_mismatches_is_the_highest_reachable_pass():
+    # One allele short of the 6/6 reject case above (donor's first A allele
+    # happens to match the patient) -- confirms the gate's boundary sits
+    # exactly at 6, not off by one in either direction.
+    patient = _typing(a=("01", "02"), b=("01", "02"), drb1=("01", "02"))
+    donor = _typing(a=("01", "12"), b=("11", "12"), drb1=("11", "12"))
+
+    result = calculate_mismatch_result(patient, donor)
+
+    assert result.total_mismatches == 5
     assert result.bucket_name == "3-6 mismatches"
     assert result.is_halted is False
 

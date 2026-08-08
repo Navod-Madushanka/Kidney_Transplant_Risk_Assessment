@@ -90,7 +90,13 @@ def calculate_mismatch_result(
         )
 
     bucket_name = _bucket_for_count(total_mismatches)
-    is_halted = total_mismatches > MAX_ACCEPTABLE_MISMATCHES
+    # >= , not > : with exactly two alleles per locus across the three
+    # counted loci, 6 is also the maximum value total_mismatches can ever
+    # reach, so a strict `>` here made the reject path mathematically
+    # unreachable. MAX_ACCEPTABLE_MISMATCHES is the first count that
+    # rejects, not the last one that still passes -- see the comment on it
+    # in mismatch_buckets.py.
+    is_halted = total_mismatches >= MAX_ACCEPTABLE_MISMATCHES
 
     return MismatchResult(
         total_mismatches=total_mismatches,

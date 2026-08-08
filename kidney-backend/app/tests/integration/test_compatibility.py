@@ -7,18 +7,21 @@ tiering) already have thorough unit coverage in app/tests/unit/ — these
 tests instead check that the API wires patient/donor records through the
 whole Step 1-7 sequence correctly and persists/returns the right thing.
 
-Two of the seven steps' reject paths are deliberately NOT covered here:
-- Step 3 (mismatches): with exactly two alleles per locus across the three
-  counted loci (A/B/DRB1), the maximum possible mismatch count is 6 — the
-  same number as MAX_ACCEPTABLE_MISMATCHES. The ">6 mismatches" reject
-  bucket can't actually be reached through normal typing data, so there's
-  nothing realistic to construct here; see
-  test_hla_mismatch_service.py::test_maximum_reachable_mismatches_lands_in_top_bucket_without_halting.
+One of the seven steps' reject paths is deliberately NOT covered here:
 - Step 4 (PRA): halting requires cPRA to have "sufficient data", which
   needs >= 100 people's HLA typing already in the population sample
   (app/reference_data/cpra_settings.py). Seeding that many patient/donor
   pairs just for this test isn't worth the runtime cost — the bucket
   math itself is covered precisely and quickly in test_pra_bucket_service.py.
+
+Step 3 (mismatches) used to be unreachable too: with exactly two alleles per
+locus across the three counted loci (A/B/DRB1), the maximum possible
+mismatch count is 6 — the same number MAX_ACCEPTABLE_MISMATCHES was
+compared against with a strict `>`, so a full 6/6 mismatch could never
+actually halt. Fixed by comparing with `>=` instead (see
+hla_mismatch_service.py); test_full_mismatch_halts_step_3 below is the
+regression test for the fix, alongside the unit-level
+test_hla_mismatch_service.py::test_maximum_reachable_mismatches_halts_the_gate.
 """
 import uuid
 
@@ -77,20 +80,77 @@ async def test_abo_incompatible_pair_halts_before_hla_scoring(auth_client: Async
     assert body["hla_scoring_result"] is None
 
 
+async def test_full_mismatch_halts_step_3(auth_client: AsyncClient):
+    # Regression test: a genuine 6/6 mismatch across A/B/DRB1 (every donor
+    # allele absent from the patient at every counted locus) used to sail
+    # through Step 3 uncontested, since is_halted compared with a strict `>`
+    # against MAX_ACCEPTABLE_MISMATCHES (6) -- the same number as the
+    # maximum reachable count, making the reject path dead code. See the
+    # module docstring above and hla_mismatch_service.py.
+    patient = await create_patient(auth_client, blood_type="AB")
+    donor = await create_donor(auth_client, blood_type="O")
+
+    await auth_client.put(
+        f"/patients/{patient['id']}/hla-typings",
+        json=[
+            {"locus": "A", "allele_1": "01", "allele_2": "02"},
+            {"locus": "B", "allele_1": "07", "allele_2": "08"},
+            {"locus": "DRB1", "allele_1": "03", "allele_2": "04"},
+        ],
+    )
+    await auth_client.put(
+        f"/donors/{donor['id']}/hla-typings",
+        json=[
+            {"locus": "A", "allele_1": "11", "allele_2": "12"},
+            {"locus": "B", "allele_1": "17", "allele_2": "18"},
+            {"locus": "DRB1", "allele_1": "13", "allele_2": "14"},
+        ],
+    )
+
+    response = await auth_client.post(
+        "/compatibility/check",
+        json={"patient_id": patient["id"], "donor_id": donor["id"]},
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["overall_status"] == "halted_mismatch_reject"
+    assert body["mismatch_result"]["total_mismatches"] == 6
+    assert body["mismatch_result"]["is_halted"] is True
+    assert body["pra_bucket_result"] is None
+    assert body["final_risk_level"] is None
+
+
 async def test_dsa_match_halts_before_hla_scoring(auth_client: AsyncClient):
     # ABO-compatible pair (O -> O), but the patient carries a high-MFI
     # antibody against an antigen the donor actually has — should halt on
     # the DSA check before HLA scoring ever runs (app/services/dsa_service.py).
+    # Patient and donor A/B/DRB1 typing is given here purely so Step 3 (HLA
+    # mismatches, gated separately — see test_full_mismatch_halts_step_3)
+    # passes cleanly and this test actually reaches the DSA gate under test;
+    # matching alleles on both sides keep the mismatch count at 0.
     patient = await create_patient(auth_client, blood_type="O")
     donor = await create_donor(auth_client, blood_type="O")
 
+    await auth_client.put(
+        f"/patients/{patient['id']}/hla-typings",
+        json=[
+            {"locus": "A", "allele_1": "01", "allele_2": "02"},
+            {"locus": "B", "allele_1": "07", "allele_2": "40"},
+            {"locus": "DRB1", "allele_1": "03", "allele_2": "04"},
+        ],
+    )
     await auth_client.put(
         f"/patients/{patient['id']}/antibody-profiles",
         json=[{"antigen": "B7", "mfi": 3500}],
     )
     await auth_client.put(
         f"/donors/{donor['id']}/hla-typings",
-        json=[{"locus": "B", "allele_1": "07", "allele_2": "40"}],
+        json=[
+            {"locus": "A", "allele_1": "01", "allele_2": "02"},
+            {"locus": "B", "allele_1": "07", "allele_2": "40"},
+            {"locus": "DRB1", "allele_1": "03", "allele_2": "04"},
+        ],
     )
 
     response = await auth_client.post(
@@ -112,16 +172,32 @@ async def test_dsa_match_on_drb1_locus_halts(auth_client: AsyncClient):
     # uses, so a genuine donor-specific antibody at these loci was silently
     # invisible to this gate. See hla_antigen_designation() in
     # app/services/hla_typing_service.py.
+    # Patient and donor A/B/DRB1 typing (matching, so the mismatch count
+    # stays at 0) is given purely so Step 3 passes and this test reaches
+    # the DSA gate under test — see test_full_mismatch_halts_step_3 for the
+    # separate Step 3 gate coverage.
     patient = await create_patient(auth_client, blood_type="O")
     donor = await create_donor(auth_client, blood_type="O")
 
+    await auth_client.put(
+        f"/patients/{patient['id']}/hla-typings",
+        json=[
+            {"locus": "A", "allele_1": "01", "allele_2": "02"},
+            {"locus": "B", "allele_1": "07", "allele_2": "08"},
+            {"locus": "DRB1", "allele_1": "13", "allele_2": "14"},
+        ],
+    )
     await auth_client.put(
         f"/patients/{patient['id']}/antibody-profiles",
         json=[{"antigen": "DR13", "mfi": 3500}],
     )
     await auth_client.put(
         f"/donors/{donor['id']}/hla-typings",
-        json=[{"locus": "DRB1", "allele_1": "13", "allele_2": "14"}],
+        json=[
+            {"locus": "A", "allele_1": "01", "allele_2": "02"},
+            {"locus": "B", "allele_1": "07", "allele_2": "08"},
+            {"locus": "DRB1", "allele_1": "13", "allele_2": "14"},
+        ],
     )
 
     response = await auth_client.post(
@@ -144,16 +220,35 @@ async def test_dsa_match_on_c_locus_halts(auth_client: AsyncClient):
     # to build "C3" for a C*03 donor allele, which never matches a real
     # antibody screen's "Cw3". See hla_antigen_designation() in
     # app/services/hla_typing_service.py.
+    # Patient and donor A/B/DRB1 typing (matching, so the mismatch count
+    # stays at 0) is given purely so Step 3 passes and this test reaches
+    # the DSA gate under test — C isn't a counted locus (see
+    # MISMATCH_COUNTED_LOCI), but A/B/DRB1 still need real data on both
+    # sides or Step 3 worst-cases them as missing. See
+    # test_full_mismatch_halts_step_3 for the separate Step 3 gate coverage.
     patient = await create_patient(auth_client, blood_type="O")
     donor = await create_donor(auth_client, blood_type="O")
 
+    await auth_client.put(
+        f"/patients/{patient['id']}/hla-typings",
+        json=[
+            {"locus": "A", "allele_1": "01", "allele_2": "02"},
+            {"locus": "B", "allele_1": "07", "allele_2": "08"},
+            {"locus": "DRB1", "allele_1": "03", "allele_2": "04"},
+        ],
+    )
     await auth_client.put(
         f"/patients/{patient['id']}/antibody-profiles",
         json=[{"antigen": "Cw3", "mfi": 3500}],
     )
     await auth_client.put(
         f"/donors/{donor['id']}/hla-typings",
-        json=[{"locus": "C", "allele_1": "03", "allele_2": "07"}],
+        json=[
+            {"locus": "A", "allele_1": "01", "allele_2": "02"},
+            {"locus": "B", "allele_1": "07", "allele_2": "08"},
+            {"locus": "DRB1", "allele_1": "03", "allele_2": "04"},
+            {"locus": "C", "allele_1": "03", "allele_2": "07"},
+        ],
     )
 
     response = await auth_client.post(
@@ -177,16 +272,32 @@ async def test_dsa_match_on_b_locus_with_bw_suffix_halts(auth_client: AsyncClien
     # every single B-locus row on that real chart carried this suffix, so
     # a genuine anti-B DSA was structurally unmatchable. See
     # normalize_antibody_antigen() in app/services/hla_typing_service.py.
+    # Patient and donor A/B/DRB1 typing (matching, so the mismatch count
+    # stays at 0) is given purely so Step 3 passes and this test reaches
+    # the DSA gate under test — see test_full_mismatch_halts_step_3 for the
+    # separate Step 3 gate coverage.
     patient = await create_patient(auth_client, blood_type="O")
     donor = await create_donor(auth_client, blood_type="O")
 
+    await auth_client.put(
+        f"/patients/{patient['id']}/hla-typings",
+        json=[
+            {"locus": "A", "allele_1": "01", "allele_2": "02"},
+            {"locus": "B", "allele_1": "07", "allele_2": "40"},
+            {"locus": "DRB1", "allele_1": "03", "allele_2": "04"},
+        ],
+    )
     await auth_client.put(
         f"/patients/{patient['id']}/antibody-profiles",
         json=[{"antigen": "B7,Bw6", "mfi": 3500}],
     )
     await auth_client.put(
         f"/donors/{donor['id']}/hla-typings",
-        json=[{"locus": "B", "allele_1": "07", "allele_2": "40"}],
+        json=[
+            {"locus": "A", "allele_1": "01", "allele_2": "02"},
+            {"locus": "B", "allele_1": "07", "allele_2": "40"},
+            {"locus": "DRB1", "allele_1": "03", "allele_2": "04"},
+        ],
     )
 
     response = await auth_client.post(

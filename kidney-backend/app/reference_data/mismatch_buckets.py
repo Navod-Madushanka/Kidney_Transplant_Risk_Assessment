@@ -21,5 +21,10 @@ MISMATCH_BUCKETS: list[MismatchBucket] = [
     MismatchBucket(name="3-6 mismatches", min_count=3, max_count=6),
 ]
 
-# Anything above this is an automatic reject at Step 3.
+# The gate rejects once total_mismatches reaches this count (inclusive),
+# not only above it -- with exactly two alleles per locus across the three
+# counted loci (A/B/DRB1), 6 is also the maximum value the count can ever
+# reach, so a strict "reject above 6" rule would never actually fire. A full
+# 6/6 mismatch (every donor allele absent from the patient at every counted
+# locus) is the real, reachable reject case.
 MAX_ACCEPTABLE_MISMATCHES = 6

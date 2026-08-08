@@ -73,8 +73,29 @@ async def test_search_excludes_abo_incompatible_donors(
 async def test_search_returns_other_doctors_donor_with_hospital_and_doctor_name_but_no_pii(
     auth_client: AsyncClient, second_auth_client: AsyncClient
 ):
+    # Matching A/B/DRB1 typing on both sides so Step 3's mismatch gate
+    # doesn't exclude this candidate — an entirely untyped pairing now
+    # worst-cases to a reject (see test_missing_donor_and_patient_hla_typing_
+    # does_not_crash in test_donor_search_service.py), which isn't what this
+    # PII/shape test is about.
     patient = await create_patient(auth_client, blood_type="AB")
     donor = await create_donor(second_auth_client, blood_type="O", full_name="Secret Donor Name")
+    await auth_client.put(
+        f"/patients/{patient['id']}/hla-typings",
+        json=[
+            {"locus": "A", "allele_1": "01", "allele_2": "02"},
+            {"locus": "B", "allele_1": "07", "allele_2": "08"},
+            {"locus": "DRB1", "allele_1": "03", "allele_2": "04"},
+        ],
+    )
+    await second_auth_client.put(
+        f"/donors/{donor['id']}/hla-typings",
+        json=[
+            {"locus": "A", "allele_1": "01", "allele_2": "02"},
+            {"locus": "B", "allele_1": "07", "allele_2": "08"},
+            {"locus": "DRB1", "allele_1": "03", "allele_2": "04"},
+        ],
+    )
 
     response = await auth_client.get(f"/patients/{patient['id']}/compatible-donors")
 
@@ -107,8 +128,27 @@ async def test_search_empty_pool_returns_empty_list_not_404(auth_client: AsyncCl
 async def test_search_writes_audit_log_entry(
     auth_client: AsyncClient, second_auth_client: AsyncClient, db_session
 ):
+    # Matching A/B/DRB1 typing on both sides so Step 3's mismatch gate
+    # doesn't exclude this candidate — see the sibling PII test above for
+    # why an untyped pairing no longer works for this.
     patient = await create_patient(auth_client, blood_type="AB")
-    await create_donor(second_auth_client, blood_type="O")
+    donor = await create_donor(second_auth_client, blood_type="O")
+    await auth_client.put(
+        f"/patients/{patient['id']}/hla-typings",
+        json=[
+            {"locus": "A", "allele_1": "01", "allele_2": "02"},
+            {"locus": "B", "allele_1": "07", "allele_2": "08"},
+            {"locus": "DRB1", "allele_1": "03", "allele_2": "04"},
+        ],
+    )
+    await second_auth_client.put(
+        f"/donors/{donor['id']}/hla-typings",
+        json=[
+            {"locus": "A", "allele_1": "01", "allele_2": "02"},
+            {"locus": "B", "allele_1": "07", "allele_2": "08"},
+            {"locus": "DRB1", "allele_1": "03", "allele_2": "04"},
+        ],
+    )
 
     response = await auth_client.get(f"/patients/{patient['id']}/compatible-donors")
     assert response.status_code == 200

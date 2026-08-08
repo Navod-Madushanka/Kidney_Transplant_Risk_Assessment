@@ -86,13 +86,15 @@ async def test_ranks_by_ascending_mismatch_count(
         ],
     )
 
-    # 2 unique mismatches per locus x 3 loci = 6 total — the maximum
-    # reachable count that still doesn't halt (MAX_ACCEPTABLE_MISMATCHES == 6).
+    # 5 total (1 at A, since one donor allele happens to match; 2 each at
+    # B/DRB1) — high, but one short of the 6/6 reject case
+    # (MAX_ACCEPTABLE_MISMATCHES == 6, is_halted at >=), so this candidate
+    # still passes Step 3 and shows up ranked last.
     mismatched = await create_donor(second_auth_client, blood_type="O", full_name="Mismatched")
     await second_auth_client.put(
         f"/donors/{mismatched['id']}/hla-typings",
         json=[
-            {"locus": "A", "allele_1": "11", "allele_2": "12"},
+            {"locus": "A", "allele_1": "01", "allele_2": "12"},
             {"locus": "B", "allele_1": "17", "allele_2": "18"},
             {"locus": "DRB1", "allele_1": "13", "allele_2": "14"},
         ],
@@ -107,7 +109,7 @@ async def test_ranks_by_ascending_mismatch_count(
         uuid.UUID(mismatched["id"]),
     ]
     assert candidates[0].mismatch_result.total_mismatches == 0
-    assert candidates[1].mismatch_result.total_mismatches == 6
+    assert candidates[1].mismatch_result.total_mismatches == 5
 
 
 async def test_missing_donor_and_patient_hla_typing_does_not_crash(
@@ -122,12 +124,15 @@ async def test_missing_donor_and_patient_hla_typing_does_not_crash(
 
     # Regression coverage: an untyped donor/patient pair must NOT resolve to
     # a perfect (0-mismatch) match -- each of the 3 counted loci is missing
-    # on both sides, so each is scored at its worst case (2 x 3 = 6), and the
-    # result is flagged incomplete so callers never present this as a real
-    # compatibility figure. See hla_mismatch_service.py.
-    assert len(candidates) == 1
-    assert candidates[0].mismatch_result.total_mismatches == 6
-    assert candidates[0].mismatch_result.data_completeness is False
+    # on both sides, so each is scored at its worst case (2 x 3 = 6). That
+    # also happens to be exactly MAX_ACCEPTABLE_MISMATCHES, so the pairing
+    # is excluded from the ranked list entirely rather than merely showing
+    # an inflated count -- an untyped pairing is the clearest case of "don't
+    # know" and should never surface as a candidate at all. The name is
+    # kept even though it no longer "does not crash" into a candidate, since
+    # the original crash risk (an unhandled exception on empty typing) is
+    # still exactly what this guards against.
+    assert candidates == []
 
 
 async def test_empty_pool_returns_empty_list(auth_client: AsyncClient, db_session: AsyncSession):
