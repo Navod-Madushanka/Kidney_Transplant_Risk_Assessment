@@ -33,6 +33,8 @@ class PatientResponse(BaseModel):
     blood_type: BloodType
     rh_factor: RhFactor
     nic_number: str | None
+    hla_typing_verified: bool
+    antibody_profile_verified: bool
     created_at: datetime
     updated_at: datetime
     model_config = ConfigDict(from_attributes=True)

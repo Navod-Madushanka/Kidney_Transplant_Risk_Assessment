@@ -17,12 +17,19 @@ import {
 } from "../api/reportFiles"
 import Badge from "../components/ui/Badge"
 import Button from "../components/ui/Button"
+import Card from "../components/ui/Card"
 import Select from "../components/ui/Select"
 import Modal from "../components/ui/Modal"
 import DonorForm from "../components/domain/donor/DonorForm"
 import HlaTypingEditor from "../components/domain/hla/HlaTypingEditor"
 import ReportFilesCard from "../components/domain/reportFiles/ReportFilesCard"
 import { DONOR_STATUS_OPTIONS, donorStatusBadgeProps } from "../constants/donorStatus"
+
+function triStateLabel(value) {
+  if (value === true) return "Yes"
+  if (value === false) return "No"
+  return "Unknown"
+}
 
 export default function DonorDetailPage() {
   const { donorId } = useParams()
@@ -137,6 +144,12 @@ export default function DonorDetailPage() {
             bloodType: donor.blood_type,
             rhFactor: donor.rh_factor,
             nicNumber: donor.nic_number || "",
+            egfr: donor.egfr ?? "",
+            systolicBp: donor.systolic_bp ?? "",
+            diastolicBp: donor.diastolic_bp ?? "",
+            bmi: donor.bmi ?? "",
+            hasDiabetes: donor.has_diabetes === true ? "yes" : donor.has_diabetes === false ? "no" : "unknown",
+            isSmoker: donor.is_smoker === true ? "yes" : donor.is_smoker === false ? "no" : "unknown",
           }}
           onSubmit={handleEditSubmit}
         />
@@ -169,6 +182,43 @@ export default function DonorDetailPage() {
         options={DONOR_STATUS_OPTIONS}
         helperText="Only 'Available' donors are visible to other doctors' cross-hospital searches."
       />
+
+      <Card>
+        <Card.Header
+          title="Clinical suitability"
+          subtitle="Reference only — not used by the automated compatibility check. Edit via 'Edit details'."
+        />
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-3 text-[14px]">
+          <div>
+            <p className="text-text-muted">eGFR</p>
+            <p className="text-text font-medium tabular-nums">
+              {donor.egfr != null ? `${donor.egfr} mL/min/1.73m²` : "—"}
+            </p>
+          </div>
+          <div>
+            <p className="text-text-muted">Blood pressure</p>
+            <p className="text-text font-medium tabular-nums">
+              {donor.systolic_bp != null && donor.diastolic_bp != null
+                ? `${donor.systolic_bp}/${donor.diastolic_bp} mmHg`
+                : "—"}
+            </p>
+          </div>
+          <div>
+            <p className="text-text-muted">BMI</p>
+            <p className="text-text font-medium tabular-nums">
+              {donor.bmi != null ? `${donor.bmi} kg/m²` : "—"}
+            </p>
+          </div>
+          <div>
+            <p className="text-text-muted">Diabetes</p>
+            <p className="text-text font-medium">{triStateLabel(donor.has_diabetes)}</p>
+          </div>
+          <div>
+            <p className="text-text-muted">Smoker</p>
+            <p className="text-text font-medium">{triStateLabel(donor.is_smoker)}</p>
+          </div>
+        </div>
+      </Card>
 
       <HlaTypingEditor
         loadState={hlaState.state}

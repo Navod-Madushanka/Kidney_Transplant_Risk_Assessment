@@ -175,12 +175,19 @@ async def delete_patient_endpoint(
 async def replace_patient_hla_typing_endpoint(
     patient_id: uuid.UUID,
     entries: list[HLATypingEntry],
+    ocr_verified: bool | None = None,
     current_doctor: Doctor = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Replace HLA typing data for a patient."""
+    """Replace HLA typing data for a patient. ocr_verified is set by the
+    compatibility-check wizard when this data came from OCR extraction:
+    True once a doctor has confirmed it against the source document, False
+    if not yet confirmed (blocks POST /compatibility/check — see that
+    endpoint's precondition check in app/api/compatibility.py). Omitted
+    entirely by every other caller (e.g. manual edits via the patient
+    detail page), which always counts as trusted."""
     await _ensure_patient_exists(db, patient_id, current_doctor.id)
-    await replace_patient_hla_typing(db, patient_id, entries)
+    await replace_patient_hla_typing(db, patient_id, entries, ocr_verified=ocr_verified)
 
 
 @router.get("/{patient_id}/hla-typings", response_model=list[HLATypingEntry])
@@ -205,12 +212,14 @@ async def get_patient_hla_typings_endpoint(
 async def replace_patient_antibody_profiles_endpoint(
     patient_id: uuid.UUID,
     entries: list[AntibodyProfileEntry],
+    ocr_verified: bool | None = None,
     current_doctor: Doctor = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Replace antibody profile data for a patient."""
+    """Replace antibody profile data for a patient. See ocr_verified's
+    docstring on replace_patient_hla_typing_endpoint above — same contract."""
     await _ensure_patient_exists(db, patient_id, current_doctor.id)
-    await replace_patient_antibody_profiles(db, patient_id, entries)
+    await replace_patient_antibody_profiles(db, patient_id, entries, ocr_verified=ocr_verified)
 
 
 @router.get("/{patient_id}/antibody-profiles", response_model=list[AntibodyProfileEntry])

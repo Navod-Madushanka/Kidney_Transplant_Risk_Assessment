@@ -88,8 +88,9 @@ async def update_donor_endpoint(
     current_doctor: Doctor = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update a donor's core demographic fields (name, DOB, NIC). Blood type
-    and Rh factor are permanent once set — see DonorUpdate."""
+    """Update a donor's core demographic fields (name, DOB, NIC) and
+    clinical suitability fields (eGFR, BP, BMI, diabetes, smoking). Blood
+    type and Rh factor are permanent once set — see DonorUpdate."""
     donor = await get_donor_by_id_for_doctor(db, donor_id, current_doctor.id)
     if donor is None:
         raise HTTPException(
@@ -177,11 +178,14 @@ async def update_donor_status_endpoint(
 async def replace_donor_hla_typing_endpoint(
     donor_id: uuid.UUID,
     entries: list[HLATypingEntry],
+    ocr_verified: bool | None = None,
     current_doctor: Doctor = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """See ocr_verified's docstring on replace_patient_hla_typing_endpoint
+    in app/api/patients.py — same contract."""
     await _ensure_donor_exists(db, donor_id, current_doctor.id)
-    await replace_donor_hla_typing(db, donor_id, entries)
+    await replace_donor_hla_typing(db, donor_id, entries, ocr_verified=ocr_verified)
 
 
 @router.get("/{donor_id}/hla-typings", response_model=list[HLATypingEntry])

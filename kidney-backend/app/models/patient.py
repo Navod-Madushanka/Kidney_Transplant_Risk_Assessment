@@ -67,3 +67,23 @@ class Patient(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+    # OCR verification gate (added 2026-08-08): defaults True (trusted) for
+    # manually-entered data -- these only ever go False when
+    # hla_typing_service.replace_patient_hla_typing / antibody_profile_
+    # service.replace_patient_antibody_profiles are called with
+    # ocr_verified=False, meaning "this write came from OCR extraction and a
+    # doctor has not yet confirmed it against the source document."
+    # POST /compatibility/check refuses to even call run_match_pipeline
+    # while either is False (see app/api/compatibility.py's precondition
+    # check, right alongside its patient/donor-not-found checks), rather
+    # than trusting a vision-LLM misread into a hard reject. Kept as two
+    # separate flags (not one) since HLA typing and the antibody/bead-
+    # specificity profile are re-verified independently, from separate
+    # source documents.
+    hla_typing_verified: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
+    antibody_profile_verified: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )

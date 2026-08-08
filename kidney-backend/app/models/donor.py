@@ -2,7 +2,7 @@
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, Numeric, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -62,4 +62,28 @@ class Donor(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
     deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+    # Clinical suitability fields (added 2026-08-08) -- previously the Donor
+    # model had nothing beyond demographics + blood type, so a doctor had no
+    # way to record or review a candidate donor's medical fitness. All
+    # nullable/editable (unlike blood_type/rh_factor, none of this is
+    # permanent-once-set) and purely informational: nothing in
+    # match_pipeline.py reads these -- they're for a doctor's own suitability
+    # judgment, not an automated gate, since none of these values have an
+    # agreed accept/reject threshold from the doctors. Booleans are
+    # nullable tri-state (unknown/no/yes) rather than defaulting an
+    # unassessed donor to a confirmed "no".
+    egfr: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
+    systolic_bp: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    diastolic_bp: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    bmi: Mapped[float | None] = mapped_column(Numeric(4, 1), nullable=True)
+    has_diabetes: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    is_smoker: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+
+    # OCR verification gate (added 2026-08-08) -- see the matching comment
+    # on app/models/patient.py. Donors only need the HLA typing half (no
+    # antibody/bead-specificity profile is collected per-donor).
+    hla_typing_verified: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
     )

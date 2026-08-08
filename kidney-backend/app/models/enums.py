@@ -20,6 +20,16 @@ class DonorStatus(str, enum.Enum):
     AVAILABLE = "available"
     RESERVED = "reserved"
     TRANSPLANTED = "transplanted"
+    # Added 2026-08-08: the 3-value set above couldn't represent a donor
+    # mid-evaluation, ruled out, or no longer participating -- doctors had
+    # nowhere to put that except leaving a stale "reserved"/"available",
+    # which reads as "still in play" indefinitely. All four are terminal or
+    # doctor-driven states, set the same way as the existing ones (PUT
+    # /donors/{id}/status, no automatic transitions) -- see donor_service.py.
+    UNDER_WORKUP = "under_workup"
+    MEDICALLY_UNFIT = "medically_unfit"
+    WITHDRAWN = "withdrawn"
+    DECEASED = "deceased"
 
 
 class ReportFileCategory(str, enum.Enum):

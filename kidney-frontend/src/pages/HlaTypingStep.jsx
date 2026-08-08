@@ -6,6 +6,7 @@ import { HLA_LOCUS_OPTIONS } from "../constants/clinicalEnums"
 import Card from "../components/ui/Card"
 import InputField from "../components/ui/InputField"
 import Button from "../components/ui/Button"
+import ToggleSwitch from "../components/ui/ToggleSwitch"
 
 function validateHlaRows(rows) {
   // Keyed by locus so LocusCard can look up "does *this* locus have an
@@ -75,6 +76,12 @@ export default function HlaTypingStep() {
 
   const [patientErrors, setPatientErrors] = useState({})
   const [donorErrors, setDonorErrors] = useState({})
+  const [verificationError, setVerificationError] = useState(false)
+
+  // Only require the review confirmation below when OCR actually populated
+  // this data — a doctor who typed every allele in by hand from scratch has
+  // nothing to confirm (see ocr_verified's comment in wizardReducer.js).
+  const wasOcrExtracted = state.extraction?.documents?.["hla_typing_report"]?.status === "done"
 
   function handleContinue() {
     const nextPatientErrors = validateHlaRows(state.patient_hla)
@@ -86,7 +93,10 @@ export default function HlaTypingStep() {
       Object.keys(nextPatientErrors).length > 0 ||
       Object.keys(nextDonorErrors).length > 0
 
-    if (hasErrors) return
+    const needsVerification = wasOcrExtracted && !state.ocr_verified?.hla_typing
+    setVerificationError(needsVerification)
+
+    if (hasErrors || needsVerification) return
 
     actions.unlockStep(3)
     navigate("/checks/new/sensitization")
@@ -120,6 +130,31 @@ export default function HlaTypingStep() {
           />
         )
       })}
+
+      {wasOcrExtracted && (
+        <div
+          className={[
+            "rounded-md border p-4",
+            verificationError ? "border-high-risk bg-high-risk-subtle" : "border-moderate bg-moderate-subtle",
+          ].join(" ")}
+        >
+          <ToggleSwitch
+            label="I have reviewed this HLA typing against the source document"
+            helperText="This report was extracted by AI from an uploaded photo — confirm it's accurate before continuing."
+            checked={!!state.ocr_verified?.hla_typing}
+            onChange={(checked) => {
+              actions.setOcrVerified("hla_typing", checked)
+              if (checked) setVerificationError(false)
+            }}
+          />
+          {verificationError && (
+            <p className="text-[13px] text-high-risk font-medium mt-2">
+              Confirm this before continuing — the compatibility check refuses to run on
+              unverified OCR data.
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="flex items-center justify-between">
         <Button variant="secondary" onClick={() => navigate("/checks/new/details")}>

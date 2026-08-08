@@ -118,6 +118,20 @@ async def test_cannot_update_another_doctors_donor_status(
     assert response.status_code == 404
 
 
+async def test_donor_status_accepts_the_newly_added_values(auth_client: AsyncClient):
+    # Regression coverage for the 2026-08-08 fix: the enum used to only have
+    # available/reserved/transplanted, leaving no way to record a donor
+    # mid-workup, ruled out, or no longer participating.
+    donor = await create_donor(auth_client)
+
+    for new_status in ("under_workup", "medically_unfit", "withdrawn", "deceased"):
+        response = await auth_client.put(
+            f"/donors/{donor['id']}/status", json={"status": new_status}
+        )
+        assert response.status_code == 200
+        assert response.json()["status"] == new_status
+
+
 # ---------------------------------------------------------------------
 # Update donor details — lighter mirror of the patient coverage in
 # test_patients.py, since the service/route code is a deliberate twin.
@@ -145,6 +159,58 @@ async def test_update_donor_details_ignores_blood_type_and_rh_factor(auth_client
     assert body["nic_number"] == "199112345678"
     assert body["blood_type"] == "O"
     assert body["rh_factor"] == "+"
+
+
+async def test_create_and_update_donor_clinical_fields(auth_client: AsyncClient):
+    response = await auth_client.post(
+        "/donors",
+        json=make_donor_payload(
+            egfr=65.5, systolic_bp=130, diastolic_bp=85, bmi=24.3,
+            has_diabetes=False, is_smoker=True,
+        ),
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["egfr"] == 65.5
+    assert body["systolic_bp"] == 130
+    assert body["diastolic_bp"] == 85
+    assert body["bmi"] == 24.3
+    assert body["has_diabetes"] is False
+    assert body["is_smoker"] is True
+
+    update_response = await auth_client.put(
+        f"/donors/{body['id']}",
+        json={
+            "full_name": body["full_name"],
+            "date_of_birth": body["date_of_birth"],
+            "egfr": 58.0,
+            "has_diabetes": None,
+        },
+    )
+
+    assert update_response.status_code == 200
+    updated = update_response.json()
+    assert updated["egfr"] == 58.0
+    # Fields omitted from the PUT payload fall back to the schema's
+    # default (None) -- DonorUpdate isn't a partial/PATCH payload, it's the
+    # full desired state, same as every other field on this endpoint.
+    assert updated["has_diabetes"] is None
+    assert updated["systolic_bp"] is None
+
+
+async def test_donor_created_without_clinical_fields_leaves_them_null(auth_client: AsyncClient):
+    donor = await create_donor(auth_client)
+
+    assert donor["egfr"] is None
+    assert donor["has_diabetes"] is None
+    assert donor["is_smoker"] is None
+
+
+async def test_donor_egfr_out_of_range_is_rejected(auth_client: AsyncClient):
+    response = await auth_client.post("/donors", json=make_donor_payload(egfr=500))
+
+    assert response.status_code == 422
 
 
 async def test_cannot_update_another_doctors_donor_details(

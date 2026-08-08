@@ -2,13 +2,25 @@
 import re
 import uuid
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.donor import Donor
 from app.models.donor_hla_typing import DonorHLATyping
+from app.models.patient import Patient
 from app.models.patient_hla_typing import PatientHLATyping
 from app.reference_data.hla_loci import HLA_LOCI
 from app.schemas.hla_typing import HLATypingEntry
+
+
+def _resolve_verified(ocr_verified: bool | None) -> bool:
+    """None (the default for every pre-existing caller) means "not an OCR
+    write, no claim being made" -> trusted, same as manual entry always was.
+    An explicit True/False is only ever passed by the compatibility-check
+    wizard, which knows whether this particular write came from an OCR
+    extraction the doctor has (True) or hasn't (False) confirmed against the
+    source document."""
+    return True if ocr_verified is None else ocr_verified
 
 
 
@@ -129,7 +141,10 @@ async def get_patient_hla_typings(
 
 
 async def replace_patient_hla_typing(
-    db: AsyncSession, patient_id: uuid.UUID, entries: list[HLATypingEntry]
+    db: AsyncSession,
+    patient_id: uuid.UUID,
+    entries: list[HLATypingEntry],
+    ocr_verified: bool | None = None,
 ) -> None:
     await db.execute(
         delete(PatientHLATyping).where(PatientHLATyping.patient_id == patient_id)
@@ -144,6 +159,11 @@ async def replace_patient_hla_typing(
         )
         db.add(typing_row)
 
+    await db.execute(
+        update(Patient)
+        .where(Patient.id == patient_id)
+        .values(hla_typing_verified=_resolve_verified(ocr_verified))
+    )
     await db.commit()
 
 
@@ -182,7 +202,10 @@ async def get_donor_hla_typings(
 
 
 async def replace_donor_hla_typing(
-    db: AsyncSession, donor_id: uuid.UUID, entries: list[HLATypingEntry]
+    db: AsyncSession,
+    donor_id: uuid.UUID,
+    entries: list[HLATypingEntry],
+    ocr_verified: bool | None = None,
 ) -> None:
     await db.execute(
         delete(DonorHLATyping).where(DonorHLATyping.donor_id == donor_id)
@@ -197,6 +220,11 @@ async def replace_donor_hla_typing(
         )
         db.add(typing_row)
 
+    await db.execute(
+        update(Donor)
+        .where(Donor.id == donor_id)
+        .values(hla_typing_verified=_resolve_verified(ocr_verified))
+    )
     await db.commit()
 
 

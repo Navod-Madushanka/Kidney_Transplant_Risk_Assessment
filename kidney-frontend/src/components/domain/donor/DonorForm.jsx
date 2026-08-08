@@ -4,7 +4,45 @@ import SegmentedControl from "../../ui/SegmentedControl"
 import Button from "../../ui/Button"
 import { BLOOD_TYPE_OPTIONS, RH_FACTOR_OPTIONS } from "../../../constants/clinicalEnums"
 
-const emptyForm = { fullName: "", dateOfBirth: "", bloodType: "", rhFactor: "", nicNumber: "" }
+const emptyForm = {
+  fullName: "",
+  dateOfBirth: "",
+  bloodType: "",
+  rhFactor: "",
+  nicNumber: "",
+  egfr: "",
+  systolicBp: "",
+  diastolicBp: "",
+  bmi: "",
+  hasDiabetes: "unknown",
+  isSmoker: "unknown",
+}
+
+// has_diabetes/is_smoker are nullable booleans on the backend (unknown/no/
+// yes), not a plain checkbox — an unassessed donor shouldn't default to a
+// confirmed "no". These convert between that tri-state and the form's
+// string-valued SegmentedControl.
+const TRI_STATE_OPTIONS = [
+  { value: "unknown", label: "Unknown" },
+  { value: "no", label: "No" },
+  { value: "yes", label: "Yes" },
+]
+
+function boolToTriState(value) {
+  if (value === true) return "yes"
+  if (value === false) return "no"
+  return "unknown"
+}
+
+function triStateToBool(value) {
+  if (value === "yes") return true
+  if (value === "no") return false
+  return null
+}
+
+function numberOrNull(value) {
+  return value === "" ? null : Number(value)
+}
 
 /**
  * Usage:
@@ -13,7 +51,9 @@ const emptyForm = { fullName: "", dateOfBirth: "", bloodType: "", rhFactor: "", 
  * Pass mode="edit" to update an existing donor instead of creating one:
  * blood group/Rh factor are shown but locked (they're permanent once set —
  * the compatibility engine and existing reports trust them), and the
- * onSubmit payload omits them, matching DonorUpdate.
+ * onSubmit payload omits them, matching DonorUpdate. Clinical fields
+ * (eGFR/BP/BMI/diabetes/smoking) are the opposite — expected to change over
+ * a donor's workup — so they're always editable in both modes.
  */
 export default function DonorForm({
   onSubmit,
@@ -56,6 +96,12 @@ export default function DonorForm({
       full_name: form.fullName.trim(),
       date_of_birth: form.dateOfBirth,
       nic_number: form.nicNumber.trim() || null,
+      egfr: numberOrNull(form.egfr),
+      systolic_bp: numberOrNull(form.systolicBp),
+      diastolic_bp: numberOrNull(form.diastolicBp),
+      bmi: numberOrNull(form.bmi),
+      has_diabetes: triStateToBool(form.hasDiabetes),
+      is_smoker: triStateToBool(form.isSmoker),
     }
     if (!isEdit) {
       payload.blood_type = form.bloodType
@@ -114,6 +160,69 @@ export default function DonorForm({
         value={form.nicNumber}
         onChange={updateField("nicNumber")}
       />
+
+      <div className="pt-2 border-t border-border">
+        <p className="text-[13px] font-semibold text-text-muted mb-3">
+          Clinical suitability (reference only — not used by the automated compatibility check)
+        </p>
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <InputField
+              label="eGFR"
+              type="number"
+              step="0.01"
+              min="0"
+              max="200"
+              helperText="mL/min/1.73m²"
+              value={form.egfr}
+              onChange={updateField("egfr")}
+            />
+            <InputField
+              label="Systolic BP"
+              type="number"
+              min="50"
+              max="300"
+              helperText="mmHg"
+              value={form.systolicBp}
+              onChange={updateField("systolicBp")}
+            />
+            <InputField
+              label="Diastolic BP"
+              type="number"
+              min="30"
+              max="200"
+              helperText="mmHg"
+              value={form.diastolicBp}
+              onChange={updateField("diastolicBp")}
+            />
+          </div>
+          <InputField
+            label="BMI"
+            type="number"
+            step="0.1"
+            min="0"
+            max="100"
+            helperText="kg/m²"
+            className="max-w-50"
+            value={form.bmi}
+            onChange={updateField("bmi")}
+          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <SegmentedControl
+              label="Diabetes"
+              options={TRI_STATE_OPTIONS}
+              value={form.hasDiabetes}
+              onChange={updateValue("hasDiabetes")}
+            />
+            <SegmentedControl
+              label="Smoker"
+              options={TRI_STATE_OPTIONS}
+              value={form.isSmoker}
+              onChange={updateValue("isSmoker")}
+            />
+          </div>
+        </div>
+      </div>
 
       {formError && (
         <p role="alert" className="text-[13px] text-high-risk font-medium">

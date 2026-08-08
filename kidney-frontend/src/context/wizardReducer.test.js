@@ -112,7 +112,77 @@ describe("SET_CROSSMATCH", () => {
   })
 })
 
+describe("SET_OCR_VERIFIED", () => {
+  it("starts false for both document groups", () => {
+    const state = buildInitialWizardState()
+
+    expect(state.ocr_verified).toEqual({ hla_typing: false, bead_specificity: false })
+  })
+
+  it("sets only the named group, leaving the other untouched", () => {
+    const state = buildInitialWizardState()
+
+    const next = wizardReducer(state, {
+      type: WIZARD_ACTIONS.SET_OCR_VERIFIED,
+      group: "hla_typing",
+      verified: true,
+    })
+
+    expect(next.ocr_verified.hla_typing).toBe(true)
+    expect(next.ocr_verified.bead_specificity).toBe(false)
+  })
+})
+
 describe("HYDRATE_FROM_OCR", () => {
+  it("invalidates hla_typing verification when a fresh extraction overwrites HLA rows", () => {
+    const verifiedState = {
+      ...buildInitialWizardState(),
+      ocr_verified: { hla_typing: true, bead_specificity: true },
+    }
+
+    const next = wizardReducer(verifiedState, {
+      type: WIZARD_ACTIONS.HYDRATE_FROM_OCR,
+      payload: { patientHla: [{ locus: "A", allele_1: "01", allele_2: "02" }] },
+    })
+
+    // A re-upload's fresh, unreviewed HLA output shouldn't inherit the
+    // doctor's earlier confirmation of the previous extraction.
+    expect(next.ocr_verified.hla_typing).toBe(false)
+    // Bead specificity wasn't touched by this hydrate -- stays confirmed.
+    expect(next.ocr_verified.bead_specificity).toBe(true)
+  })
+
+  it("invalidates bead_specificity verification when a fresh extraction overwrites it", () => {
+    const verifiedState = {
+      ...buildInitialWizardState(),
+      ocr_verified: { hla_typing: true, bead_specificity: true },
+    }
+
+    const next = wizardReducer(verifiedState, {
+      type: WIZARD_ACTIONS.HYDRATE_FROM_OCR,
+      payload: { beadSpecificity: [{ antigen: "B7", mfi: 3500 }] },
+    })
+
+    expect(next.ocr_verified.bead_specificity).toBe(false)
+    expect(next.ocr_verified.hla_typing).toBe(true)
+  })
+
+  it("leaves both verification flags untouched when the OCR payload found nothing new", () => {
+    const verifiedState = {
+      ...buildInitialWizardState(),
+      ocr_verified: { hla_typing: true, bead_specificity: true },
+    }
+
+    const next = wizardReducer(verifiedState, {
+      type: WIZARD_ACTIONS.HYDRATE_FROM_OCR,
+      payload: {},
+    })
+
+    expect(next.ocr_verified).toEqual({ hla_typing: true, bead_specificity: true })
+  })
+})
+
+describe("HYDRATE_FROM_OCR — field merging", () => {
   it("only overwrites patient_details fields OCR actually found a value for", () => {
     const state = {
       ...buildInitialWizardState(),

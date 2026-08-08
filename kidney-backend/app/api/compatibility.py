@@ -40,6 +40,33 @@ async def check_compatibility(
             detail="Donor not found",
         )
 
+    # Refuse to run the pipeline at all on OCR-extracted clinical data that
+    # hasn't been confirmed by a doctor yet (see Patient/Donor.
+    # hla_typing_verified / antibody_profile_verified, set by
+    # hla_typing_service/antibody_profile_service whenever a PUT ...
+    # /hla-typings or /antibody-profiles call declares ocr_verified=False).
+    # A same-shape precondition to the 404 checks above: caught before
+    # run_match_pipeline/create_match_report ever run, so an unverified
+    # check never produces a MatchReport row at all -- this isn't a clinical
+    # result to record, it's a request that shouldn't have been made yet.
+    unverified_reasons = []
+    if not patient.hla_typing_verified:
+        unverified_reasons.append("the patient's HLA typing")
+    if not donor.hla_typing_verified:
+        unverified_reasons.append("the donor's HLA typing")
+    if not patient.antibody_profile_verified:
+        unverified_reasons.append("the patient's antibody/bead-specificity profile")
+    if unverified_reasons:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=(
+                "Cannot run compatibility check: "
+                f"{', '.join(unverified_reasons)} came from OCR extraction and "
+                "hasn't been confirmed by a doctor yet. Review and re-save it "
+                "against the source document first."
+            ),
+        )
+
     crossmatch_input = None
     if payload.crossmatch is not None:
         crossmatch_input = CrossmatchInputData(

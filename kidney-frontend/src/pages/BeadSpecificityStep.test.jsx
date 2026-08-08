@@ -23,7 +23,18 @@ function renderStep(wizardValue) {
 function makeWizardValue(overrides = {}) {
   return {
     state: { bead_specificity: [] },
-    actions: { setBeadSpecificity: vi.fn(), unlockStep: vi.fn(), ...overrides },
+    actions: { setBeadSpecificity: vi.fn(), unlockStep: vi.fn(), setOcrVerified: vi.fn(), ...overrides },
+  }
+}
+
+function makeOcrExtractedWizardValue(ocrVerified = false) {
+  return {
+    state: {
+      bead_specificity: [{ antigen: "DQ7", mfi: 1200 }],
+      extraction: { documents: { bead_specificity_page_1: { status: "done" } } },
+      ocr_verified: { hla_typing: false, bead_specificity: ocrVerified },
+    },
+    actions: { setBeadSpecificity: vi.fn(), unlockStep: vi.fn(), setOcrVerified: vi.fn() },
   }
 }
 
@@ -124,6 +135,54 @@ describe("BeadSpecificityStep", () => {
 
     expect(await screen.findByText("MFI must be a number")).toBeInTheDocument()
     expect(screen.getByLabelText("Search by antigen/bead name")).toHaveValue("")
+  })
+
+  it("doesn't show a review confirmation when nothing was OCR-extracted", () => {
+    renderStep(makeWizardValue())
+
+    expect(
+      screen.queryByText("I have reviewed this bead specificity chart against the source document")
+    ).not.toBeInTheDocument()
+  })
+
+  it("blocks Continue until the OCR review is confirmed", async () => {
+    const user = userEvent.setup()
+    const wizardValue = makeOcrExtractedWizardValue(false)
+    renderStep(wizardValue)
+
+    await user.click(screen.getByRole("button", { name: /continue/i }))
+
+    expect(
+      await screen.findByText(/refuses to run on\s*unverified OCR data/)
+    ).toBeInTheDocument()
+    expect(wizardValue.actions.setBeadSpecificity).not.toHaveBeenCalled()
+  })
+
+  it("lets Continue through once the OCR review is confirmed", async () => {
+    const user = userEvent.setup()
+    const wizardValue = makeOcrExtractedWizardValue(true)
+    renderStep(wizardValue)
+
+    await user.click(screen.getByRole("button", { name: /continue/i }))
+
+    expect(wizardValue.actions.setBeadSpecificity).toHaveBeenCalledWith([
+      { antigen: "DQ7", mfi: 1200 },
+    ])
+    expect(await screen.findByText("Review Step")).toBeInTheDocument()
+  })
+
+  it("toggling the review confirmation dispatches setOcrVerified", async () => {
+    const user = userEvent.setup()
+    const wizardValue = makeOcrExtractedWizardValue(false)
+    renderStep(wizardValue)
+
+    await user.click(
+      screen.getByRole("switch", {
+        name: /I have reviewed this bead specificity chart against the source document/,
+      })
+    )
+
+    expect(wizardValue.actions.setOcrVerified).toHaveBeenCalledWith("bead_specificity", true)
   })
 
   it("navigates back to the sensitization step without validating", async () => {

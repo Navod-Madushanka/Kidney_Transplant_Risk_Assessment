@@ -19,6 +19,12 @@ async def create_donor(
         blood_type=payload.blood_type,
         rh_factor=payload.rh_factor,
         nic_number=payload.nic_number,
+        egfr=payload.egfr,
+        systolic_bp=payload.systolic_bp,
+        diastolic_bp=payload.diastolic_bp,
+        bmi=payload.bmi,
+        has_diabetes=payload.has_diabetes,
+        is_smoker=payload.is_smoker,
     )
     db.add(donor)
     await db.commit()
@@ -77,6 +83,12 @@ async def update_donor_details(
     donor.full_name = payload.full_name
     donor.date_of_birth = payload.date_of_birth
     donor.nic_number = payload.nic_number
+    donor.egfr = payload.egfr
+    donor.systolic_bp = payload.systolic_bp
+    donor.diastolic_bp = payload.diastolic_bp
+    donor.bmi = payload.bmi
+    donor.has_diabetes = payload.has_diabetes
+    donor.is_smoker = payload.is_smoker
     await db.commit()
     await db.refresh(donor)
     return donor

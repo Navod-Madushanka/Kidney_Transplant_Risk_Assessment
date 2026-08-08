@@ -6,7 +6,11 @@ describe("donorStatusBadgeProps", () => {
   it.each([
     ["available", "clear", "Available"],
     ["reserved", "pending", "Reserved"],
+    ["under_workup", "pending", "Under workup"],
     ["transplanted", "neutral", "Transplanted"],
+    ["medically_unfit", "fail", "Medically unfit"],
+    ["withdrawn", "neutral", "Withdrawn"],
+    ["deceased", "neutral", "Deceased"],
   ])("maps donor status %s to badge status %s", (donorStatus, expectedStatus, expectedLabel) => {
     expect(donorStatusBadgeProps(donorStatus)).toEqual({
       status: expectedStatus,

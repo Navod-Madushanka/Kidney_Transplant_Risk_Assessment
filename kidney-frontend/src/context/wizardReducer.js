@@ -87,6 +87,22 @@ export function buildInitialWizardState() {
     // typed URL, while still allowing free navigation backward.
     furthestStepIndex: 0,
 
+    // Doctor's explicit "I reviewed this against the source document"
+    // confirmation, one flag per OCR-sourced document group -- required by
+    // HlaTypingStep/BeadSpecificityStep before Continue will advance, but
+    // ONLY when that step's extraction.documents entry shows OCR actually
+    // ran for it (see each file's own wasOcrExtracted check). Sent to the
+    // backend as ocr_verified on submission (see api/compatibilityWizard.js)
+    // -- POST /compatibility/check refuses to run at all while either is
+    // unconfirmed (app/api/compatibility.py), rather than trusting a
+    // vision-LLM misread into a hard reject. crossmatch doesn't need an
+    // entry here: its gating field (is_positive) is never OCR-filled in the
+    // first place, see the crossmatch comment below.
+    ocr_verified: {
+      hla_typing: false,
+      bead_specificity: false,
+    },
+
     // Tracks the current/last document-extraction job, if any. Lives here
     // (rather than as PhotoUploadsStep local state) specifically so it
     // survives navigating to another wizard step — extraction runs as a
@@ -113,6 +129,7 @@ export const WIZARD_ACTIONS = {
   SET_PATIENT_HLA_ROW: "SET_PATIENT_HLA_ROW",
   SET_DONOR_HLA_ROW: "SET_DONOR_HLA_ROW",
   SET_SENSITIZATION: "SET_SENSITIZATION",
+  SET_OCR_VERIFIED: "SET_OCR_VERIFIED",
   SET_BEAD_SPECIFICITY: "SET_BEAD_SPECIFICITY",
   SET_CROSSMATCH: "SET_CROSSMATCH",
   HYDRATE_FROM_OCR: "HYDRATE_FROM_OCR",
@@ -166,6 +183,12 @@ export function wizardReducer(state, action) {
         sensitization: { ...state.sensitization, ...action.patch },
       };
 
+    case WIZARD_ACTIONS.SET_OCR_VERIFIED:
+      return {
+        ...state,
+        ocr_verified: { ...state.ocr_verified, [action.group]: action.verified },
+      };
+
     case WIZARD_ACTIONS.SET_BEAD_SPECIFICITY:
       return { ...state, bead_specificity: action.rows };
 
@@ -204,6 +227,15 @@ export function wizardReducer(state, action) {
         });
       };
 
+      // A fresh extraction overwriting fields with output nobody has seen
+      // yet invalidates any earlier verification of that same document
+      // group -- otherwise re-uploading a corrected photo after already
+      // checking "reviewed" would silently keep trusting the old
+      // confirmation against new, unreviewed data.
+      const hlaChanged =
+        (patientHla && patientHla.length > 0) || (donorHla && donorHla.length > 0);
+      const beadSpecificityChanged = beadSpecificity && beadSpecificity.length > 0;
+
       return {
         ...state,
         patient_details: mergeDetails(state.patient_details, patientDetails),
@@ -213,6 +245,10 @@ export function wizardReducer(state, action) {
         bead_specificity:
           beadSpecificity && beadSpecificity.length > 0 ? beadSpecificity : state.bead_specificity,
         crossmatch: crossmatch ? { ...state.crossmatch, ...crossmatch } : state.crossmatch,
+        ocr_verified: {
+          hla_typing: hlaChanged ? false : state.ocr_verified.hla_typing,
+          bead_specificity: beadSpecificityChanged ? false : state.ocr_verified.bead_specificity,
+        },
       };
     }
 

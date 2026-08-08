@@ -42,18 +42,40 @@ export async function submitCompatibilityCheck(
       await completeStep({ donorId: donor.id })
     }
 
+    // undefined (not this document's OCR extraction status) vs an explicit
+    // true/false (it WAS OCR-extracted, and here's whether the doctor
+    // confirmed it) — see replacePatientHlaTypings's docstring. HlaTypingStep
+    // /BeadSpecificityStep already block reaching this point at all unless
+    // ocr_verified is true whenever wasOcrExtracted, so these are really
+    // only ever `undefined` or `true` in practice; still computed from the
+    // real extraction state rather than assumed, so a defensive caller
+    // hitting this function directly can't accidentally mismark manual
+    // entry as unverified OCR.
+    const hlaOcrVerified = wasOcrExtracted(wizardState, "hla_typing_report")
+      ? wizardState.ocr_verified.hla_typing
+      : undefined
+    const beadSpecificityOcrVerified =
+      wasOcrExtracted(wizardState, "bead_specificity_page_1") ||
+      wasOcrExtracted(wizardState, "bead_specificity_page_2")
+        ? wizardState.ocr_verified.bead_specificity
+        : undefined
+
     if (!next.patientHlaDone) {
-      await replacePatientHlaTypings(next.patientId, wizardState.patient_hla)
+      await replacePatientHlaTypings(next.patientId, wizardState.patient_hla, hlaOcrVerified)
       await completeStep({ patientHlaDone: true })
     }
 
     if (!next.donorHlaDone) {
-      await replaceDonorHlaTypings(next.donorId, wizardState.donor_hla)
+      await replaceDonorHlaTypings(next.donorId, wizardState.donor_hla, hlaOcrVerified)
       await completeStep({ donorHlaDone: true })
     }
 
     if (!next.antibodyProfilesDone) {
-      await replacePatientAntibodyProfiles(next.patientId, wizardState.bead_specificity)
+      await replacePatientAntibodyProfiles(
+        next.patientId,
+        wizardState.bead_specificity,
+        beadSpecificityOcrVerified
+      )
       await completeStep({ antibodyProfilesDone: true })
     }
 
@@ -87,6 +109,10 @@ export async function submitCompatibilityCheck(
     err.progress = next
     throw err
   }
+}
+
+function wasOcrExtracted(wizardState, documentType) {
+  return wizardState.extraction.documents[documentType]?.status === "done"
 }
 
 function buildPersonPayload(details) {

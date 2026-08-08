@@ -34,6 +34,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 
 from app.models.audit_log import AuditLog
+from app.models.match_report import MatchReport
 from app.tests.conftest import (
     COMPATIBLE_DONOR_HLA,
     COMPATIBLE_PATIENT_HLA,
@@ -461,6 +462,150 @@ async def test_check_without_crossmatch_stops_at_pending(auth_client: AsyncClien
     assert body["crossmatch_result"] is None
     assert body["dsa_result"] is not None
     assert body["final_risk_level"] is None
+
+
+# ---------------------------------------------------------------------
+# OCR verification gate (added 2026-08-08): a compatibility check must
+# refuse to run at all against HLA typing / antibody-profile data that came
+# from OCR extraction and hasn't been confirmed by a doctor yet, rather
+# than trusting a vision-LLM misread into a hard reject. See
+# Patient/Donor.hla_typing_verified / antibody_profile_verified and
+# match_pipeline.py's module docstring.
+# ---------------------------------------------------------------------
+
+
+async def test_unverified_patient_hla_typing_blocks_the_check(auth_client: AsyncClient):
+    patient = await create_patient(auth_client, blood_type="AB")
+    donor = await create_donor(auth_client, blood_type="O")
+
+    await auth_client.put(
+        f"/patients/{patient['id']}/hla-typings",
+        json=COMPATIBLE_PATIENT_HLA,
+        params={"ocr_verified": "false"},
+    )
+    await auth_client.put(f"/donors/{donor['id']}/hla-typings", json=COMPATIBLE_DONOR_HLA)
+
+    response = await auth_client.post(
+        "/compatibility/check",
+        json={"patient_id": patient["id"], "donor_id": donor["id"]},
+    )
+
+    assert response.status_code == 422
+    assert "patient's HLA typing" in response.json()["detail"]
+
+
+async def test_unverified_donor_hla_typing_blocks_the_check(auth_client: AsyncClient):
+    patient = await create_patient(auth_client, blood_type="AB")
+    donor = await create_donor(auth_client, blood_type="O")
+
+    await auth_client.put(f"/patients/{patient['id']}/hla-typings", json=COMPATIBLE_PATIENT_HLA)
+    await auth_client.put(
+        f"/donors/{donor['id']}/hla-typings",
+        json=COMPATIBLE_DONOR_HLA,
+        params={"ocr_verified": "false"},
+    )
+
+    response = await auth_client.post(
+        "/compatibility/check",
+        json={"patient_id": patient["id"], "donor_id": donor["id"]},
+    )
+
+    assert response.status_code == 422
+    assert "donor's HLA typing" in response.json()["detail"]
+
+
+async def test_unverified_antibody_profile_blocks_the_check(auth_client: AsyncClient):
+    patient = await create_patient(auth_client, blood_type="AB")
+    donor = await create_donor(auth_client, blood_type="O")
+
+    await auth_client.put(f"/patients/{patient['id']}/hla-typings", json=COMPATIBLE_PATIENT_HLA)
+    await auth_client.put(f"/donors/{donor['id']}/hla-typings", json=COMPATIBLE_DONOR_HLA)
+    await auth_client.put(
+        f"/patients/{patient['id']}/antibody-profiles",
+        json=[{"antigen": "B7", "mfi": 500}],
+        params={"ocr_verified": "false"},
+    )
+
+    response = await auth_client.post(
+        "/compatibility/check",
+        json={"patient_id": patient["id"], "donor_id": donor["id"]},
+    )
+
+    assert response.status_code == 422
+    assert "antibody/bead-specificity profile" in response.json()["detail"]
+
+
+async def test_blocked_check_never_creates_a_match_report(
+    auth_client: AsyncClient, db_session
+):
+    patient = await create_patient(auth_client, blood_type="AB")
+    donor = await create_donor(auth_client, blood_type="O")
+    await auth_client.put(
+        f"/patients/{patient['id']}/hla-typings",
+        json=COMPATIBLE_PATIENT_HLA,
+        params={"ocr_verified": "false"},
+    )
+
+    response = await auth_client.post(
+        "/compatibility/check",
+        json={"patient_id": patient["id"], "donor_id": donor["id"]},
+    )
+    assert response.status_code == 422
+
+    result = await db_session.execute(
+        select(MatchReport).where(MatchReport.patient_id == uuid.UUID(patient["id"]))
+    )
+    assert result.scalar_one_or_none() is None
+
+
+async def test_confirming_ocr_verified_true_lets_the_check_proceed(auth_client: AsyncClient):
+    # A doctor re-saving the same data with ocr_verified=true (having
+    # reviewed it against the source document) clears the block.
+    patient = await create_patient(auth_client, blood_type="AB")
+    donor = await create_donor(auth_client, blood_type="O")
+
+    await auth_client.put(
+        f"/patients/{patient['id']}/hla-typings",
+        json=COMPATIBLE_PATIENT_HLA,
+        params={"ocr_verified": "false"},
+    )
+    blocked = await auth_client.post(
+        "/compatibility/check",
+        json={"patient_id": patient["id"], "donor_id": donor["id"]},
+    )
+    assert blocked.status_code == 422
+
+    await auth_client.put(
+        f"/patients/{patient['id']}/hla-typings",
+        json=COMPATIBLE_PATIENT_HLA,
+        params={"ocr_verified": "true"},
+    )
+    await auth_client.put(f"/donors/{donor['id']}/hla-typings", json=COMPATIBLE_DONOR_HLA)
+
+    response = await auth_client.post(
+        "/compatibility/check",
+        json={"patient_id": patient["id"], "donor_id": donor["id"]},
+    )
+    assert response.status_code == 201
+
+
+async def test_manual_edits_without_ocr_verified_param_stay_trusted(auth_client: AsyncClient):
+    # The overwhelming common case: a doctor typing HLA typing in by hand
+    # (or editing it later via the patient/donor detail page) never sends
+    # ocr_verified at all -- omitted means "not an OCR write, no claim being
+    # made," same as before this feature existed.
+    patient = await create_patient(auth_client, blood_type="AB")
+    donor = await create_donor(auth_client, blood_type="O")
+
+    await auth_client.put(f"/patients/{patient['id']}/hla-typings", json=COMPATIBLE_PATIENT_HLA)
+    await auth_client.put(f"/donors/{donor['id']}/hla-typings", json=COMPATIBLE_DONOR_HLA)
+
+    response = await auth_client.post(
+        "/compatibility/check",
+        json={"patient_id": patient["id"], "donor_id": donor["id"]},
+    )
+
+    assert response.status_code == 201
 
 
 async def test_get_report_by_id(auth_client: AsyncClient):

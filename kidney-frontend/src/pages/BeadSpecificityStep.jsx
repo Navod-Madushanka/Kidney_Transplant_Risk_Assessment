@@ -5,6 +5,7 @@ import { useWizard } from "../hooks/useWizard"
 import InputField from "../components/ui/InputField"
 import Button from "../components/ui/Button"
 import Card from "../components/ui/Card"
+import ToggleSwitch from "../components/ui/ToggleSwitch"
 
 let nextRowId = 1
 function makeRow(entry) {
@@ -40,6 +41,14 @@ export default function BeadSpecificityStep() {
   const [antigenFilter, setAntigenFilter] = useState("")
   const [mfiFilter, setMfiFilter] = useState("")
   const hasActiveFilter = antigenFilter.trim() !== "" || mfiFilter.trim() !== ""
+  const [verificationError, setVerificationError] = useState(false)
+
+  // Either page counts as "OCR extracted this document" — they merge into
+  // one bead_specificity array, so one confirmation covers both. See
+  // ocr_verified's comment in wizardReducer.js.
+  const wasOcrExtracted =
+    state.extraction?.documents?.["bead_specificity_page_1"]?.status === "done" ||
+    state.extraction?.documents?.["bead_specificity_page_2"]?.status === "done"
 
   const visibleRows = useMemo(() => {
     if (!hasActiveFilter) return rows
@@ -122,6 +131,9 @@ export default function BeadSpecificityStep() {
     })
 
     setRowErrors(nextRowErrors)
+    const needsVerification = wasOcrExtracted && !state.ocr_verified?.bead_specificity
+    setVerificationError(needsVerification)
+
     if (Object.keys(nextRowErrors).length > 0) {
       // A row failing validation could be hidden behind an active search —
       // clear it so the doctor can actually see what needs fixing.
@@ -129,6 +141,7 @@ export default function BeadSpecificityStep() {
       setMfiFilter("")
       return
     }
+    if (needsVerification) return
 
     actions.setBeadSpecificity(populatedRows)
     actions.unlockStep(5)
@@ -206,6 +219,31 @@ export default function BeadSpecificityStep() {
           )}
         </div>
       </Card>
+
+      {wasOcrExtracted && (
+        <div
+          className={[
+            "rounded-md border p-4",
+            verificationError ? "border-high-risk bg-high-risk-subtle" : "border-moderate bg-moderate-subtle",
+          ].join(" ")}
+        >
+          <ToggleSwitch
+            label="I have reviewed this bead specificity chart against the source document"
+            helperText="MFI values here were extracted by AI — confirm they're accurate before continuing. A misread value can flow straight into a DSA reject."
+            checked={!!state.ocr_verified?.bead_specificity}
+            onChange={(checked) => {
+              actions.setOcrVerified("bead_specificity", checked)
+              if (checked) setVerificationError(false)
+            }}
+          />
+          {verificationError && (
+            <p className="text-[13px] text-high-risk font-medium mt-2">
+              Confirm this before continuing — the compatibility check refuses to run on
+              unverified OCR data.
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="flex items-center justify-between">
         <Button variant="secondary" onClick={() => navigate("/checks/new/sensitization")}>

@@ -98,6 +98,17 @@ export default function DonorSearchPage() {
             { key: "hospital", label: "Hospital" },
             { key: "doctor", label: "Doctor" },
             { key: "blood_type", label: "Blood type" },
+            {
+              key: "rh_factor",
+              label: (
+                <span className="flex flex-col gap-0.5 font-semibold">
+                  <span>Rh factor</span>
+                  <span className="font-normal normal-case text-[11px] text-text-muted">
+                    reference only — not matched
+                  </span>
+                </span>
+              ),
+            },
             { key: "mismatches", label: "HLA mismatches" },
             { key: "action", label: "", align: "right" },
           ]}
@@ -115,11 +126,15 @@ export default function DonorSearchPage() {
                   </div>
                 )
               case "blood_type":
+                return <Badge status="neutral">{candidate.blood_type}</Badge>
+              case "rh_factor":
                 return (
-                  <Badge status="neutral">
-                    {candidate.blood_type}
+                  <span
+                    className="text-text-muted"
+                    title="Rh factor is not a kidney transplant compatibility criterion (unlike blood transfusion) — shown for reference only."
+                  >
                     {candidate.rh_factor}
-                  </Badge>
+                  </span>
                 )
               case "mismatches":
                 return candidate.mismatch_result.data_completeness === false

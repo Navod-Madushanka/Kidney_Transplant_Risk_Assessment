@@ -55,6 +55,9 @@ export function WizardProvider({ children }) {
       setSensitization: (patch) =>
         dispatch({ type: WIZARD_ACTIONS.SET_SENSITIZATION, patch }),
 
+      setOcrVerified: (group, verified) =>
+        dispatch({ type: WIZARD_ACTIONS.SET_OCR_VERIFIED, group, verified }),
+
       setBeadSpecificity: (rows) =>
         dispatch({ type: WIZARD_ACTIONS.SET_BEAD_SPECIFICITY, rows }),
 
