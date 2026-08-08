@@ -16,7 +16,6 @@ describe("reportBadgeProps", () => {
     ["halted_abo_fail", "ABO Fail"],
     ["halted_dsa_trigger", "DSA Halt"],
     ["halted_mismatch_reject", "Mismatch Reject"],
-    ["halted_pra_reject", "PRA Reject"],
     ["halted_crossmatch_positive", "Crossmatch Positive"],
   ])("labels %s as a halt, even if final_risk_level is somehow also present", (status, label) => {
     // A halted report should never carry a final_risk_level in practice

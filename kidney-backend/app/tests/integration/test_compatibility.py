@@ -7,12 +7,16 @@ tiering) already have thorough unit coverage in app/tests/unit/ — these
 tests instead check that the API wires patient/donor records through the
 whole Step 1-7 sequence correctly and persists/returns the right thing.
 
-One of the seven steps' reject paths is deliberately NOT covered here:
-- Step 4 (PRA): halting requires cPRA to have "sufficient data", which
-  needs >= 100 people's HLA typing already in the population sample
-  (app/reference_data/cpra_settings.py). Seeding that many patient/donor
-  pairs just for this test isn't worth the runtime cost — the bucket
-  math itself is covered precisely and quickly in test_pra_bucket_service.py.
+Step 4 (PRA) no longer has a reject path at all — it briefly did, but
+rejecting a pairing on population-level cPRA (rather than a pair-specific
+test like Steps 5/6) was a clinical category error, reverted 2026-08-08.
+See match_pipeline.py's module docstring and
+test_risk_classification.py::test_pra_above_60_percent_is_not_scored_and_returns_none
+for the regression coverage of what used to be the reject path. Exercising
+a real >100-person population sample here (needed for cPRA to even have
+"sufficient data" — app/reference_data/cpra_settings.py) still isn't worth
+the runtime cost for a step that only ever bucket/displays now; the bucket
+math itself is covered precisely and quickly in test_pra_bucket_service.py.
 
 Step 3 (mismatches) used to be unreachable too: with exactly two alleles per
 locus across the three counted loci (A/B/DRB1), the maximum possible

@@ -21,5 +21,8 @@ PRA_BUCKETS: list[PRABucket] = [
     PRABucket(name=">60%", min_percent=60.001, max_percent=100.0),
 ]
 
-# Reject threshold — anything strictly above this fails Step 4.
+# Clinical high-sensitisation threshold — anything strictly above this sets
+# PRABucketResult.is_halted, but that field is informational only and does
+# NOT reject the pairing (see pra_bucket_service.py's module docstring for
+# why: cPRA is population-level, not pair-specific).
 MAX_ACCEPTABLE_PRA_PERCENT = 60.0

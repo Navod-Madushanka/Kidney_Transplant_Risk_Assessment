@@ -23,7 +23,7 @@ function HaltBanner({ report }) {
       <div className="rounded-md border border-border bg-bg p-4">
         <p className="text-[15px] font-semibold text-text">Awaiting crossmatch</p>
         <p className="text-[13px] text-text-muted mt-1">
-          Every gate through Step 5 (ABO, mismatches, PRA, DSA) passed, but no crossmatch
+          Every gate through Step 5 (ABO, mismatches, DSA) passed, but no crossmatch
           result was submitted with this check, so the final risk classification hasn't run.
           Run a new compatibility check for this pair once a crossmatch result is available.
         </p>
@@ -56,13 +56,6 @@ function HaltBanner({ report }) {
         <p className="text-[13px] text-text-muted">
           {report.mismatch_result.total_mismatches} HLA mismatches across A/B/DRB1 (bucket:{" "}
           {report.mismatch_result.bucket_name}) — above the acceptable threshold for Step 3.
-        </p>
-      )}
-
-      {status === "halted_pra_reject" && (
-        <p className="text-[13px] text-text-muted">
-          Calculated cPRA of {report.pra_bucket_result.percent.toFixed(1)}% (bucket:{" "}
-          {report.pra_bucket_result.bucket_name}) — above the acceptable threshold for Step 4.
         </p>
       )}
 
@@ -241,7 +234,10 @@ export default function ReportDetailPage() {
 
       {report.pra_bucket_result && (
         <Card>
-          <Card.Header title="Step 4 — PRA" />
+          <Card.Header
+            title="Step 4 — PRA"
+            subtitle="Population-level sensitisation, computed for reference — never halts. Steps 5/6 (DSA, crossmatch) test this specific pairing."
+          />
           {report.pra_bucket_result.has_sufficient_data ? (
             <div className="flex items-center justify-between text-[14px]">
               <span className="text-text-muted">Calculated cPRA (bucket: {report.pra_bucket_result.bucket_name})</span>
@@ -315,6 +311,12 @@ export default function ReportDetailPage() {
             <p className="text-[14px] text-high-risk font-medium">
               Cannot assess — A/B/DRB1 HLA typing is incomplete for this patient/donor pair, so
               Step 7 can't combine a reliable mismatch bucket rather than guessing one.
+            </p>
+          ) : report.pra_bucket_result?.bucket_name === ">60%" ? (
+            <p className="text-[14px] text-text-muted">
+              No final classification yet — cPRA is above 60%, and no doctor-specified point
+              value exists for that bucket yet, so Step 7 can't combine a result rather than
+              guessing one. See Steps 5/6 (DSA, crossmatch) for this pairing's actual result.
             </p>
           ) : (
             <p className="text-[14px] text-text-muted">

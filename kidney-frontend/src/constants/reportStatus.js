@@ -13,12 +13,15 @@
 
 // Every status the sequential pipeline can halt on before reaching a final
 // classification. Mirrors the halt statuses in
-// kidney-backend/app/services/match_pipeline.py.
+// kidney-backend/app/services/match_pipeline.py. Step 4 (PRA/cPRA) is
+// deliberately NOT here — cPRA is population-level, not pair-specific, so
+// it's informational only and never halts the pipeline (reverted
+// 2026-08-08 after briefly being a reject gate; see match_pipeline.py's
+// module docstring).
 export const HALTED_STATUSES = new Set([
   "halted_abo_fail",
   "halted_dsa_trigger",
   "halted_mismatch_reject",
-  "halted_pra_reject",
   "halted_crossmatch_positive",
 ])
 
@@ -33,7 +36,6 @@ const HALT_BADGE_LABELS = {
   halted_abo_fail: "ABO Fail",
   halted_dsa_trigger: "DSA Halt",
   halted_mismatch_reject: "Mismatch Reject",
-  halted_pra_reject: "PRA Reject",
   halted_crossmatch_positive: "Crossmatch Positive",
 }
 
@@ -43,7 +45,6 @@ export const HALT_DESCRIPTIONS = {
   halted_abo_fail: "ABO incompatible",
   halted_dsa_trigger: "Donor-specific antibody detected",
   halted_mismatch_reject: "Too many HLA mismatches",
-  halted_pra_reject: "PRA above the acceptable threshold",
   halted_crossmatch_positive: "Positive crossmatch",
 }
 

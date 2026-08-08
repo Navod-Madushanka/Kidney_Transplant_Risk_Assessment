@@ -15,10 +15,10 @@ proceeds to the next step. As of this pass:
                         rather than guessing a clinical threshold.
   3. Mismatches      - real gate (NEW this pass). A/B/DRB1 only, wired from
                         app/reference_data/mismatch_buckets.py.
-  4. PRA             - real gate (NEW this pass). Wired from
-                        app/reference_data/pra_buckets.py. Skips the halt
-                        (but not the step) if there isn't enough population
-                        data yet for a cPRA figure at all.
+  4. PRA             - NOT a gate (changed back this pass — see below).
+                        Wired from app/reference_data/pra_buckets.py.
+                        Computed and bucketed for every check, but never
+                        halts, same as Step 2.
   5. DSA             - real gate (CHANGED this pass). Flat MFI 1000 cutoff
                         from app/reference_data/dsa_threshold.py, no longer
                         adjusted by the Sensitization score.
@@ -32,12 +32,27 @@ proceeds to the next step. As of this pass:
                         buckets via risk_classification.py. Only computed
                         when both bucket inputs are known (Step 4's bucket
                         can be None if cPRA had insufficient population
-                        data) AND Step 3's mismatch count was computed from
-                        complete A/B/DRB1 typing on both sides (see
-                        MismatchResult.data_completeness in
-                        hla_mismatch_service.py) — in either case
+                        data, or a score risk_classification.py has no
+                        doctor-specified point value for yet — currently
+                        just ">60%", see below) AND Step 3's mismatch count
+                        was computed from complete A/B/DRB1 typing on both
+                        sides (see MismatchResult.data_completeness in
+                        hla_mismatch_service.py) — in any of these cases
                         final_risk_level stays None rather than guessing or
                         presenting a risk level built on absent data.
+
+Step 4 (PRA) briefly halted the pipeline outright above
+MAX_ACCEPTABLE_PRA_PERCENT (60%) — reverted 2026-08-08 as a clinical
+category error. cPRA measures how hard a patient is to match against the
+*population*; it says nothing about this specific donor. Rejecting a
+pairing on cPRA meant the more sensitised a patient was, the more certainly
+the system refused the one compatible donor they'd actually found — exactly
+backwards, since Steps 5 (DSA) and 6 (crossmatch) already test this
+specific pairing directly and are what should decide accept/reject on
+sensitisation-related risk. PRA is bucketed and returned for every check
+(clinical context, and it still feeds Step 7 when a doctor-specified point
+value exists for its bucket — see risk_classification.py), but never halts
+Step 3+ on its own, same as Step 2.
 
 The old continuous HLA scoring (hla_scoring_service.py, all 9 loci) and its
 4-tier risk_tier are kept and still computed on a full "completed" run, for
@@ -165,16 +180,9 @@ async def run_match_pipeline(
         population_profiles=population_profiles,
     )
     pra_bucket_result = calculate_pra_bucket(cpra_result)
-
-    if pra_bucket_result.is_halted:
-        return MatchPipelineResult(
-            overall_status="halted_pra_reject",
-            abo_result=abo_result,
-            sensitization_result=sensitization_result,
-            mismatch_result=mismatch_result,
-            pra_bucket_result=pra_bucket_result,
-            cpra_result=cpra_result,
-        )
+    # Informational only — see the module docstring's note on Step 4. cPRA
+    # is population-level, not pair-specific, so it never halts the
+    # pipeline; Steps 5/6 below are the real pair-specific gates.
 
     # --- Step 5: DSA -------------------------------------------------------
     # Flat threshold now (DSA_MFI_THRESHOLD = 1000), no longer adjusted by

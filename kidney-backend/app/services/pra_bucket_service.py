@@ -1,18 +1,27 @@
 # app/services/pra_bucket_service.py
 """
 Step 4 of the sequential compatibility pipeline: bucket the calculated cPRA
-percentage per app/reference_data/pra_buckets.py and decide reject/proceed.
-PRA itself is still calculated by the existing cpra_service.py (population-
-based, unchanged) — this only re-buckets that output against the new
-spec's three ranges instead of treating cPRA as pass/fail-only.
+percentage per app/reference_data/pra_buckets.py. PRA itself is still
+calculated by the existing cpra_service.py (population-based, unchanged) —
+this only re-buckets that output against the new spec's three ranges
+instead of treating cPRA as pass/fail-only.
+
+PRABucketResult.is_halted does NOT halt the pipeline — match_pipeline.py
+never branches on it. It briefly did (cPRA > MAX_ACCEPTABLE_PRA_PERCENT
+rejected the pairing outright), reverted 2026-08-08: cPRA measures how hard
+a patient is to match against the *population*, not whether this specific
+donor is compatible, so using it as a reject gate meant the more sensitised
+a patient was, the more certainly the system refused the one compatible
+donor they'd actually found. Steps 5 (DSA) and 6 (crossmatch) are the real
+pair-specific gates for sensitisation-related risk. The field is kept
+(rather than removed) as a simple "exceeds the >60% clinical threshold"
+signal for display/reference — treat it as informational only, never as a
+reason to stop the pipeline.
 
 When there isn't enough population data yet to calculate a cPRA
-(CPRAResult.has_sufficient_data is False), Step 4 cannot reach a decision.
-That is NOT treated as an automatic pass through to Step 5 in the sense of
-"proceed and forget" — the pipeline does move on to Step 5, since we can't
-reject a case on data we don't have, but has_sufficient_data=False on the
-result is preserved so Step 7's final classification can also correctly
-decline to produce a risk level rather than silently guessing one.
+(CPRAResult.has_sufficient_data is False), has_sufficient_data=False is
+preserved so Step 7's final classification can correctly decline to produce
+a risk level rather than silently guessing one.
 """
 from dataclasses import dataclass
 from typing import Optional

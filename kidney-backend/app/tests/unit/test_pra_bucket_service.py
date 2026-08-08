@@ -1,4 +1,9 @@
 # app/tests/unit/test_pra_bucket_service.py
+"""Coverage for calculate_pra_bucket()'s bucketing math and its is_halted
+flag. is_halted is informational only (whether cPRA exceeds the >60%
+clinical threshold) — match_pipeline.py never branches on it to reject a
+pairing; see pra_bucket_service.py's module docstring for why cPRA can't be
+a pair-specific reject gate."""
 from app.services.cpra_service import CPRAResult
 from app.services.pra_bucket_service import calculate_pra_bucket
 
@@ -12,7 +17,7 @@ def _cpra(percentage, sufficient=True):
     )
 
 
-def test_insufficient_data_does_not_halt_and_has_no_bucket():
+def test_insufficient_data_leaves_is_halted_false_and_has_no_bucket():
     result = calculate_pra_bucket(_cpra(None, sufficient=False))
 
     assert result.has_sufficient_data is False
@@ -20,7 +25,7 @@ def test_insufficient_data_does_not_halt_and_has_no_bucket():
     assert result.is_halted is False
 
 
-def test_below_30_percent_buckets_low_and_proceeds():
+def test_below_30_percent_buckets_low():
     result = calculate_pra_bucket(_cpra(15.0))
 
     assert result.bucket_name == "<30%"
@@ -34,30 +39,32 @@ def test_29_point_9_still_buckets_below_30():
     assert result.is_halted is False
 
 
-def test_30_to_60_percent_buckets_mid_and_proceeds():
+def test_30_to_60_percent_buckets_mid():
     result = calculate_pra_bucket(_cpra(45.0))
 
     assert result.bucket_name == "30-60%"
     assert result.is_halted is False
 
 
-def test_exactly_60_percent_does_not_halt():
-    # 60.0 is the reject threshold's boundary — "> 60" rejects, so exactly
-    # 60 must still proceed.
+def test_exactly_60_percent_stays_below_the_high_sensitisation_threshold():
+    # 60.0 is the threshold's boundary — "> 60" is the high-sensitisation
+    # case, so exactly 60 must still bucket as "30-60%".
     result = calculate_pra_bucket(_cpra(60.0))
 
     assert result.bucket_name == "30-60%"
     assert result.is_halted is False
 
 
-def test_above_60_percent_halts():
+def test_above_60_percent_sets_is_halted_flag():
+    # is_halted here is informational only — match_pipeline.py doesn't act
+    # on it. See the module docstring.
     result = calculate_pra_bucket(_cpra(60.5))
 
     assert result.bucket_name == ">60%"
     assert result.is_halted is True
 
 
-def test_high_pra_halts():
+def test_very_high_pra_also_sets_is_halted_flag():
     result = calculate_pra_bucket(_cpra(95.0))
 
     assert result.bucket_name == ">60%"
