@@ -14,6 +14,8 @@ def _cpra(percentage, sufficient=True):
         sample_size=150,
         has_sufficient_data=sufficient,
         message="OK",
+        reference_table_version="test-v1",
+        source_citation="test citation",
     )
 
 

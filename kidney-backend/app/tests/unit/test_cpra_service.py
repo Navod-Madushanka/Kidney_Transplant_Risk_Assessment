@@ -1,42 +1,64 @@
 # app/tests/unit/test_cpra_service.py
-from app.services.cpra_service import (
-    calculate_cpra,
-    calculate_population_antigen_frequencies,
-)
+import pytest
+
+from app.services.cpra_service import calculate_cpra
+
+REFERENCE_SAMPLE_SIZE = 714
+REFERENCE_VERSION = "test-v1"
+REFERENCE_CITATION = "test citation"
 
 
-def test_frequency_counts_each_person_once_even_with_duplicate_antigens():
-    population = [
-        ["A2", "A2", "B7"],  # duplicate A2 within one person shouldn't double-count
-        ["A2"],
-        ["B7"],
-    ]
-
-    frequencies = calculate_population_antigen_frequencies(population)
-
-    assert frequencies["A2"] == 2 / 3
-    assert frequencies["B7"] == 2 / 3
-
-
-def test_cpra_insufficient_data_below_threshold():
-    small_population = [["A2"]] * 50  # only 50 people, below the 100 threshold
-
-    result = calculate_cpra(
-        sensitized_antigens=["A2"], population_profiles=small_population
+def _calculate(sensitized_antigens, antigen_frequencies):
+    return calculate_cpra(
+        sensitized_antigens=sensitized_antigens,
+        antigen_frequencies=antigen_frequencies,
+        reference_sample_size=REFERENCE_SAMPLE_SIZE,
+        reference_table_version=REFERENCE_VERSION,
+        source_citation=REFERENCE_CITATION,
     )
 
-    assert result.has_sufficient_data is False
-    assert result.cpra_percentage is None
-    assert result.sample_size == 50
-    assert result.message == "Not enough data yet to calculate cPRA"
+
+def test_single_antigen_uses_its_frequency_directly():
+    result = _calculate(["A2"], {"A2": 0.2})
+
+    assert result.cpra_percentage == 20.0
 
 
-def test_cpra_calculates_once_threshold_met():
-    # 100 people: 25 carry A2, everyone else carries something unrelated
-    population = [["A2"]] * 25 + [["B7"]] * 75
+def test_multiple_antigens_combine_via_union_rule():
+    # Union-of-independent-events rule: 0.2 + 0.1 - 0.2*0.1 = 0.28
+    result = _calculate(["A2", "B7"], {"A2": 0.2, "B7": 0.1})
 
-    result = calculate_cpra(sensitized_antigens=["A2"], population_profiles=population)
+    assert result.cpra_percentage == pytest.approx(28.0)
+
+
+def test_antigen_missing_from_reference_table_defaults_to_zero_frequency():
+    result = _calculate(["A2", "Z99"], {"A2": 0.2})
+
+    assert result.cpra_percentage == 20.0
+
+
+def test_empty_sensitized_antigens_yields_zero_percent_and_ok_message():
+    result = _calculate([], {"A2": 0.2})
+
+    assert result.cpra_percentage == 0.0
+    assert result.message == "OK"
+
+
+def test_has_sufficient_data_is_always_true():
+    result = _calculate([], {})
 
     assert result.has_sufficient_data is True
-    assert result.cpra_percentage == 25.0
-    assert result.sample_size == 100
+
+
+def test_message_reports_how_many_antigens_matched_the_table():
+    result = _calculate(["A2", "B7", "Z99"], {"A2": 0.2, "B7": 0.1})
+
+    assert result.message == "2 of 3 sensitized antigens matched the reference frequency table"
+
+
+def test_reference_table_metadata_passes_through_unchanged():
+    result = _calculate(["A2"], {"A2": 0.2})
+
+    assert result.sample_size == REFERENCE_SAMPLE_SIZE
+    assert result.reference_table_version == REFERENCE_VERSION
+    assert result.source_citation == REFERENCE_CITATION

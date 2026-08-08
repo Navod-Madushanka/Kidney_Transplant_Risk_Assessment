@@ -12,11 +12,12 @@ rejecting a pairing on population-level cPRA (rather than a pair-specific
 test like Steps 5/6) was a clinical category error, reverted 2026-08-08.
 See match_pipeline.py's module docstring and
 test_risk_classification.py::test_pra_above_60_percent_is_not_scored_and_returns_none
-for the regression coverage of what used to be the reject path. Exercising
-a real >100-person population sample here (needed for cPRA to even have
-"sufficient data" — app/reference_data/cpra_settings.py) still isn't worth
-the runtime cost for a step that only ever bucket/displays now; the bucket
-math itself is covered precisely and quickly in test_pra_bucket_service.py.
+for the regression coverage of what used to be the reject path. cPRA is now
+calculated against a frozen reference table
+(app/reference_data/hla_antigen_frequencies.py) rather than this system's
+own database, so it always has "sufficient data" regardless of how many
+patients/donors exist in the test DB — the bucket math itself is covered
+precisely and quickly in test_pra_bucket_service.py.
 
 Step 3 (mismatches) used to be unreachable too: with exactly two alleles per
 locus across the three counted loci (A/B/DRB1), the maximum possible
@@ -360,13 +361,15 @@ async def test_full_pipeline_run_reaches_hla_scoring_and_risk_tier(auth_client: 
     assert body["crossmatch_result"]["is_positive"] is False
     assert body["crossmatch_result"]["is_halted"] is False
 
-    # New Step 7 (final risk classification): a lone patient/donor pair in
-    # a freshly-truncated test DB is nowhere near cPRA's 100-person minimum
-    # sample size, so Step 4's PRA bucket is None and Step 7 correctly
-    # declines to guess a final risk level rather than assuming "low".
-    assert body["pra_bucket_result"]["has_sufficient_data"] is False
-    assert body["pra_bucket_result"]["bucket_name"] is None
-    assert body["final_risk_level"] is None
+    # New Step 4/7: this patient never submitted an antibody profile, so
+    # sensitized_antigens is empty regardless of the reference table ->
+    # cpra_percentage 0.0 -> the "<30%" PRA bucket (0 pts). Combined with
+    # the "3-6 mismatches" mismatch bucket above (2 pts), Step 7 lands on
+    # "High-Average Risk" (see risk_classification.py's scoring table).
+    assert body["pra_bucket_result"]["has_sufficient_data"] is True
+    assert body["pra_bucket_result"]["bucket_name"] == "<30%"
+    assert body["pra_bucket_result"]["percent"] == 0.0
+    assert body["final_risk_level"] == "High-Average Risk"
 
 
 async def test_positive_crossmatch_halts_after_dsa(auth_client: AsyncClient):

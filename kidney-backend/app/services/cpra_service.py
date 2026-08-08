@@ -2,8 +2,6 @@
 from dataclasses import dataclass
 from typing import Optional
 
-from app.reference_data.cpra_settings import MINIMUM_POPULATION_SAMPLE_SIZE
-
 
 @dataclass
 class CPRAResult:
@@ -11,49 +9,44 @@ class CPRAResult:
     sample_size: int
     has_sufficient_data: bool
     message: str
-
-
-def calculate_population_antigen_frequencies(
-    population_profiles: list[list[str]],
-) -> dict[str, float]:
-    sample_size = len(population_profiles)
-    antigen_counts: dict[str, int] = {}
-
-    for profile in population_profiles:
-        for antigen in set(profile):
-            antigen_counts[antigen] = antigen_counts.get(antigen, 0) + 1
-
-    return {
-        antigen: count / sample_size for antigen, count in antigen_counts.items()
-    }
+    reference_table_version: str
+    source_citation: str
 
 
 def calculate_cpra(
     sensitized_antigens: list[str],
-    population_profiles: list[list[str]],
+    antigen_frequencies: dict[str, float],
+    reference_sample_size: int,
+    reference_table_version: str,
+    source_citation: str,
 ) -> CPRAResult:
-    sample_size = len(population_profiles)
-
-    if sample_size < MINIMUM_POPULATION_SAMPLE_SIZE:
-        return CPRAResult(
-            cpra_percentage=None,
-            sample_size=sample_size,
-            has_sufficient_data=False,
-            message="Not enough data yet to calculate cPRA",
-        )
-
-    antigen_frequencies = calculate_population_antigen_frequencies(population_profiles)
-
     combined_frequency = 0.0
+    matched = 0
     for antigen in sensitized_antigens:
         frequency = antigen_frequencies.get(antigen, 0.0)
+        if frequency > 0.0:
+            matched += 1
+        # Union-probability combination -- assumes each sensitized antigen is
+        # an independent event. Real HLA loci are in linkage disequilibrium
+        # (haplotypes travel together), so this is a disclosed approximation,
+        # not a fix -- see the "Known limitation" section of
+        # app/reference_data/hla_antigen_frequencies.py's module docstring.
         combined_frequency = (
             combined_frequency + frequency - (combined_frequency * frequency)
         )
 
+    total = len(sensitized_antigens)
+    message = (
+        "OK"
+        if total == 0
+        else f"{matched} of {total} sensitized antigens matched the reference frequency table"
+    )
+
     return CPRAResult(
         cpra_percentage=combined_frequency * 100,
-        sample_size=sample_size,
+        sample_size=reference_sample_size,
         has_sufficient_data=True,
-        message="OK",
+        message=message,
+        reference_table_version=reference_table_version,
+        source_citation=source_citation,
     )

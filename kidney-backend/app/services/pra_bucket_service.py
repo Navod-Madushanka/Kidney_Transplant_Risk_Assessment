@@ -1,10 +1,11 @@
 # app/services/pra_bucket_service.py
 """
 Step 4 of the sequential compatibility pipeline: bucket the calculated cPRA
-percentage per app/reference_data/pra_buckets.py. PRA itself is still
-calculated by the existing cpra_service.py (population-based, unchanged) —
-this only re-buckets that output against the new spec's three ranges
-instead of treating cPRA as pass/fail-only.
+percentage per app/reference_data/pra_buckets.py. PRA itself is calculated
+by cpra_service.py, against the frozen reference table in
+app/reference_data/hla_antigen_frequencies.py — this only re-buckets that
+output against the new spec's three ranges instead of treating cPRA as
+pass/fail-only.
 
 PRABucketResult.is_halted does NOT halt the pipeline — match_pipeline.py
 never branches on it. It briefly did (cPRA > MAX_ACCEPTABLE_PRA_PERCENT
@@ -18,10 +19,11 @@ pair-specific gates for sensitisation-related risk. The field is kept
 signal for display/reference — treat it as informational only, never as a
 reason to stop the pipeline.
 
-When there isn't enough population data yet to calculate a cPRA
-(CPRAResult.has_sufficient_data is False), has_sufficient_data=False is
-preserved so Step 7's final classification can correctly decline to produce
-a risk level rather than silently guessing one.
+CPRAResult.has_sufficient_data is always True now that cPRA comes from a
+frozen reference table rather than a live, possibly-too-small database
+sample — the has_sufficient_data plumbing below is kept as cheap insurance
+(and because the dataclass field itself still exists) rather than removed,
+in case a future reference-table source can fail to load.
 """
 from dataclasses import dataclass
 from typing import Optional

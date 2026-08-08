@@ -61,12 +61,13 @@ async def test_dashboard_patients_shows_latest_report_summary(auth_client: Async
     # score 6.5 -> "High-Moderate Risk" (app/reference_data/risk_tiers.py).
     # This is the legacy continuous-score tier, kept for reference.
     assert body[0]["latest_report"]["risk_tier"] == "High-Moderate Risk"
-    # The new Step 7 classification, by contrast, is None here: a lone
-    # patient/donor pair in a freshly-truncated test DB is nowhere near
-    # cPRA's 100-person minimum sample size, so there's no PRA bucket to
-    # combine with the mismatch bucket (see
-    # test_compatibility.py::test_full_pipeline_run_reaches_hla_scoring_and_risk_tier).
-    assert body[0]["latest_report"]["final_risk_level"] is None
+    # The new Step 7 classification: no antibody profile was submitted, so
+    # cPRA is 0.0% against the frozen reference table -> PRA bucket "<30%"
+    # (0 pts), combined with the "3-6 mismatches" mismatch bucket (2 pts) ->
+    # "High-Average Risk" (see
+    # test_compatibility.py::test_full_pipeline_run_reaches_hla_scoring_and_risk_tier,
+    # same worked-example typing pair).
+    assert body[0]["latest_report"]["final_risk_level"] == "High-Average Risk"
 
 
 async def test_dashboard_patients_excludes_deleted_patient(auth_client: AsyncClient):

@@ -31,10 +31,9 @@ proceeds to the next step. As of this pass:
   7. Final risk level - NEW this pass. Combines the Step 3 and Step 4
                         buckets via risk_classification.py. Only computed
                         when both bucket inputs are known (Step 4's bucket
-                        can be None if cPRA had insufficient population
-                        data, or a score risk_classification.py has no
-                        doctor-specified point value for yet — currently
-                        just ">60%", see below) AND Step 3's mismatch count
+                        can be None if risk_classification.py has no
+                        doctor-specified point value for its bucket yet —
+                        currently just ">60%", see below) AND Step 3's mismatch count
                         was computed from complete A/B/DRB1 typing on both
                         sides (see MismatchResult.data_completeness in
                         hla_mismatch_service.py) — in any of these cases
@@ -70,6 +69,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.donor import Donor
 from app.models.patient import Patient
 from app.reference_data.dsa_threshold import DSA_MFI_THRESHOLD
+from app.reference_data.hla_antigen_frequencies import (
+    HLA_ANTIGEN_FREQUENCIES,
+    HLA_FREQUENCY_TABLE_CITATION,
+    HLA_FREQUENCY_TABLE_SAMPLE_SIZE,
+    HLA_FREQUENCY_TABLE_VERSION,
+)
 from app.reference_data.risk_classification import classify_risk
 from app.services.abo_service import ABOResult, check_abo_compatibility
 from app.services.antibody_profile_service import (
@@ -91,7 +96,6 @@ from app.services.hla_typing_service import (
     get_donor_hla_typing_entries,
     get_patient_hla_typing_dict,
     get_patient_hla_typing_entries,
-    get_population_hla_profiles,
     hla_antigen_designation,
     normalize_antibody_antigen,
 )
@@ -171,13 +175,21 @@ async def run_match_pipeline(
     # Uses the existing cPRA sensitized-antigen threshold (DEFAULT_MFI_CUTOFF,
     # a fixed 2000 from dsa_service.py) — this is a different cutoff from the
     # Step 5 DSA gate below and doctors didn't ask to change it.
-    sensitized_antigens = await get_patient_sensitized_antigens(
-        db, patient.id, DEFAULT_MFI_CUTOFF
-    )
-    population_profiles = await get_population_hla_profiles(db)
+    # Normalized the same way Step 5 normalizes patient_antibodies below (a
+    # raw chart antigen like "B45,Bw6" must have its Bw4/Bw6 suffix stripped
+    # to match a plain "B45" reference-table key).
+    sensitized_antigens = [
+        normalize_antibody_antigen(antigen)
+        for antigen in await get_patient_sensitized_antigens(
+            db, patient.id, DEFAULT_MFI_CUTOFF
+        )
+    ]
     cpra_result = calculate_cpra(
         sensitized_antigens=sensitized_antigens,
-        population_profiles=population_profiles,
+        antigen_frequencies=HLA_ANTIGEN_FREQUENCIES,
+        reference_sample_size=HLA_FREQUENCY_TABLE_SAMPLE_SIZE,
+        reference_table_version=HLA_FREQUENCY_TABLE_VERSION,
+        source_citation=HLA_FREQUENCY_TABLE_CITATION,
     )
     pra_bucket_result = calculate_pra_bucket(cpra_result)
     # Informational only — see the module docstring's note on Step 4. cPRA

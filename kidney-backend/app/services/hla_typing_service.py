@@ -200,28 +200,6 @@ async def replace_donor_hla_typing(
     await db.commit()
 
 
-async def get_population_hla_profiles(db: AsyncSession) -> list[list[str]]:
-    patient_result = await db.execute(select(PatientHLATyping))
-    patient_rows = patient_result.scalars().all()
-
-    donor_result = await db.execute(select(DonorHLATyping))
-    donor_rows = donor_result.scalars().all()
-
-    profiles_by_person: dict[uuid.UUID, list[str]] = {}
-
-    for row in patient_rows:
-        profiles_by_person.setdefault(row.patient_id, []).extend(
-            [row.allele_1, row.allele_2]
-        )
-
-    for row in donor_rows:
-        profiles_by_person.setdefault(row.donor_id, []).extend(
-            [row.allele_1, row.allele_2]
-        )
-
-    return list(profiles_by_person.values())
-
-
 async def get_patient_hla_typing_entries(
     db: AsyncSession, patient_id: uuid.UUID
 ) -> list[PatientHLATyping]:
