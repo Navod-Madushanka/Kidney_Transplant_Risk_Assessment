@@ -65,3 +65,61 @@ def test_missing_locus_data_counts_as_conservative_worst_case():
     # rather than silently treating unknown as compatible.
     assert result.total_mismatches == 2
     assert result.bucket_name == "<3 mismatches"
+
+
+def test_fully_typed_result_is_marked_complete():
+    patient = _typing(a=("29", "33"), b=("07", "58"), drb1=("03", "04"))
+    donor = _typing(a=("11", "12"), b=("17", "18"), drb1=("13", "14"))
+
+    result = calculate_mismatch_result(patient, donor)
+
+    assert result.data_completeness is True
+
+
+def test_donor_with_no_hla_typing_at_all_is_not_a_perfect_match():
+    # Regression test: build_partial_typing_dict fills a wholly-untyped
+    # donor's loci with [] (not the placeholder ("", "") strings the other
+    # tests in this file use). A set difference against an empty donor set
+    # is always empty, so this used to silently score as 0 mismatches --
+    # the strongest possible result -- for a donor nobody has typed. Every
+    # locus must instead land at the worst case (2), and the result must be
+    # flagged incomplete so callers never present this as "Low Risk".
+    patient = {"A": ["29", "33"], "B": ["07", "58"], "DRB1": ["03", "04"]}
+    donor = {"A": [], "B": [], "DRB1": []}
+
+    result = calculate_mismatch_result(patient, donor)
+
+    assert result.total_mismatches == 6
+    assert result.bucket_name == "3-6 mismatches"
+    assert result.data_completeness is False
+
+
+def test_patient_with_no_hla_typing_at_all_is_also_incomplete():
+    # Same worst-case count as the donor-missing case above, but this also
+    # confirms the two sides are treated symmetrically -- the pre-fix code
+    # already gave 6 here, but only because the empty side was the *patient*
+    # (the set doing the subtracting), not because it was handled correctly.
+    patient = {"A": [], "B": [], "DRB1": []}
+    donor = {"A": ["29", "33"], "B": ["07", "58"], "DRB1": ["03", "04"]}
+
+    result = calculate_mismatch_result(patient, donor)
+
+    assert result.total_mismatches == 6
+    assert result.bucket_name == "3-6 mismatches"
+    assert result.data_completeness is False
+
+
+def test_donor_missing_a_single_locus_does_not_silently_improve_the_score():
+    # Regression test: a donor missing only DRB1 typing, fully mismatched at
+    # A and B (2 + 2 = 4), used to land on 4 total (the DRB1 locus's empty
+    # set contributing 0) instead of correctly scoring DRB1 at its worst
+    # case too (4 + 2 = 6) -- i.e. incomplete data was silently *improving*
+    # the mismatch count relative to a fully-typed, fully-mismatched donor.
+    patient = _typing(a=("01", "02"), b=("01", "02"), drb1=("01", "02"))
+    donor = {"A": ["11", "12"], "B": ["11", "12"], "DRB1": []}
+
+    result = calculate_mismatch_result(patient, donor)
+
+    assert result.total_mismatches == 6
+    assert result.bucket_name == "3-6 mismatches"
+    assert result.data_completeness is False

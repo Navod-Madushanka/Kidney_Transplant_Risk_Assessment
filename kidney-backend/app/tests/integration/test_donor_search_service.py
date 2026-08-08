@@ -120,8 +120,14 @@ async def test_missing_donor_and_patient_hla_typing_does_not_crash(
     requesting_doctor_id = uuid.UUID(patient["doctor_id"])
     candidates = await search_compatible_donors(db_session, patient_obj, requesting_doctor_id)
 
+    # Regression coverage: an untyped donor/patient pair must NOT resolve to
+    # a perfect (0-mismatch) match -- each of the 3 counted loci is missing
+    # on both sides, so each is scored at its worst case (2 x 3 = 6), and the
+    # result is flagged incomplete so callers never present this as a real
+    # compatibility figure. See hla_mismatch_service.py.
     assert len(candidates) == 1
-    assert candidates[0].mismatch_result.total_mismatches == 0
+    assert candidates[0].mismatch_result.total_mismatches == 6
+    assert candidates[0].mismatch_result.data_completeness is False
 
 
 async def test_empty_pool_returns_empty_list(auth_client: AsyncClient, db_session: AsyncSession):

@@ -122,7 +122,9 @@ export default function DonorSearchPage() {
                   </Badge>
                 )
               case "mismatches":
-                return `${candidate.mismatch_result.total_mismatches} (${candidate.mismatch_result.bucket_name})`
+                return candidate.mismatch_result.data_completeness === false
+                  ? `${candidate.mismatch_result.total_mismatches} (${candidate.mismatch_result.bucket_name}) — incomplete typing`
+                  : `${candidate.mismatch_result.total_mismatches} (${candidate.mismatch_result.bucket_name})`
               case "action":
                 return (
                   <Button

@@ -13,12 +13,23 @@ A missing locus (patient or donor typing not yet entered for A/B/DRB1) is
 treated as contributing the *maximum* possible mismatches for that locus
 rather than zero. This is a deliberate conservative choice: incomplete data
 should never make a pairing look more compatible than it might actually be.
+A set-difference against an empty allele list is always empty, so a missing
+side is special-cased before that computation runs rather than being allowed
+to fall through it. MismatchResult.data_completeness reflects whether any
+locus had to be scored this way, so callers (e.g. the Step 7 final risk
+classification in match_pipeline.py) can refuse to present a risk level
+built on incomplete typing data rather than showing a falsely favorable one.
 """
 from dataclasses import dataclass, field
 
 from app.reference_data.mismatch_buckets import MAX_ACCEPTABLE_MISMATCHES, MISMATCH_BUCKETS
 
 MISMATCH_COUNTED_LOCI = ("A", "B", "DRB1")
+
+# Each locus stores at most 2 alleles, so 2 is the worst case a single locus
+# can contribute — used in place of a set-difference computation whenever
+# one side's typing for that locus hasn't been entered at all.
+MAX_MISMATCHES_PER_LOCUS = 2
 
 
 @dataclass
@@ -34,6 +45,7 @@ class MismatchResult:
     total_mismatches: int
     bucket_name: str
     is_halted: bool
+    data_completeness: bool = True
     locus_breakdown: list[LocusMismatchDetail] = field(default_factory=list)
 
 
@@ -48,14 +60,24 @@ def calculate_mismatch_result(
     """
     locus_breakdown = []
     total_mismatches = 0
+    data_completeness = True
 
     for locus in MISMATCH_COUNTED_LOCI:
         patient_alleles = patient_typing.get(locus, [])
         donor_alleles = donor_typing.get(locus, [])
 
-        donor_allele_set = set(donor_alleles)
-        patient_allele_set = set(patient_alleles)
-        unique_mismatches = len(donor_allele_set - patient_allele_set)
+        if not patient_alleles or not donor_alleles:
+            # Typing hasn't been entered for this locus on at least one side
+            # -- a set difference against an empty list is always empty, so
+            # computing it here would silently score the pairing as a match.
+            # Score the worst case instead and flag the result incomplete.
+            unique_mismatches = MAX_MISMATCHES_PER_LOCUS
+            data_completeness = False
+        else:
+            donor_allele_set = set(donor_alleles)
+            patient_allele_set = set(patient_alleles)
+            unique_mismatches = len(donor_allele_set - patient_allele_set)
+
         total_mismatches += unique_mismatches
 
         locus_breakdown.append(
@@ -74,6 +96,7 @@ def calculate_mismatch_result(
         total_mismatches=total_mismatches,
         bucket_name=bucket_name,
         is_halted=is_halted,
+        data_completeness=data_completeness,
         locus_breakdown=locus_breakdown,
     )
 

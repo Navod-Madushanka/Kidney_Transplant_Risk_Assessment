@@ -228,6 +228,13 @@ export default function ReportDetailPage() {
             title="Step 3 — HLA mismatches"
             subtitle={`${report.mismatch_result.total_mismatches} total (A/B/DRB1 only) — bucket: ${report.mismatch_result.bucket_name}`}
           />
+          {report.mismatch_result.data_completeness === false && (
+            <p className="text-[13px] text-high-risk mb-2">
+              Incomplete typing — A/B/DRB1 typing is missing on at least one side of this pair.
+              Missing loci are scored at their worst case rather than treated as a match, so this
+              total is a conservative estimate, not a confirmed mismatch count.
+            </p>
+          )}
           <MismatchBreakdownTable mismatchResult={report.mismatch_result} />
         </Card>
       )}
@@ -304,6 +311,11 @@ export default function ReportDetailPage() {
               </span>
               <Badge status={badgeStatus}>{report.final_risk_level}</Badge>
             </div>
+          ) : report.mismatch_result?.data_completeness === false ? (
+            <p className="text-[14px] text-high-risk font-medium">
+              Cannot assess — A/B/DRB1 HLA typing is incomplete for this patient/donor pair, so
+              Step 7 can't combine a reliable mismatch bucket rather than guessing one.
+            </p>
           ) : (
             <p className="text-[14px] text-text-muted">
               No final classification yet — Step 4 didn't have enough population data for a

@@ -32,8 +32,12 @@ proceeds to the next step. As of this pass:
                         buckets via risk_classification.py. Only computed
                         when both bucket inputs are known (Step 4's bucket
                         can be None if cPRA had insufficient population
-                        data — in that case final_risk_level stays None
-                        rather than guessing).
+                        data) AND Step 3's mismatch count was computed from
+                        complete A/B/DRB1 typing on both sides (see
+                        MismatchResult.data_completeness in
+                        hla_mismatch_service.py) — in either case
+                        final_risk_level stays None rather than guessing or
+                        presenting a risk level built on absent data.
 
 The old continuous HLA scoring (hla_scoring_service.py, all 9 loci) and its
 4-tier risk_tier are kept and still computed on a full "completed" run, for
@@ -238,12 +242,15 @@ async def run_match_pipeline(
         )
 
     # --- Step 7: final risk classification ----------------------------------
-    # Only possible once both bucket inputs are known. mismatch_result always
-    # has one by this point; pra_bucket_result's may be None if there wasn't
-    # enough population data for cPRA yet — in that case we deliberately
-    # leave final_risk_level unset rather than guessing.
+    # Only possible once both bucket inputs are known and trustworthy.
+    # pra_bucket_result's bucket may be None if there wasn't enough
+    # population data for cPRA yet, and mismatch_result.data_completeness is
+    # False if A/B/DRB1 typing was missing on either side (Step 3 then
+    # scored the missing loci at their worst case rather than as a match) —
+    # in either case we deliberately leave final_risk_level unset rather
+    # than guessing or presenting a risk level built on absent data.
     final_risk_level = None
-    if pra_bucket_result.bucket_name is not None:
+    if pra_bucket_result.bucket_name is not None and mismatch_result.data_completeness:
         final_risk_level = classify_risk(mismatch_result.bucket_name, pra_bucket_result.bucket_name)
 
     # --- Legacy continuous score (reference only, see module docstring) ----
