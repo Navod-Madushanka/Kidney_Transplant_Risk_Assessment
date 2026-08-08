@@ -10,6 +10,10 @@ SENSITIZATION_EVENT_WEIGHTS: dict[str, float] = {
     "blood_transfusion": 0.5,
 }
 
-# How much to reduce the DSA MFI cutoff per point of sensitization score.
-# Decided formula: cutoff -= sensitization_score * SENSITIZATION_CUTOFF_REDUCTION_FACTOR
+# Feeds SensitizationResult.adjusted_mfi_cutoff (sensitization_service.py)
+# only — informational/reference display on the report's Step 2 card, not
+# an input to any real gate. Step 5's DSA check has its own independent
+# severity bands (see app/reference_data/dsa_threshold.py) that this factor
+# does not adjust.
+# Formula: cutoff -= sensitization_score * SENSITIZATION_CUTOFF_REDUCTION_FACTOR
 SENSITIZATION_CUTOFF_REDUCTION_FACTOR = 100.0

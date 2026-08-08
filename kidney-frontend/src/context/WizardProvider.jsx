@@ -55,9 +55,6 @@ export function WizardProvider({ children }) {
       setSensitization: (patch) =>
         dispatch({ type: WIZARD_ACTIONS.SET_SENSITIZATION, patch }),
 
-      setMfiCutoff: (value) =>
-        dispatch({ type: WIZARD_ACTIONS.SET_MFI_CUTOFF, value }),
-
       setBeadSpecificity: (rows) =>
         dispatch({ type: WIZARD_ACTIONS.SET_BEAD_SPECIFICITY, rows }),
 

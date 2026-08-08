@@ -2,10 +2,7 @@
 import { useNavigate } from "react-router-dom"
 import { useWizard } from "../hooks/useWizard"
 import { SENSITIZATION_EVENT_OPTIONS } from "../constants/clinicalEnums"
-import {
-  SENSITIZATION_EVENT_WEIGHTS,
-  SENSITIZATION_CUTOFF_REDUCTION_FACTOR,
-} from "../constants/sensitizationWeights"
+import { SENSITIZATION_EVENT_WEIGHTS } from "../constants/sensitizationWeights"
 import Card from "../components/ui/Card"
 import ToggleSwitch from "../components/ui/ToggleSwitch"
 import InputField from "../components/ui/InputField"
@@ -25,14 +22,6 @@ export default function SensitizationStep() {
       : total
   }, 0)
 
-  const adjustedCutoff =
-    state.mfi_cutoff - sensitizationScore * SENSITIZATION_CUTOFF_REDUCTION_FACTOR
-
-  function handleMfiCutoffChange(e) {
-    const raw = e.target.value
-    actions.setMfiCutoff(raw === "" ? 0 : Number(raw))
-  }
-
   function handleToggle(eventType, checked) {
     actions.setSensitization({ [eventType]: checked })
     // Switching an event off clears its date too, so a stale date can't
@@ -51,10 +40,11 @@ export default function SensitizationStep() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-[22px] font-bold text-text">Sensitization &amp; MFI cutoff</h1>
+        <h1 className="text-[22px] font-bold text-text">Sensitization</h1>
         <p className="text-[14px] text-text-muted mt-1">
-          Prior sensitizing events lower the MFI threshold used to flag donor-specific
-          antibodies — the more sensitized the patient, the more cautious the cutoff.
+          Prior sensitizing events are recorded for clinical reference on the compatibility
+          report (Step 2) — they don't change the automated DSA antibody check, which uses its
+          own fixed severity scale regardless of sensitization history.
         </p>
       </div>
 
@@ -90,33 +80,16 @@ export default function SensitizationStep() {
         </div>
       </Card>
 
-      <Card>
-        <Card.Header title="MFI cutoff" subtitle="Baseline threshold before sensitization adjustment" />
-
-        <InputField
-          label="Base MFI cutoff"
-          type="number"
-          inputMode="numeric"
-          value={state.mfi_cutoff}
-          onChange={handleMfiCutoffChange}
-          className="[&_input]:h-14 [&_input]:text-[22px] [&_input]:font-bold [&_label]:text-[15px]"
-          helperText="Default is 2000 — adjust only if this lab uses a different baseline"
-        />
-
-        <div className="mt-5 rounded-md bg-bg border border-border p-4 flex items-center justify-between">
-          <div>
-            <p className="text-[13px] font-semibold text-text-muted">
-              Sensitization score: {sensitizationScore.toFixed(1)} pts
-            </p>
-            <p className="text-[13px] text-text-muted mt-0.5">
-              Adjusted cutoff used for the DSA check
-            </p>
-          </div>
-          <p className="text-[26px] font-bold text-accent tabular-nums">
-            {adjustedCutoff.toLocaleString()}
+      <div className="rounded-md bg-bg border border-border p-4 flex items-center justify-between">
+        <div>
+          <p className="text-[13px] font-semibold text-text-muted">
+            Sensitization score: {sensitizationScore.toFixed(1)} pts
+          </p>
+          <p className="text-[13px] text-text-muted mt-0.5">
+            Reference only — shown on the compatibility report's Step 2, doesn't gate anything
           </p>
         </div>
-      </Card>
+      </div>
 
       <div className="flex items-center justify-between">
         <Button variant="secondary" onClick={() => navigate("/checks/new/hla")}>

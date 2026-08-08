@@ -1,5 +1,4 @@
 import { HLA_LOCUS_OPTIONS } from "../constants/clinicalEnums";
-import { DEFAULT_MFI_CUTOFF } from "../constants/clinical";
 
 // One empty typing row per locus, in the canonical order — mirrors the
 // backend's HLA_LOCI list so nothing is silently missing when the pipeline
@@ -45,7 +44,13 @@ export function buildInitialWizardState() {
     patient_hla: emptyHlaRows(),
     donor_hla: emptyHlaRows(),
 
-    // Phase 6 — sensitization booleans + MFI cutoff (sent alongside Payload 3)
+    // Phase 6 — sensitization booleans (sent alongside Payload 3). No MFI
+    // cutoff field here — the wizard used to show an editable "adjusted
+    // cutoff" preview, but it was never actually sent to the backend, which
+    // always recomputes Step 2 from its own fixed default and never used
+    // the preview to adjust the real Step 5 DSA check either (see
+    // app/reference_data/dsa_threshold.py) — removed 2026-08-08 rather than
+    // leaving a doctor-facing field that silently did nothing.
     sensitization: {
       previous_transplant: false,
       pregnancy: false,
@@ -56,7 +61,6 @@ export function buildInitialWizardState() {
       pregnancy: "",
       blood_transfusion: "",
     },
-    mfi_cutoff: DEFAULT_MFI_CUTOFF,
 
     // Phase 7 — Payload 3
     bead_specificity: [],
@@ -109,7 +113,6 @@ export const WIZARD_ACTIONS = {
   SET_PATIENT_HLA_ROW: "SET_PATIENT_HLA_ROW",
   SET_DONOR_HLA_ROW: "SET_DONOR_HLA_ROW",
   SET_SENSITIZATION: "SET_SENSITIZATION",
-  SET_MFI_CUTOFF: "SET_MFI_CUTOFF",
   SET_BEAD_SPECIFICITY: "SET_BEAD_SPECIFICITY",
   SET_CROSSMATCH: "SET_CROSSMATCH",
   HYDRATE_FROM_OCR: "HYDRATE_FROM_OCR",
@@ -162,9 +165,6 @@ export function wizardReducer(state, action) {
         ...state,
         sensitization: { ...state.sensitization, ...action.patch },
       };
-
-    case WIZARD_ACTIONS.SET_MFI_CUTOFF:
-      return { ...state, mfi_cutoff: action.value };
 
     case WIZARD_ACTIONS.SET_BEAD_SPECIFICITY:
       return { ...state, bead_specificity: action.rows };

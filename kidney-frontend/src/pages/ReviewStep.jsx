@@ -167,10 +167,6 @@ export default function ReviewStep() {
               </div>
             )
           })}
-          <div className="flex items-center justify-between text-[14px] pt-2 mt-1 border-t border-border">
-            <span className="text-text-muted">Base MFI cutoff</span>
-            <span className="text-text font-semibold tabular-nums">{state.mfi_cutoff}</span>
-          </div>
         </div>
       </Card>
 

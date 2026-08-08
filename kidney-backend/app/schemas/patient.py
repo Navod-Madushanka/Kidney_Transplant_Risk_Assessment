@@ -11,7 +11,7 @@ class PatientCreate(BaseModel):
     full_name: str
     date_of_birth: date
     blood_type: BloodType
-    rh_factor: RhFactor          # add this line
+    rh_factor: RhFactor
     nic_number: str | None = None
 
 
@@ -31,7 +31,7 @@ class PatientResponse(BaseModel):
     full_name: str
     date_of_birth: date
     blood_type: BloodType
-    rh_factor: RhFactor          # add this line
+    rh_factor: RhFactor
     nic_number: str | None
     created_at: datetime
     updated_at: datetime
