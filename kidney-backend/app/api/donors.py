@@ -1,5 +1,6 @@
 # app/api/donors.py
 import uuid
+from dataclasses import asdict
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
@@ -9,11 +10,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.dependencies import get_current_user
 from app.db.session import get_db
 from app.models.doctor import Doctor
+from app.models.donor import Donor
 from app.models.enums import ReportFileCategory
 from app.schemas.donor import DonorCreate, DonorResponse, DonorStatusUpdate, DonorUpdate
+from app.schemas.donor_risk import DonorRiskAssessmentResponse
 from app.schemas.hla_typing import HLATypingEntry
 from app.schemas.report_file import ReportFileResponse
 from app.services.audit_service import create_audit_log
+from app.services.donor_risk_service import (
+    DonorRiskAssessmentInput,
+    assess_donor_risk,
+    calculate_age_years,
+)
 from app.services.donor_service import (
     create_donor,
     delete_donor,
@@ -84,6 +92,27 @@ async def get_donor_endpoint(
     return DonorResponse.model_validate(donor)
 
 
+@router.get("/{donor_id}/risk-assessment", response_model=DonorRiskAssessmentResponse)
+async def get_donor_risk_assessment_endpoint(
+    donor_id: uuid.UUID,
+    current_doctor: Doctor = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Donor safety assessment -- 'is it safe for this donor to donate?',
+    independent of any recipient. Computed fresh on every call (like
+    /exchange/match, nothing is persisted): see
+    app/services/donor_risk_service.py for the model and its citation."""
+    donor = await get_donor_by_id_for_doctor(db, donor_id, current_doctor.id)
+    if donor is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Donor not found",
+        )
+
+    result = assess_donor_risk(_build_donor_risk_input(donor))
+    return DonorRiskAssessmentResponse(**asdict(result))
+
+
 @router.put("/{donor_id}", response_model=DonorResponse)
 async def update_donor_endpoint(
     donor_id: uuid.UUID,
@@ -92,8 +121,10 @@ async def update_donor_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Update a donor's core demographic fields (name, DOB, NIC) and
-    clinical suitability fields (eGFR, BP, BMI, diabetes, smoking). Blood
-    type and Rh factor are permanent once set — see DonorUpdate."""
+    clinical/risk-assessment fields (eGFR, BP, BMI, diabetes, smoking status,
+    sex, race, creatinine, urine ACR, antihypertensive medication use,
+    family history). Blood type and Rh factor are permanent once set — see
+    DonorUpdate."""
     donor = await get_donor_by_id_for_doctor(db, donor_id, current_doctor.id)
     if donor is None:
         raise HTTPException(
@@ -321,6 +352,31 @@ async def _ensure_donor_exists(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Donor not found",
         )
+
+
+def _build_donor_risk_input(donor: Donor) -> DonorRiskAssessmentInput:
+    """Adapts a Donor ORM row into donor_risk_service's plain input
+    dataclass -- enum columns become their .value string (matching
+    match_pipeline.py's convention), age is derived from date_of_birth.
+    Numeric(...) columns come back from SQLAlchemy as decimal.Decimal, not
+    float -- DonorResponse gets a free Decimal->float coercion from
+    Pydantic's validation, but this dataclass has none, so it's done
+    explicitly here (mixing Decimal and float in donor_risk_service's
+    arithmetic raises TypeError otherwise)."""
+    return DonorRiskAssessmentInput(
+        age_years=calculate_age_years(donor.date_of_birth),
+        sex=donor.sex.value if donor.sex else None,
+        race=donor.race.value if donor.race else None,
+        egfr=float(donor.egfr) if donor.egfr is not None else None,
+        systolic_bp=donor.systolic_bp,
+        diastolic_bp=donor.diastolic_bp,
+        is_on_antihypertensive_medication=donor.is_on_antihypertensive_medication,
+        bmi=float(donor.bmi) if donor.bmi is not None else None,
+        has_diabetes=donor.has_diabetes,
+        urine_acr=float(donor.urine_acr) if donor.urine_acr is not None else None,
+        smoking_status=donor.smoking_status.value if donor.smoking_status else None,
+        family_history_kidney_disease=donor.family_history_kidney_disease,
+    )
 
 
 async def _ensure_intended_recipient_valid(

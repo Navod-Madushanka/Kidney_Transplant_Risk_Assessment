@@ -1,6 +1,6 @@
 // src/pages/DonorDetailPage.jsx
 import { useEffect, useState } from "react"
-import { useNavigate, useParams } from "react-router-dom"
+import { Link, useNavigate, useParams } from "react-router-dom"
 import {
   getDonor,
   updateDonor,
@@ -25,11 +25,17 @@ import DonorForm from "../components/domain/donor/DonorForm"
 import HlaTypingEditor from "../components/domain/hla/HlaTypingEditor"
 import ReportFilesCard from "../components/domain/reportFiles/ReportFilesCard"
 import { DONOR_STATUS_OPTIONS, donorStatusBadgeProps } from "../constants/donorStatus"
+import { RACE_OPTIONS, SEX_OPTIONS, SMOKING_STATUS_OPTIONS } from "../constants/clinicalEnums"
+import { boolToTriState, enumToForm } from "../utils/formValue"
 
 function triStateLabel(value) {
   if (value === true) return "Yes"
   if (value === false) return "No"
   return "Unknown"
+}
+
+function optionLabel(options, value) {
+  return options.find((option) => option.value === value)?.label ?? "Unknown"
 }
 
 export default function DonorDetailPage() {
@@ -164,8 +170,14 @@ export default function DonorDetailPage() {
             systolicBp: donor.systolic_bp ?? "",
             diastolicBp: donor.diastolic_bp ?? "",
             bmi: donor.bmi ?? "",
-            hasDiabetes: donor.has_diabetes === true ? "yes" : donor.has_diabetes === false ? "no" : "unknown",
-            isSmoker: donor.is_smoker === true ? "yes" : donor.is_smoker === false ? "no" : "unknown",
+            hasDiabetes: boolToTriState(donor.has_diabetes),
+            sex: enumToForm(donor.sex),
+            race: enumToForm(donor.race),
+            smokingStatus: enumToForm(donor.smoking_status),
+            creatinine: donor.creatinine ?? "",
+            urineAcr: donor.urine_acr ?? "",
+            isOnAntihypertensiveMedication: boolToTriState(donor.is_on_antihypertensive_medication),
+            familyHistoryKidneyDisease: boolToTriState(donor.family_history_kidney_disease),
             intendedRecipientId: donor.intended_recipient_id || "",
           }}
           onSubmit={handleEditSubmit}
@@ -213,13 +225,40 @@ export default function DonorDetailPage() {
       <Card>
         <Card.Header
           title="Clinical suitability"
-          subtitle="Reference only — not used by the automated compatibility check. Edit via 'Edit details'."
+          subtitle="Not used by the automated compatibility check — feeds the donor safety assessment instead. Edit via 'Edit details'."
+          action={
+            <Link to={`/donors/${donor.id}/safety-assessment`}>
+              <Button size="sm" variant="secondary">
+                Run safety assessment
+              </Button>
+            </Link>
+          }
         />
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-3 text-[14px]">
+          <div>
+            <p className="text-text-muted">Sex</p>
+            <p className="text-text font-medium">{optionLabel(SEX_OPTIONS, donor.sex)}</p>
+          </div>
+          <div>
+            <p className="text-text-muted">Race</p>
+            <p className="text-text font-medium">{optionLabel(RACE_OPTIONS, donor.race)}</p>
+          </div>
           <div>
             <p className="text-text-muted">eGFR</p>
             <p className="text-text font-medium tabular-nums">
               {donor.egfr != null ? `${donor.egfr} mL/min/1.73m²` : "—"}
+            </p>
+          </div>
+          <div>
+            <p className="text-text-muted">Creatinine</p>
+            <p className="text-text font-medium tabular-nums">
+              {donor.creatinine != null ? `${donor.creatinine} mg/dL` : "—"}
+            </p>
+          </div>
+          <div>
+            <p className="text-text-muted">Urine ACR</p>
+            <p className="text-text font-medium tabular-nums">
+              {donor.urine_acr != null ? `${donor.urine_acr} mg/g` : "—"}
             </p>
           </div>
           <div>
@@ -228,6 +267,12 @@ export default function DonorDetailPage() {
               {donor.systolic_bp != null && donor.diastolic_bp != null
                 ? `${donor.systolic_bp}/${donor.diastolic_bp} mmHg`
                 : "—"}
+            </p>
+          </div>
+          <div>
+            <p className="text-text-muted">On antihypertensive medication</p>
+            <p className="text-text font-medium">
+              {triStateLabel(donor.is_on_antihypertensive_medication)}
             </p>
           </div>
           <div>
@@ -241,8 +286,16 @@ export default function DonorDetailPage() {
             <p className="text-text font-medium">{triStateLabel(donor.has_diabetes)}</p>
           </div>
           <div>
-            <p className="text-text-muted">Smoker</p>
-            <p className="text-text font-medium">{triStateLabel(donor.is_smoker)}</p>
+            <p className="text-text-muted">Smoking</p>
+            <p className="text-text font-medium">
+              {optionLabel(SMOKING_STATUS_OPTIONS, donor.smoking_status)}
+            </p>
+          </div>
+          <div>
+            <p className="text-text-muted">Family history of kidney disease</p>
+            <p className="text-text font-medium">
+              {triStateLabel(donor.family_history_kidney_disease)}
+            </p>
           </div>
         </div>
       </Card>

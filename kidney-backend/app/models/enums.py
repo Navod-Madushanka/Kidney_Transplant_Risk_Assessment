@@ -32,6 +32,37 @@ class DonorStatus(str, enum.Enum):
     DECEASED = "deceased"
 
 
+class Sex(str, enum.Enum):
+    MALE = "male"
+    FEMALE = "female"
+
+
+class Race(str, enum.Enum):
+    # Added 2026-08-09 for the donor safety-assessment risk projection (see
+    # services/donor_risk_service.py). BLACK/WHITE are the only two
+    # categories the underlying model (Grams et al., NEJM 2016) has
+    # published coefficients for -- OTHER exists so every donor can still
+    # get a result, scored against the WHITE coefficients as the best
+    # available stand-in. This is a real extrapolation, not a validated
+    # third category: the model has no non-US validation at all, and this
+    # app's NIC-registered donors aren't the US population it was built on
+    # regardless of which value is selected here. The risk-assessment
+    # screen surfaces that as a permanent disclaimer rather than treating
+    # OTHER as just another option.
+    BLACK = "black"
+    WHITE = "white"
+    OTHER = "other"
+
+
+class SmokingStatus(str, enum.Enum):
+    # Replaces the old is_smoker boolean (removed 2026-08-09): the donor
+    # risk-projection model scores former and current smokers differently
+    # (coefficients 0.3700 vs 0.5680), which a yes/no flag can't represent.
+    NEVER = "never"
+    FORMER = "former"
+    CURRENT = "current"
+
+
 class ReportFileCategory(str, enum.Enum):
     HLA_TYPING_REPORT = "hla_typing_report"
     CROSSMATCH_REPORT = "crossmatch_report"

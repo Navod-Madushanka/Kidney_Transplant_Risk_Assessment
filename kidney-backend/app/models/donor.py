@@ -6,7 +6,7 @@ from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, Nume
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
-from app.models.enums import BloodType, DonorStatus, RhFactor
+from app.models.enums import BloodType, DonorStatus, Race, RhFactor, Sex, SmokingStatus
 from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 
 
@@ -68,18 +68,62 @@ class Donor(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     # model had nothing beyond demographics + blood type, so a doctor had no
     # way to record or review a candidate donor's medical fitness. All
     # nullable/editable (unlike blood_type/rh_factor, none of this is
-    # permanent-once-set) and purely informational: nothing in
-    # match_pipeline.py reads these -- they're for a doctor's own suitability
-    # judgment, not an automated gate, since none of these values have an
-    # agreed accept/reject threshold from the doctors. Booleans are
-    # nullable tri-state (unknown/no/yes) rather than defaulting an
-    # unassessed donor to a confirmed "no".
+    # permanent-once-set). Still purely informational for the *compatibility*
+    # pipeline: nothing in match_pipeline.py reads these, and none of these
+    # values have an agreed accept/reject threshold from the doctors for that
+    # pipeline. They ARE read by services/donor_risk_service.py (added
+    # 2026-08-09, see the field group below) for the separate donor
+    # safety-assessment screen. Booleans are nullable tri-state (unknown/no/
+    # yes) rather than defaulting an unassessed donor to a confirmed "no".
     egfr: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
     systolic_bp: Mapped[int | None] = mapped_column(Integer, nullable=True)
     diastolic_bp: Mapped[int | None] = mapped_column(Integer, nullable=True)
     bmi: Mapped[float | None] = mapped_column(Numeric(4, 1), nullable=True)
     has_diabetes: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-    is_smoker: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+
+    # Donor safety risk-assessment fields (added 2026-08-09) -- inputs to
+    # services/donor_risk_service.py's implementation of the Grams et al.
+    # (NEJM 2016) living-kidney-donor ESRD risk projection; see that
+    # module's docstring for the model itself and its citation. All
+    # nullable/editable, same rationale as the clinical fields above.
+    # `is_smoker` (bool) is replaced by `smoking_status`: the model scores
+    # former and current smokers with different coefficients, which a
+    # yes/no flag can't represent. `creatinine` and
+    # `family_history_kidney_disease` are informational only -- the raw lab
+    # value and a standard living-donor screening question -- and are NOT
+    # inputs to the projection itself (donor_risk_service.py never reads
+    # them for the calculation, only surfaces them alongside it); every
+    # other field here is fed directly into the model.
+    sex: Mapped[Sex | None] = mapped_column(
+        Enum(
+            Sex,
+            name="sex_enum",
+            values_callable=lambda enum_class: [member.value for member in enum_class],
+        ),
+        nullable=True,
+    )
+    race: Mapped[Race | None] = mapped_column(
+        Enum(
+            Race,
+            name="race_enum",
+            values_callable=lambda enum_class: [member.value for member in enum_class],
+        ),
+        nullable=True,
+    )
+    smoking_status: Mapped[SmokingStatus | None] = mapped_column(
+        Enum(
+            SmokingStatus,
+            name="smoking_status_enum",
+            values_callable=lambda enum_class: [member.value for member in enum_class],
+        ),
+        nullable=True,
+    )
+    creatinine: Mapped[float | None] = mapped_column(Numeric(4, 2), nullable=True)
+    urine_acr: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
+    is_on_antihypertensive_medication: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True
+    )
+    family_history_kidney_disease: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
     # OCR verification gate (added 2026-08-08) -- see the matching comment
     # on app/models/patient.py. Donors only need the HLA typing half (no

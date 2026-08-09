@@ -3,8 +3,21 @@ import InputField from "../../ui/InputField"
 import SegmentedControl from "../../ui/SegmentedControl"
 import Select from "../../ui/Select"
 import Button from "../../ui/Button"
-import { BLOOD_TYPE_OPTIONS, RH_FACTOR_OPTIONS } from "../../../constants/clinicalEnums"
+import {
+  BLOOD_TYPE_OPTIONS,
+  RACE_OPTIONS,
+  RH_FACTOR_OPTIONS,
+  SEX_OPTIONS,
+  SMOKING_STATUS_OPTIONS,
+} from "../../../constants/clinicalEnums"
 import { listPatients } from "../../../api/patients"
+import {
+  TRI_STATE_OPTIONS,
+  formToEnum,
+  numberOrNull,
+  triStateToBool,
+  withUnknownOption,
+} from "../../../utils/formValue"
 
 const emptyForm = {
   fullName: "",
@@ -17,34 +30,14 @@ const emptyForm = {
   diastolicBp: "",
   bmi: "",
   hasDiabetes: "unknown",
-  isSmoker: "unknown",
+  sex: "unknown",
+  race: "unknown",
+  smokingStatus: "unknown",
+  creatinine: "",
+  urineAcr: "",
+  isOnAntihypertensiveMedication: "unknown",
+  familyHistoryKidneyDisease: "unknown",
   intendedRecipientId: "",
-}
-
-// has_diabetes/is_smoker are nullable booleans on the backend (unknown/no/
-// yes), not a plain checkbox — an unassessed donor shouldn't default to a
-// confirmed "no". These convert between that tri-state and the form's
-// string-valued SegmentedControl.
-const TRI_STATE_OPTIONS = [
-  { value: "unknown", label: "Unknown" },
-  { value: "no", label: "No" },
-  { value: "yes", label: "Yes" },
-]
-
-function boolToTriState(value) {
-  if (value === true) return "yes"
-  if (value === false) return "no"
-  return "unknown"
-}
-
-function triStateToBool(value) {
-  if (value === "yes") return true
-  if (value === "no") return false
-  return null
-}
-
-function numberOrNull(value) {
-  return value === "" ? null : Number(value)
 }
 
 /**
@@ -54,9 +47,11 @@ function numberOrNull(value) {
  * Pass mode="edit" to update an existing donor instead of creating one:
  * blood group/Rh factor are shown but locked (they're permanent once set —
  * the compatibility engine and existing reports trust them), and the
- * onSubmit payload omits them, matching DonorUpdate. Clinical fields
- * (eGFR/BP/BMI/diabetes/smoking) are the opposite — expected to change over
- * a donor's workup — so they're always editable in both modes.
+ * onSubmit payload omits them, matching DonorUpdate. The clinical/safety-
+ * assessment fields below them (eGFR/BP/BMI/creatinine/urine ACR/diabetes/
+ * smoking/sex/race/antihypertensive medication/family history) are the
+ * opposite — expected to change over a donor's workup — so they're always
+ * editable in both modes.
  */
 export default function DonorForm({
   onSubmit,
@@ -116,7 +111,13 @@ export default function DonorForm({
       diastolic_bp: numberOrNull(form.diastolicBp),
       bmi: numberOrNull(form.bmi),
       has_diabetes: triStateToBool(form.hasDiabetes),
-      is_smoker: triStateToBool(form.isSmoker),
+      sex: formToEnum(form.sex),
+      race: formToEnum(form.race),
+      smoking_status: formToEnum(form.smokingStatus),
+      creatinine: numberOrNull(form.creatinine),
+      urine_acr: numberOrNull(form.urineAcr),
+      is_on_antihypertensive_medication: triStateToBool(form.isOnAntihypertensiveMedication),
+      family_history_kidney_disease: triStateToBool(form.familyHistoryKidneyDisease),
       intended_recipient_id: form.intendedRecipientId || null,
     }
     if (!isEdit) {
@@ -195,9 +196,25 @@ export default function DonorForm({
 
       <div className="pt-2 border-t border-border">
         <p className="text-[13px] font-semibold text-text-muted mb-3">
-          Clinical suitability (reference only — not used by the automated compatibility check)
+          Clinical suitability &amp; donor safety assessment (not used by the automated
+          compatibility check — feeds the separate donor safety assessment instead)
         </p>
         <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <SegmentedControl
+              label="Sex"
+              options={withUnknownOption(SEX_OPTIONS)}
+              value={form.sex}
+              onChange={updateValue("sex")}
+            />
+            <SegmentedControl
+              label="Race"
+              options={withUnknownOption(RACE_OPTIONS)}
+              value={form.race}
+              onChange={updateValue("race")}
+              helperText="For the safety-assessment risk model only — see that screen for why this matters"
+            />
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <InputField
               label="eGFR"
@@ -228,17 +245,37 @@ export default function DonorForm({
               onChange={updateField("diastolicBp")}
             />
           </div>
-          <InputField
-            label="BMI"
-            type="number"
-            step="0.1"
-            min="0"
-            max="100"
-            helperText="kg/m²"
-            className="max-w-50"
-            value={form.bmi}
-            onChange={updateField("bmi")}
-          />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <InputField
+              label="BMI"
+              type="number"
+              step="0.1"
+              min="0"
+              max="100"
+              helperText="kg/m²"
+              value={form.bmi}
+              onChange={updateField("bmi")}
+            />
+            <InputField
+              label="Creatinine"
+              type="number"
+              step="0.01"
+              min="0"
+              max="30"
+              helperText="mg/dL — raw lab value, informational only"
+              value={form.creatinine}
+              onChange={updateField("creatinine")}
+            />
+            <InputField
+              label="Urine ACR"
+              type="number"
+              step="0.01"
+              min="0"
+              helperText="mg/g — albumin-to-creatinine ratio"
+              value={form.urineAcr}
+              onChange={updateField("urineAcr")}
+            />
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <SegmentedControl
               label="Diabetes"
@@ -247,10 +284,24 @@ export default function DonorForm({
               onChange={updateValue("hasDiabetes")}
             />
             <SegmentedControl
-              label="Smoker"
+              label="Smoking"
+              options={withUnknownOption(SMOKING_STATUS_OPTIONS)}
+              value={form.smokingStatus}
+              onChange={updateValue("smokingStatus")}
+            />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <SegmentedControl
+              label="On antihypertensive medication"
               options={TRI_STATE_OPTIONS}
-              value={form.isSmoker}
-              onChange={updateValue("isSmoker")}
+              value={form.isOnAntihypertensiveMedication}
+              onChange={updateValue("isOnAntihypertensiveMedication")}
+            />
+            <SegmentedControl
+              label="Family history of kidney disease"
+              options={TRI_STATE_OPTIONS}
+              value={form.familyHistoryKidneyDisease}
+              onChange={updateValue("familyHistoryKidneyDisease")}
             />
           </div>
         </div>

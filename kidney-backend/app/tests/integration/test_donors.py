@@ -166,7 +166,10 @@ async def test_create_and_update_donor_clinical_fields(auth_client: AsyncClient)
         "/donors",
         json=make_donor_payload(
             egfr=65.5, systolic_bp=130, diastolic_bp=85, bmi=24.3,
-            has_diabetes=False, is_smoker=True,
+            has_diabetes=False, smoking_status="current",
+            sex="male", race="black", creatinine=1.2, urine_acr=15.0,
+            is_on_antihypertensive_medication=True,
+            family_history_kidney_disease=False,
         ),
     )
 
@@ -177,7 +180,13 @@ async def test_create_and_update_donor_clinical_fields(auth_client: AsyncClient)
     assert body["diastolic_bp"] == 85
     assert body["bmi"] == 24.3
     assert body["has_diabetes"] is False
-    assert body["is_smoker"] is True
+    assert body["smoking_status"] == "current"
+    assert body["sex"] == "male"
+    assert body["race"] == "black"
+    assert body["creatinine"] == 1.2
+    assert body["urine_acr"] == 15.0
+    assert body["is_on_antihypertensive_medication"] is True
+    assert body["family_history_kidney_disease"] is False
 
     update_response = await auth_client.put(
         f"/donors/{body['id']}",
@@ -197,6 +206,8 @@ async def test_create_and_update_donor_clinical_fields(auth_client: AsyncClient)
     # full desired state, same as every other field on this endpoint.
     assert updated["has_diabetes"] is None
     assert updated["systolic_bp"] is None
+    assert updated["smoking_status"] is None
+    assert updated["sex"] is None
 
 
 async def test_donor_created_without_clinical_fields_leaves_them_null(auth_client: AsyncClient):
@@ -204,7 +215,13 @@ async def test_donor_created_without_clinical_fields_leaves_them_null(auth_clien
 
     assert donor["egfr"] is None
     assert donor["has_diabetes"] is None
-    assert donor["is_smoker"] is None
+    assert donor["smoking_status"] is None
+    assert donor["sex"] is None
+    assert donor["race"] is None
+    assert donor["creatinine"] is None
+    assert donor["urine_acr"] is None
+    assert donor["is_on_antihypertensive_medication"] is None
+    assert donor["family_history_kidney_disease"] is None
 
 
 async def test_donor_egfr_out_of_range_is_rejected(auth_client: AsyncClient):

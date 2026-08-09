@@ -34,3 +34,28 @@ export const SENSITIZATION_EVENT_OPTIONS = [
   { value: "pregnancy", label: "Pregnancy" },
   { value: "blood_transfusion", label: "Blood transfusion" },
 ]
+
+// Donor safety-assessment fields (app.models.enums.Sex/Race/SmokingStatus).
+// All three backend columns are nullable, so DonorForm prepends its own
+// "Unknown" option to these lists rather than that living here — see
+// UNKNOWN_OPTION in DonorForm.jsx.
+export const SEX_OPTIONS = [
+  { value: "male", label: "Male" },
+  { value: "female", label: "Female" },
+]
+
+// "Other" is not a validated category for the risk-projection model this
+// feeds (see app/reference_data/donor_risk_model.py) — it's scored against
+// the White coefficients as the best available stand-in. DonorSafety
+// AssessmentPage surfaces that as a permanent disclaimer, not this label.
+export const RACE_OPTIONS = [
+  { value: "black", label: "Black" },
+  { value: "white", label: "White" },
+  { value: "other", label: "Other" },
+]
+
+export const SMOKING_STATUS_OPTIONS = [
+  { value: "never", label: "Never" },
+  { value: "former", label: "Former" },
+  { value: "current", label: "Current" },
+]

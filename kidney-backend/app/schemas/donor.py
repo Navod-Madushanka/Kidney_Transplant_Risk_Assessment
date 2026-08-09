@@ -4,7 +4,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.enums import BloodType, DonorStatus, RhFactor
+from app.models.enums import BloodType, DonorStatus, Race, RhFactor, Sex, SmokingStatus
 
 # Bounds are sanity checks against typos/garbage input, not clinical
 # accept/reject thresholds -- see Donor model's docstring comment on these
@@ -13,6 +13,13 @@ _EGFR_FIELD = Field(default=None, gt=0, le=200, description="mL/min/1.73m^2")
 _SYSTOLIC_BP_FIELD = Field(default=None, ge=50, le=300, description="mmHg")
 _DIASTOLIC_BP_FIELD = Field(default=None, ge=30, le=200, description="mmHg")
 _BMI_FIELD = Field(default=None, gt=0, le=100, description="kg/m^2")
+# Serum creatinine -- informational only, not read by donor_risk_service.py
+# (see Donor model's docstring on this field group).
+_CREATININE_FIELD = Field(default=None, gt=0, le=30, description="mg/dL")
+# Urine albumin-to-creatinine ratio -- IS a donor_risk_service.py input.
+# Upper bound is a typo guard, not a clinical ceiling: nephrotic-range
+# albuminuria can legitimately run into the thousands.
+_URINE_ACR_FIELD = Field(default=None, gt=0, le=20000, description="mg/g")
 
 
 class DonorCreate(BaseModel):
@@ -26,7 +33,13 @@ class DonorCreate(BaseModel):
     diastolic_bp: int | None = _DIASTOLIC_BP_FIELD
     bmi: float | None = _BMI_FIELD
     has_diabetes: bool | None = None
-    is_smoker: bool | None = None
+    sex: Sex | None = None
+    race: Race | None = None
+    smoking_status: SmokingStatus | None = None
+    creatinine: float | None = _CREATININE_FIELD
+    urine_acr: float | None = _URINE_ACR_FIELD
+    is_on_antihypertensive_medication: bool | None = None
+    family_history_kidney_disease: bool | None = None
     # None means altruistic/deceased -- poolable in cross-hospital search.
     # Set means this donor is only donating for that specific patient; see
     # the Donor model's docstring comment on this field.
@@ -49,7 +62,13 @@ class DonorUpdate(BaseModel):
     diastolic_bp: int | None = _DIASTOLIC_BP_FIELD
     bmi: float | None = _BMI_FIELD
     has_diabetes: bool | None = None
-    is_smoker: bool | None = None
+    sex: Sex | None = None
+    race: Race | None = None
+    smoking_status: SmokingStatus | None = None
+    creatinine: float | None = _CREATININE_FIELD
+    urine_acr: float | None = _URINE_ACR_FIELD
+    is_on_antihypertensive_medication: bool | None = None
+    family_history_kidney_disease: bool | None = None
     intended_recipient_id: uuid.UUID | None = None
 
 
@@ -67,7 +86,13 @@ class DonorResponse(BaseModel):
     diastolic_bp: int | None
     bmi: float | None
     has_diabetes: bool | None
-    is_smoker: bool | None
+    sex: Sex | None
+    race: Race | None
+    smoking_status: SmokingStatus | None
+    creatinine: float | None
+    urine_acr: float | None
+    is_on_antihypertensive_medication: bool | None
+    family_history_kidney_disease: bool | None
     hla_typing_verified: bool
     intended_recipient_id: uuid.UUID | None
     created_at: datetime

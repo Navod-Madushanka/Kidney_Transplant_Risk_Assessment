@@ -24,7 +24,13 @@ async def create_donor(
         diastolic_bp=payload.diastolic_bp,
         bmi=payload.bmi,
         has_diabetes=payload.has_diabetes,
-        is_smoker=payload.is_smoker,
+        sex=payload.sex,
+        race=payload.race,
+        smoking_status=payload.smoking_status,
+        creatinine=payload.creatinine,
+        urine_acr=payload.urine_acr,
+        is_on_antihypertensive_medication=payload.is_on_antihypertensive_medication,
+        family_history_kidney_disease=payload.family_history_kidney_disease,
         intended_recipient_id=payload.intended_recipient_id,
     )
     db.add(donor)
@@ -89,7 +95,13 @@ async def update_donor_details(
     donor.diastolic_bp = payload.diastolic_bp
     donor.bmi = payload.bmi
     donor.has_diabetes = payload.has_diabetes
-    donor.is_smoker = payload.is_smoker
+    donor.sex = payload.sex
+    donor.race = payload.race
+    donor.smoking_status = payload.smoking_status
+    donor.creatinine = payload.creatinine
+    donor.urine_acr = payload.urine_acr
+    donor.is_on_antihypertensive_medication = payload.is_on_antihypertensive_medication
+    donor.family_history_kidney_disease = payload.family_history_kidney_disease
     donor.intended_recipient_id = payload.intended_recipient_id
     await db.commit()
     await db.refresh(donor)
