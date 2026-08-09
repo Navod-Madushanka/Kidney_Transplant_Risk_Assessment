@@ -104,8 +104,11 @@ async def client() -> AsyncIterator[AsyncClient]:
 
 @pytest_asyncio.fixture
 async def db_session() -> AsyncIterator[AsyncSession]:
-    """Direct DB access for assertions the HTTP API has no endpoint for yet
-    (e.g. reading back audit log rows — there's no GET /audit-logs)."""
+    """Direct DB access for assertions the HTTP API has no endpoint for
+    (e.g. tampering with a row to test verify_audit_chain), plus test-only
+    operator actions like promoting a doctor to admin (see
+    test_audit_logs.py's _promote_to_admin -- there's no self-service
+    promotion endpoint by design)."""
     async with _TestSessionLocal() as session:
         yield session
 

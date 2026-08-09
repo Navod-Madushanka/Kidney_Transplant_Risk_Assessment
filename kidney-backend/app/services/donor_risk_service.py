@@ -54,6 +54,13 @@ from app.reference_data.donor_risk_model import (
     AgeBand,
 )
 
+# BMI's upper spline knot -- see _spline_bmi. Not imported from
+# donor_risk_model.py since (unlike EGFR_KNOT_HIGH/CONTRAINDICATION_*) it
+# isn't itself a named reference-data constant there, just the literal `30`
+# baked into the spline formula; named here so _values_outside_model_range
+# below states its reasoning once rather than repeating the bare number.
+_BMI_UPPER_KNOT = 30.0
+
 # The projection's own linear predictor never reads diastolic_bp -- see
 # module docstring. Keeping the two gates' required-field lists separate
 # (rather than one combined list) is deliberate: a donor missing only
@@ -125,9 +132,17 @@ class DonorRiskAssessmentResult:
         default_factory=lambda: list(CONTRAINDICATION_CRITERIA_NOT_ASSESSED)
     )
 
-    # Not model predictors -- has_diabetes/family_history_kidney_disease are
-    # surfaced as review flags for a clinician's own judgment, same posture
-    # as the rest of this app's "informational, not gating" clinical fields.
+    # Review #2 bug 15: has_diabetes IS a scored linear-predictor term
+    # (COEFFICIENTS.diabetes, applied in _linear_predictor above) --
+    # surfaced here *in addition* to that, not instead of it, so a
+    # clinician sees it as its own flag alongside the quantitative
+    # projection it already contributed to (rather than mentally adding
+    # extra risk on top of a number that already contains it).
+    # family_history_kidney_disease, by contrast, really isn't a model
+    # predictor at all -- donor_risk_service.py never reads it for the
+    # calculation, only surfaces it here for a clinician's own judgment,
+    # same posture as the rest of this app's "informational, not gating"
+    # clinical fields.
     diabetes_review_flag: bool | None = None
     family_history_flag: bool | None = None
 
@@ -135,6 +150,18 @@ class DonorRiskAssessmentResult:
     general_disclaimer: str = GENERAL_POPULATION_DISCLAIMER
     race_extrapolation_disclaimer: str | None = None
     source_citation: str = SOURCE_CITATION
+
+    # Review #2 bug 10: age is the only predictor that was ever refused a
+    # projection for being out of range (see age_band handling below) --
+    # eGFR/BMI/ACR/SBP could all be typed arbitrarily high and the spline
+    # would silently extrapolate linearly past the range the model's own
+    # authors actually validated, with no warning anywhere (e.g. eGFR 200
+    # vs the model's top knot of 120 -> a confident-looking 3.5x relative
+    # risk built on zero real data). A soft flag, not a block, like
+    # race_extrapolation_disclaimer -- the projection still computes (a
+    # clinician may still want *a* number), it's just labeled as
+    # extrapolated beyond validated support.
+    values_outside_model_range: list[str] = field(default_factory=list)
 
 
 def calculate_age_years(date_of_birth: date, as_of: date | None = None) -> int:
@@ -165,7 +192,13 @@ def _spline_egfr(egfr: float, egfr_base: float) -> tuple[float, float, float, fl
 
 
 def _spline_bmi(bmi: float) -> tuple[float, float]:
-    bmi1 = min(bmi - BASE_CASE_BMI, 5) / 5
+    # bmi1's cap must match bmi2's knot (30) exactly -- both used to
+    # disagree (bmi1 capped at BMI 31, bmi2's knot was 30), so between
+    # BMI 30 and 31 both terms were simultaneously active and increasing,
+    # a spurious third segment the two-knot linear spline was never meant
+    # to have (~0.5% effect on the projection). Fixed 2026-08-09 (review
+    # #2 bug 14).
+    bmi1 = min(bmi - BASE_CASE_BMI, 4) / 5
     bmi2 = max(bmi - 30, 0) / 5
     return bmi1, bmi2
 
@@ -213,6 +246,56 @@ def _linear_predictor(
 def _project_risk(hx_percent: float, linear_predictor: float) -> float:
     """Appendix Section 4 Step 5: Risk% = (1 - (1 - Hx/100)^exp(B)) * 100."""
     return (1 - (1 - hx_percent / 100) ** math.exp(linear_predictor)) * 100
+
+
+def _values_outside_model_range(data: DonorRiskAssessmentInput) -> list[str]:
+    """Flags predictors whose value falls outside the range the model's
+    own reference population actually supports -- reusing the ceilings the
+    paper's authors already used to define that population (the
+    contraindication thresholds) rather than inventing new, unreviewed
+    numbers. Only called once age has already been confirmed in-range (see
+    assess_donor_risk), so this only needs to cover the four predictors
+    that had no such check at all: eGFR, BMI, urine ACR, systolic BP.
+    Diastolic BP is excluded on purpose -- the projection's linear
+    predictor never reads it (see module docstring)."""
+    flags: list[str] = []
+
+    if data.egfr > EGFR_KNOT_HIGH:
+        flags.append(
+            f"eGFR {data.egfr} mL/min/1.73m² is above the model's top spline knot "
+            f"({EGFR_KNOT_HIGH:.0f}) -- this projection is a linear extrapolation "
+            "beyond the range the model was fit on, not an interpolated value."
+        )
+
+    if data.bmi > _BMI_UPPER_KNOT:
+        flags.append(
+            f"BMI {data.bmi} is above the model's upper spline knot "
+            f"({_BMI_UPPER_KNOT:.0f}) -- extrapolated, not interpolated."
+        )
+
+    if data.urine_acr >= CONTRAINDICATION_ACR_CEILING:
+        flags.append(
+            f"Urine ACR {data.urine_acr} mg/g is at or above "
+            f"{CONTRAINDICATION_ACR_CEILING:.0f} mg/g, the macroalbuminuria "
+            "threshold the model's authors used to define their reference "
+            "population -- extrapolated beyond it."
+        )
+
+    on_medication = bool(data.is_on_antihypertensive_medication)
+    sbp_ceiling = (
+        CONTRAINDICATION_SBP_WITH_MEDICATION
+        if on_medication
+        else CONTRAINDICATION_SBP_WITHOUT_MEDICATION
+    )
+    if data.systolic_bp >= sbp_ceiling:
+        flags.append(
+            f"Systolic BP {data.systolic_bp} mmHg is at or above {sbp_ceiling} mmHg "
+            f"({'on' if on_medication else 'not on'} antihypertensive medication), "
+            "the threshold the model's authors used to define their reference "
+            "population -- extrapolated beyond it."
+        )
+
+    return flags
 
 
 def _find_hx_entry(age_band_label: str, race: str, sex: str):
@@ -329,4 +412,5 @@ def assess_donor_risk(data: DonorRiskAssessmentInput) -> DonorRiskAssessmentResu
         race_extrapolation_disclaimer=(
             None if population_validated else OTHER_RACE_EXTRAPOLATION_DISCLAIMER
         ),
+        values_outside_model_range=_values_outside_model_range(data),
     )

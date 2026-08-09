@@ -32,13 +32,28 @@ export async function submitCompatibilityCheck(
   }
 
   try {
+    // undefined (no document at all finished OCR, so nothing to confirm)
+    // vs an explicit true/false (person-details WAS populated by OCR --
+    // could have come from any uploaded document, since PersonDetailsOcr
+    // is merged across all of them, not owned by one fixed document type
+    // the way HLA typing/bead-specificity are) -- see DetailsStep.jsx's
+    // wasAnyDocumentOcrExtracted and the same undefined/true/false
+    // contract on hlaOcrVerified below.
+    const detailsOcrVerified = wasAnyDocumentOcrExtracted(wizardState)
+      ? wizardState.ocr_verified.details
+      : undefined
+
     if (!next.patientId) {
-      const patient = await createPatient(buildPersonPayload(wizardState.patient_details))
+      const patient = await createPatient(
+        buildPersonPayload(wizardState.patient_details, detailsOcrVerified)
+      )
       await completeStep({ patientId: patient.id })
     }
 
     if (!next.donorId) {
-      const donor = await createDonor(buildPersonPayload(wizardState.donor_details))
+      const donor = await createDonor(
+        buildPersonPayload(wizardState.donor_details, detailsOcrVerified)
+      )
       await completeStep({ donorId: donor.id })
     }
 
@@ -115,13 +130,26 @@ function wasOcrExtracted(wizardState, documentType) {
   return wizardState.extraction.documents[documentType]?.status === "done"
 }
 
-function buildPersonPayload(details) {
+// Person-details (full_name/date_of_birth/blood_type/rh_factor) can be
+// populated by OCR from ANY uploaded document -- PersonDetailsOcr is
+// merged across all of them (see app/schemas/ocr.py), not owned by one
+// fixed document type the way HLA typing/bead-specificity are. So "was
+// this OCR-extracted at all" here means "did any document finish OCR",
+// not one specific documentType.
+function wasAnyDocumentOcrExtracted(wizardState) {
+  return Object.values(wizardState.extraction.documents).some(
+    (doc) => doc?.status === "done"
+  )
+}
+
+function buildPersonPayload(details, detailsVerified) {
   return {
     full_name: details.full_name.trim(),
     date_of_birth: details.date_of_birth,
     blood_type: details.blood_type,
     rh_factor: details.rh_factor,
     nic_number: details.nic_number.trim() || null,
+    details_verified: detailsVerified,
   }
 }
 

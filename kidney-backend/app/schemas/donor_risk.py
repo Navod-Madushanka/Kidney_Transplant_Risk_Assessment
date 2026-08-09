@@ -31,3 +31,4 @@ class DonorRiskAssessmentResponse(BaseModel):
     general_disclaimer: str
     race_extrapolation_disclaimer: str | None
     source_citation: str
+    values_outside_model_range: list[str]

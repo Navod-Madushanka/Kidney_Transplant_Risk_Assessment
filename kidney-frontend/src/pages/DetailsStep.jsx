@@ -7,6 +7,7 @@ import Card from "../components/ui/Card"
 import InputField from "../components/ui/InputField"
 import SegmentedControl from "../components/ui/SegmentedControl"
 import Button from "../components/ui/Button"
+import ToggleSwitch from "../components/ui/ToggleSwitch"
 
 function validatePerson(details) {
   const errors = {}
@@ -76,6 +77,16 @@ export default function DetailsStep() {
 
   const [patientErrors, setPatientErrors] = useState({})
   const [donorErrors, setDonorErrors] = useState({})
+  const [verificationError, setVerificationError] = useState(false)
+
+  // Unlike HlaTypingStep/BeadSpecificityStep, person-details isn't owned by
+  // one fixed document type -- PersonDetailsOcr is merged from whichever
+  // document(s) actually get uploaded (see api/compatibilityWizard.js's
+  // buildPersonPayload). So "was this OCR-extracted" here means "did any
+  // document finish OCR", not one specific document_type.
+  const wasOcrExtracted = Object.values(state.extraction?.documents ?? {}).some(
+    (doc) => doc?.status === "done"
+  )
 
   function handleContinue() {
     const nextPatientErrors = validatePerson(state.patient_details)
@@ -87,7 +98,10 @@ export default function DetailsStep() {
       Object.keys(nextPatientErrors).length > 0 ||
       Object.keys(nextDonorErrors).length > 0
 
-    if (hasErrors) return
+    const needsVerification = wasOcrExtracted && !state.ocr_verified?.details
+    setVerificationError(needsVerification)
+
+    if (hasErrors || needsVerification) return
 
     actions.unlockStep(2)
     navigate("/checks/new/hla")
@@ -117,6 +131,32 @@ export default function DetailsStep() {
         errors={donorErrors}
         onChange={(patch) => actions.setDonorDetails(patch)}
       />
+
+      {wasOcrExtracted && (
+        <div
+          className={[
+            "rounded-md border p-4",
+            verificationError ? "border-high-risk bg-high-risk-subtle" : "border-moderate bg-moderate-subtle",
+          ].join(" ")}
+        >
+          <ToggleSwitch
+            label="I have reviewed these names, dates of birth, and blood groups against the source document"
+            helperText="This data was extracted by AI from an uploaded photo — confirm it's accurate before continuing."
+            checked={!!state.ocr_verified?.details}
+            onChange={(checked) => {
+              actions.setOcrVerified("details", checked)
+              if (checked) setVerificationError(false)
+            }}
+          />
+          {verificationError && (
+            <p className="text-[13px] text-high-risk font-medium mt-2">
+              Confirm this before continuing — the compatibility check refuses to run on
+              unverified OCR data, and blood type can't be corrected once these records
+              are created.
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="flex items-center justify-between">
         <Button variant="secondary" onClick={() => navigate("/checks/new/photos")}>

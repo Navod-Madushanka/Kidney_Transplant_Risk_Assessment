@@ -11,16 +11,27 @@ from app.models.patient import Patient
 from app.models.patient_hla_typing import PatientHLATyping
 from app.reference_data.hla_loci import HLA_LOCI
 from app.schemas.hla_typing import HLATypingEntry
+from app.services.audit_service import create_audit_log
 
 
-def _resolve_verified(ocr_verified: bool | None) -> bool:
-    """None (the default for every pre-existing caller) means "not an OCR
-    write, no claim being made" -> trusted, same as manual entry always was.
-    An explicit True/False is only ever passed by the compatibility-check
+def _resolve_verified(ocr_verified: bool | None, previous_verified: bool) -> bool:
+    """None means "no claim being made about this specific write" -> keep
+    whatever the record's verified flag already was (`previous_verified`)
+    rather than resetting it to trusted. For a brand-new patient/donor
+    that's always True (the column's creation-time default), so a first-
+    ever write with ocr_verified=None still resolves to trusted, same as
+    manual entry always was. What changed (review #2 bug 5): a *replace*
+    call with ocr_verified=None used to unconditionally reset to True even
+    when the record's current value was False (unconfirmed OCR data) --
+    e.g. PUT .../hla-typings with the query param simply omitted silently
+    cleared an unverified flag with no trace, since omitting it is
+    indistinguishable from a caller who deliberately means "trusted." An
+    explicit True/False is only ever passed by the compatibility-check
     wizard, which knows whether this particular write came from an OCR
-    extraction the doctor has (True) or hasn't (False) confirmed against the
-    source document."""
-    return True if ocr_verified is None else ocr_verified
+    extraction the doctor has (True) or hasn't (False) confirmed against
+    the source document -- that always wins outright.
+    """
+    return previous_verified if ocr_verified is None else ocr_verified
 
 
 
@@ -145,7 +156,17 @@ async def replace_patient_hla_typing(
     patient_id: uuid.UUID,
     entries: list[HLATypingEntry],
     ocr_verified: bool | None = None,
+    doctor_id: uuid.UUID | None = None,
 ) -> None:
+    """doctor_id is only used to attribute the audit entry below -- omitted
+    by internal/test callers that don't have a doctor in scope, in which
+    case the write still happens but isn't audited (matches how every
+    other write in this codebase requires a doctor to audit an action)."""
+    previous_verified = (
+        await db.execute(select(Patient.hla_typing_verified).where(Patient.id == patient_id))
+    ).scalar_one()
+    new_verified = _resolve_verified(ocr_verified, previous_verified)
+
     await db.execute(
         delete(PatientHLATyping).where(PatientHLATyping.patient_id == patient_id)
     )
@@ -160,10 +181,22 @@ async def replace_patient_hla_typing(
         db.add(typing_row)
 
     await db.execute(
-        update(Patient)
-        .where(Patient.id == patient_id)
-        .values(hla_typing_verified=_resolve_verified(ocr_verified))
+        update(Patient).where(Patient.id == patient_id).values(hla_typing_verified=new_verified)
     )
+
+    if doctor_id is not None:
+        await create_audit_log(
+            db,
+            doctor_id=doctor_id,
+            action="replaced_patient_hla_typing",
+            patient_id=patient_id,
+            details={
+                "entry_count": len(entries),
+                "previous_verified": previous_verified,
+                "new_verified": new_verified,
+            },
+            commit=False,
+        )
     await db.commit()
 
 
@@ -206,7 +239,14 @@ async def replace_donor_hla_typing(
     donor_id: uuid.UUID,
     entries: list[HLATypingEntry],
     ocr_verified: bool | None = None,
+    doctor_id: uuid.UUID | None = None,
 ) -> None:
+    """doctor_id — see replace_patient_hla_typing's docstring, same contract."""
+    previous_verified = (
+        await db.execute(select(Donor.hla_typing_verified).where(Donor.id == donor_id))
+    ).scalar_one()
+    new_verified = _resolve_verified(ocr_verified, previous_verified)
+
     await db.execute(
         delete(DonorHLATyping).where(DonorHLATyping.donor_id == donor_id)
     )
@@ -221,10 +261,22 @@ async def replace_donor_hla_typing(
         db.add(typing_row)
 
     await db.execute(
-        update(Donor)
-        .where(Donor.id == donor_id)
-        .values(hla_typing_verified=_resolve_verified(ocr_verified))
+        update(Donor).where(Donor.id == donor_id).values(hla_typing_verified=new_verified)
     )
+
+    if doctor_id is not None:
+        await create_audit_log(
+            db,
+            doctor_id=doctor_id,
+            action="replaced_donor_hla_typing",
+            donor_id=donor_id,
+            details={
+                "entry_count": len(entries),
+                "previous_verified": previous_verified,
+                "new_verified": new_verified,
+            },
+            commit=False,
+        )
     await db.commit()
 
 

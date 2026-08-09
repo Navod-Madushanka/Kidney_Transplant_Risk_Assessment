@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.antibody_profile import AntibodyProfile
 from app.models.patient import Patient
 from app.schemas.antibody_profile import AntibodyProfileEntry
+from app.services.audit_service import create_audit_log
 
 
 async def get_patient_antibody_profiles(
@@ -23,7 +24,19 @@ async def replace_patient_antibody_profiles(
     patient_id: uuid.UUID,
     entries: list[AntibodyProfileEntry],
     ocr_verified: bool | None = None,
+    doctor_id: uuid.UUID | None = None,
 ) -> None:
+    """None (no claim made about this write) preserves whatever
+    antibody_profile_verified already was, rather than resetting it to
+    trusted -- see hla_typing_service._resolve_verified's docstring, same
+    bug (review #2 bug 5), same fix, same reasoning. doctor_id -- see
+    hla_typing_service.replace_patient_hla_typing's docstring, same
+    audit-attribution contract."""
+    previous_verified = (
+        await db.execute(select(Patient.antibody_profile_verified).where(Patient.id == patient_id))
+    ).scalar_one()
+    new_verified = previous_verified if ocr_verified is None else ocr_verified
+
     await db.execute(
         delete(AntibodyProfile).where(AntibodyProfile.patient_id == patient_id)
     )
@@ -36,14 +49,25 @@ async def replace_patient_antibody_profiles(
         )
         db.add(profile_row)
 
-    # None (no claim made -> trusted, e.g. manual entry) vs an explicit
-    # True/False from the compatibility-check wizard -- see the matching
-    # helper's docstring in hla_typing_service.py.
     await db.execute(
         update(Patient)
         .where(Patient.id == patient_id)
-        .values(antibody_profile_verified=True if ocr_verified is None else ocr_verified)
+        .values(antibody_profile_verified=new_verified)
     )
+
+    if doctor_id is not None:
+        await create_audit_log(
+            db,
+            doctor_id=doctor_id,
+            action="replaced_patient_antibody_profiles",
+            patient_id=patient_id,
+            details={
+                "entry_count": len(entries),
+                "previous_verified": previous_verified,
+                "new_verified": new_verified,
+            },
+            commit=False,
+        )
     await db.commit()
 
 

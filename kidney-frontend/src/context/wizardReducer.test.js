@@ -113,10 +113,14 @@ describe("SET_CROSSMATCH", () => {
 })
 
 describe("SET_OCR_VERIFIED", () => {
-  it("starts false for both document groups", () => {
+  it("starts false for all three document groups", () => {
     const state = buildInitialWizardState()
 
-    expect(state.ocr_verified).toEqual({ hla_typing: false, bead_specificity: false })
+    expect(state.ocr_verified).toEqual({
+      details: false,
+      hla_typing: false,
+      bead_specificity: false,
+    })
   })
 
   it("sets only the named group, leaving the other untouched", () => {

@@ -87,3 +87,19 @@ class Patient(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     antibody_profile_verified: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
     )
+
+    # OCR verification gate for person-details fields (added 2026-08-09 —
+    # review #2 bug 6): blood_type/date_of_birth are OCR-extractable
+    # (see PersonDetailsOcr) same as HLA typing, but had no verification
+    # concept at all -- a misread blood group flowed straight into ABO
+    # checking with nothing to catch it, unlike hla_typing_verified/
+    # antibody_profile_verified above. Same contract: defaults True
+    # (manual entry, nothing to confirm), set False only when the
+    # compatibility-check wizard's create call declares this record's
+    # details came from an unconfirmed OCR extraction. Set once at
+    # creation only -- blood_type/rh_factor are themselves immutable after
+    # creation (see PatientUpdate's docstring), so there's no later write
+    # path that would need to touch this flag.
+    details_verified: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )

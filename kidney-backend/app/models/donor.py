@@ -132,6 +132,12 @@ class Donor(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         Boolean, nullable=False, default=True, server_default="true"
     )
 
+    # OCR verification gate for person-details fields (added 2026-08-09 —
+    # see the matching comment on app/models/patient.py's details_verified).
+    details_verified: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
+
     # Intended recipient (added 2026-08-09) -- most living donors in this
     # system aren't free-floating organs; they're someone's relative,
     # donating only if that specific patient gets a kidney. Before this

@@ -50,6 +50,10 @@ async def check_compatibility(
     # check never produces a MatchReport row at all -- this isn't a clinical
     # result to record, it's a request that shouldn't have been made yet.
     unverified_reasons = []
+    if not patient.details_verified:
+        unverified_reasons.append("the patient's demographic details (name/DOB/blood type)")
+    if not donor.details_verified:
+        unverified_reasons.append("the donor's demographic details (name/DOB/blood type)")
     if not patient.hla_typing_verified:
         unverified_reasons.append("the patient's HLA typing")
     if not donor.hla_typing_verified:

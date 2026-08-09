@@ -72,13 +72,27 @@ async def create_patient_endpoint(
 ):
     """Create a new patient for the current doctor."""
     try:
-        patient = await create_patient(db, current_doctor.id, payload)
+        patient = await create_patient(db, current_doctor.id, payload, commit=False)
     except IntegrityError:
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="You already have a patient with this NIC number.",
         )
+
+    await create_audit_log(
+        db,
+        doctor_id=current_doctor.id,
+        action="created_patient",
+        patient_id=patient.id,
+        details={
+            "full_name": patient.full_name,
+            "nic_number": patient.nic_number,
+        },
+        commit=False,
+    )
+    await db.commit()
+
     return PatientResponse.model_validate(patient)
 
 
@@ -117,7 +131,7 @@ async def update_patient_endpoint(
         )
 
     try:
-        patient = await update_patient_details(db, patient, payload)
+        patient = await update_patient_details(db, patient, payload, commit=False)
     except IntegrityError:
         await db.rollback()
         raise HTTPException(
@@ -135,7 +149,9 @@ async def update_patient_endpoint(
             "date_of_birth": patient.date_of_birth.isoformat(),
             "nic_number": patient.nic_number,
         },
+        commit=False,
     )
+    await db.commit()
 
     return PatientResponse.model_validate(patient)
 
@@ -157,7 +173,7 @@ async def delete_patient_endpoint(
             detail="Patient not found",
         )
 
-    await delete_patient(db, patient)
+    await delete_patient(db, patient, commit=False)
 
     await create_audit_log(
         db,
@@ -168,7 +184,9 @@ async def delete_patient_endpoint(
             "full_name": patient.full_name,
             "nic_number": patient.nic_number,
         },
+        commit=False,
     )
+    await db.commit()
 
 
 @router.put("/{patient_id}/hla-typings", status_code=status.HTTP_204_NO_CONTENT)
@@ -187,7 +205,9 @@ async def replace_patient_hla_typing_endpoint(
     entirely by every other caller (e.g. manual edits via the patient
     detail page), which always counts as trusted."""
     await _ensure_patient_exists(db, patient_id, current_doctor.id)
-    await replace_patient_hla_typing(db, patient_id, entries, ocr_verified=ocr_verified)
+    await replace_patient_hla_typing(
+        db, patient_id, entries, ocr_verified=ocr_verified, doctor_id=current_doctor.id
+    )
 
 
 @router.get("/{patient_id}/hla-typings", response_model=list[HLATypingEntry])
@@ -219,7 +239,9 @@ async def replace_patient_antibody_profiles_endpoint(
     """Replace antibody profile data for a patient. See ocr_verified's
     docstring on replace_patient_hla_typing_endpoint above — same contract."""
     await _ensure_patient_exists(db, patient_id, current_doctor.id)
-    await replace_patient_antibody_profiles(db, patient_id, entries, ocr_verified=ocr_verified)
+    await replace_patient_antibody_profiles(
+        db, patient_id, entries, ocr_verified=ocr_verified, doctor_id=current_doctor.id
+    )
 
 
 @router.get("/{patient_id}/antibody-profiles", response_model=list[AntibodyProfileEntry])
@@ -323,7 +345,7 @@ async def upload_patient_report_file_endpoint(
     """
     await _ensure_patient_exists(db, patient_id, current_doctor.id)
 
-    report_file = await create_patient_report_file(db, patient_id, category, file)
+    report_file = await create_patient_report_file(db, patient_id, category, file, commit=False)
 
     await create_audit_log(
         db,
@@ -336,7 +358,9 @@ async def upload_patient_report_file_endpoint(
             "original_filename": report_file.original_filename,
             "size_bytes": report_file.size_bytes,
         },
+        commit=False,
     )
+    await db.commit()
 
     return ReportFileResponse.model_validate(report_file)
 
@@ -391,7 +415,7 @@ async def delete_patient_report_file_endpoint(
     file on disk). Not idempotent — deleting an already-deleted file 404s."""
     await _ensure_patient_exists(db, patient_id, current_doctor.id)
 
-    deleted = await delete_patient_report_file(db, patient_id, report_file_id)
+    deleted = await delete_patient_report_file(db, patient_id, report_file_id, commit=False)
     if deleted is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -408,7 +432,9 @@ async def delete_patient_report_file_endpoint(
             "category": deleted.category.value,
             "original_filename": deleted.original_filename,
         },
+        commit=False,
     )
+    await db.commit()
 
 
 @router.get("/{patient_id}/reports", response_model=list[MatchReportResponse])

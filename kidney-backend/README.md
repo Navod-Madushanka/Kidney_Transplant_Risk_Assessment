@@ -36,6 +36,10 @@ kidney-backend/
 │   └── tests/unit/               # pytest unit tests for the scoring services
 ├── alembic/versions/              # Migrations (initial schema → hospitals/doctors
 │                                   # → patients/donors → audit logs → NIC numbers)
+├── docs/
+│   └── clinical-basis.md          # Where every scoring constant in reference_data/
+│                                   # actually came from, and what is/isn't externally
+│                                   # citable about it
 ├── alembic.ini
 ├── pyproject.toml
 └── .env.example

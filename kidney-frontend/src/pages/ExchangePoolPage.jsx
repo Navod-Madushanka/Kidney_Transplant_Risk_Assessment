@@ -17,6 +17,13 @@ export default function ExchangePoolPage() {
   useEffect(() => {
     let cancelled = false
 
+    // Clears any stale failure for this exact policy before the new
+    // request starts (review #2 bug 23) -- failedPolicy used to only ever
+    // be set (in .catch() below) and never reset, so retrying a policy
+    // that had previously failed showed the old error message the whole
+    // time the new request was in flight instead of the loading spinner.
+    setFailedPolicy((current) => (current === policy ? null : current))
+
     getExchangeMatch(policy)
       .then((data) => !cancelled && setResult({ policy, data }))
       .catch(() => !cancelled && setFailedPolicy(policy))
@@ -76,7 +83,10 @@ export default function ExchangePoolPage() {
         <>
           <div className="grid grid-cols-3 gap-3">
             <StatTile label="Incompatible pairs" value={data.nodes.length} />
-            <StatTile label="Cycles found" value={selectedCycles.length} />
+            {/* "Selected", not "found" (review #2 bug 20) -- the API only
+                ever returns the solver's already-selected cycle set, not a
+                separate count of every candidate cycle it considered. */}
+            <StatTile label="Cycles selected" value={selectedCycles.length} />
             <StatTile
               label="Pairs transplanted"
               value={selectedCycles.reduce((sum, cycle) => sum + cycle.pair_ids.length, 0)}

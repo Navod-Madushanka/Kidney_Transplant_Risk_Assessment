@@ -16,9 +16,10 @@ from app.services.audit_service import (
 def test_compute_audit_hash_is_deterministic():
     created_at = datetime(2026, 8, 8, 12, 0, 0, tzinfo=timezone.utc)
     doctor_id = uuid.uuid4()
+    row_id = uuid.uuid4()
 
-    first = compute_audit_hash(GENESIS_HASH, doctor_id, None, None, "did_a_thing", created_at, {"a": 1, "b": 2})
-    second = compute_audit_hash(GENESIS_HASH, doctor_id, None, None, "did_a_thing", created_at, {"b": 2, "a": 1})
+    first = compute_audit_hash(GENESIS_HASH, doctor_id, None, None, "did_a_thing", created_at, {"a": 1, "b": 2}, row_id)
+    second = compute_audit_hash(GENESIS_HASH, doctor_id, None, None, "did_a_thing", created_at, {"b": 2, "a": 1}, row_id)
 
     # dict key insertion order shouldn't change the hash -- callers build
     # `details` fresh every call, so order carries no meaning.
@@ -29,13 +30,18 @@ def test_compute_audit_hash_is_deterministic():
 def test_compute_audit_hash_changes_with_any_hashed_field():
     created_at = datetime(2026, 8, 8, 12, 0, 0, tzinfo=timezone.utc)
     doctor_id = uuid.uuid4()
-    base = compute_audit_hash(GENESIS_HASH, doctor_id, None, None, "action", created_at, {"k": "v"})
+    row_id = uuid.uuid4()
+    base = compute_audit_hash(GENESIS_HASH, doctor_id, None, None, "action", created_at, {"k": "v"}, row_id)
 
-    assert compute_audit_hash("f" * 64, doctor_id, None, None, "action", created_at, {"k": "v"}) != base
-    assert compute_audit_hash(GENESIS_HASH, uuid.uuid4(), None, None, "action", created_at, {"k": "v"}) != base
-    assert compute_audit_hash(GENESIS_HASH, doctor_id, None, None, "other_action", created_at, {"k": "v"}) != base
-    assert compute_audit_hash(GENESIS_HASH, doctor_id, None, None, "action", created_at, {"k": "other"}) != base
-    assert compute_audit_hash(GENESIS_HASH, doctor_id, uuid.uuid4(), None, "action", created_at, {"k": "v"}) != base
+    assert compute_audit_hash("f" * 64, doctor_id, None, None, "action", created_at, {"k": "v"}, row_id) != base
+    assert compute_audit_hash(GENESIS_HASH, uuid.uuid4(), None, None, "action", created_at, {"k": "v"}, row_id) != base
+    assert compute_audit_hash(GENESIS_HASH, doctor_id, None, None, "other_action", created_at, {"k": "v"}, row_id) != base
+    assert compute_audit_hash(GENESIS_HASH, doctor_id, None, None, "action", created_at, {"k": "other"}, row_id) != base
+    assert compute_audit_hash(GENESIS_HASH, doctor_id, uuid.uuid4(), None, "action", created_at, {"k": "v"}, row_id) != base
+    # Review #2 bug 16: the row's own id is now part of the digest, so
+    # rewriting it (with every other field held equal) must also change
+    # the hash -- previously it wouldn't have.
+    assert compute_audit_hash(GENESIS_HASH, doctor_id, None, None, "action", created_at, {"k": "v"}, uuid.uuid4()) != base
 
 
 async def test_first_row_chains_from_genesis(db_session):
@@ -43,7 +49,7 @@ async def test_first_row_chains_from_genesis(db_session):
 
     assert entry.prev_hash == GENESIS_HASH
     assert entry.hash == compute_audit_hash(
-        GENESIS_HASH, entry.doctor_id, None, None, "first_action", entry.created_at, None
+        GENESIS_HASH, entry.doctor_id, None, None, "first_action", entry.created_at, None, entry.id
     )
 
 

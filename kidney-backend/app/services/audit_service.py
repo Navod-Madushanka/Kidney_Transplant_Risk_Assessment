@@ -36,12 +36,22 @@ def compute_audit_hash(
     action: str,
     created_at: datetime,
     details: Optional[dict],
+    row_id: uuid.UUID,
 ) -> str:
     """Deterministic sha256 over one audit row's fields, chained to the
     previous row's hash. patient_id/donor_id are folded in alongside the
     (prev_hash, doctor_id, action, timestamp, details) the row is
     conceptually keyed on, so a retroactive edit that swaps which
     patient/donor a log entry points at also breaks the chain.
+
+    row_id (added 2026-08-09, review #2 bug 16) is the row's own primary
+    key -- without it, an attacker with UPDATE access could swap two rows'
+    `id` values (or reassign a row's id to some other value) without
+    touching any hashed field, and verification would still pass, since
+    nothing tied a row's hash to which row it actually was.
+    UUIDPrimaryKeyMixin generates `id` client-side (default=uuid.uuid4, not
+    a server default), so create_audit_log can know it up front and hash
+    it in the same pass rather than needing a flush-then-rehash.
 
     json.dumps(..., sort_keys=True) keeps `details` deterministic regardless
     of the dict's original key insertion order -- callers build that dict
@@ -57,15 +67,18 @@ def compute_audit_hash(
             action,
             created_at.isoformat(),
             json.dumps(details, sort_keys=True, default=str) if details is not None else "null",
+            str(row_id),
         ]
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 async def _get_last_audit_hash(db: AsyncSession) -> str:
-    result = await db.execute(
-        select(AuditLog.hash).order_by(AuditLog.created_at.desc(), AuditLog.id.desc()).limit(1)
-    )
+    # Ordered by seq, not created_at: seq is a monotonic BIGSERIAL-style
+    # counter immune to clock steps (see AuditLog.seq's docstring / review
+    # #2 bug 2) -- created_at can go backwards across an NTP correction,
+    # which used to make this pick the wrong "last" row and fork the chain.
+    result = await db.execute(select(AuditLog.hash).order_by(AuditLog.seq.desc()).limit(1))
     last_hash = result.scalar_one_or_none()
     return last_hash if last_hash is not None else GENESIS_HASH
 
@@ -89,12 +102,14 @@ async def create_audit_log(
     await db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _AUDIT_CHAIN_LOCK_KEY})
 
     created_at = datetime.now(timezone.utc)
+    row_id = uuid.uuid4()  # generated up front so it can be hashed -- see compute_audit_hash's docstring
     prev_hash = await _get_last_audit_hash(db)
     row_hash = compute_audit_hash(
-        prev_hash, doctor_id, patient_id, donor_id, action, created_at, details
+        prev_hash, doctor_id, patient_id, donor_id, action, created_at, details, row_id
     )
 
     log_entry = AuditLog(
+        id=row_id,
         doctor_id=doctor_id,
         action=action,
         patient_id=patient_id,
@@ -141,7 +156,7 @@ async def get_audit_logs(
         query = query.where(AuditLog.action == action)
         count_query = count_query.where(AuditLog.action == action)
 
-    query = query.order_by(AuditLog.created_at.desc()).limit(limit).offset(offset)
+    query = query.order_by(AuditLog.seq.desc()).limit(limit).offset(offset)
 
     result = await db.execute(query)
     rows = list(result.scalars().all())
@@ -170,11 +185,17 @@ async def verify_audit_chain(db: AsyncSession) -> AuditChainVerification:
     that originally produced it -- an UPDATE that alters any hashed field on
     row N changes what row N's hash *should* be without changing the stored
     value, so verification fails at N; a DELETE of row N leaves row N+1's
-    prev_hash pointing at a hash no longer present, which also fails here.
-    What it can't catch: someone deleting a *trailing* run of the most
-    recent rows (the chain that remains is still internally consistent,
-    just shorter -- there's nothing after it to notice a gap), or someone
-    with DB access recomputing and rewriting every row's hash to match
+    prev_hash pointing at a hash no longer present (and now also a seq gap
+    -- see the loop below), both of which fail here, whether the deleted
+    row was in the middle or was the row this walk would otherwise have
+    started from.
+    What it still can't catch: someone deleting a *trailing* run of the
+    most recent rows (the chain and its seq sequence that remain are both
+    still internally consistent, just shorter -- there's nothing after the
+    cut to notice a gap; closing this needs a write-side protection, e.g.
+    revoking DELETE on this table from the application's own DB role, not
+    something a read-time check can prove on its own), or someone with DB
+    access recomputing and rewriting every row's hash *and* seq to match
     tampered content (this is tamper-evident against casual/accidental
     edits and ordinary application-level UPDATE/DELETE, not against an
     attacker with unrestricted write access to Postgres itself).
@@ -189,13 +210,37 @@ async def verify_audit_chain(db: AsyncSession) -> AuditChainVerification:
     # ORM objects on its own.
     result = await db.execute(
         select(AuditLog)
-        .order_by(AuditLog.created_at.asc(), AuditLog.id.asc())
+        .order_by(AuditLog.seq.asc())
         .execution_options(populate_existing=True)
     )
     rows = list(result.scalars().all())
 
     expected_prev = GENESIS_HASH
     for checked_count, row in enumerate(rows, start=1):
+        # seq is gap-free by construction (a real Postgres sequence, one
+        # value per row ever inserted) -- checked_count (1, 2, 3, ...)
+        # should equal row.seq exactly. A jump here (seq goes 1, 2, 4)
+        # means row 3 was deleted from the *middle* of the chain: the
+        # surviving rows can still look internally consistent on
+        # prev_hash/hash alone (each still correctly points at its actual
+        # predecessor), so this check catches what that one can't. See
+        # review #2 bug 1 -- this still can't catch a deleted *trailing*
+        # run of the newest rows (nothing after it to notice a gap); that
+        # needs a write-side protection (e.g. revoking DELETE on this table
+        # from the application's DB role), not something a read-time check
+        # can prove.
+        if row.seq != checked_count:
+            return AuditChainVerification(
+                is_valid=False,
+                checked_count=checked_count,
+                total_count=len(rows),
+                first_broken_id=row.id,
+                reason=(
+                    f"seq gap detected: expected seq {checked_count}, found {row.seq} "
+                    "-- a row appears to have been deleted from the middle of the chain"
+                ),
+            )
+
         if row.prev_hash != expected_prev:
             return AuditChainVerification(
                 is_valid=False,
@@ -207,7 +252,7 @@ async def verify_audit_chain(db: AsyncSession) -> AuditChainVerification:
 
         recomputed = compute_audit_hash(
             row.prev_hash, row.doctor_id, row.patient_id, row.donor_id,
-            row.action, row.created_at, row.details,
+            row.action, row.created_at, row.details, row.id,
         )
         if recomputed != row.hash:
             return AuditChainVerification(

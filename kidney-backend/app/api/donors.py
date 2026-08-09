@@ -23,6 +23,7 @@ from app.services.donor_risk_service import (
     calculate_age_years,
 )
 from app.services.donor_service import (
+    IllegalDonorStatusTransition,
     create_donor,
     delete_donor,
     get_donor_by_id_for_doctor,
@@ -62,7 +63,7 @@ async def create_donor_endpoint(
     await _ensure_intended_recipient_valid(db, payload.intended_recipient_id, current_doctor.id)
 
     try:
-        donor = await create_donor(db, current_doctor.id, payload)
+        donor = await create_donor(db, current_doctor.id, payload, commit=False)
     except IntegrityError:
         await db.rollback()
         raise HTTPException(
@@ -72,6 +73,20 @@ async def create_donor_endpoint(
                 "system (donors are shared system-wide, unlike patients)."
             ),
         )
+
+    await create_audit_log(
+        db,
+        doctor_id=current_doctor.id,
+        action="created_donor",
+        donor_id=donor.id,
+        details={
+            "full_name": donor.full_name,
+            "nic_number": donor.nic_number,
+        },
+        commit=False,
+    )
+    await db.commit()
+
     return DonorResponse.model_validate(donor)
 
 
@@ -135,7 +150,7 @@ async def update_donor_endpoint(
     await _ensure_intended_recipient_valid(db, payload.intended_recipient_id, current_doctor.id)
 
     try:
-        donor = await update_donor_details(db, donor, payload)
+        donor = await update_donor_details(db, donor, payload, commit=False)
     except IntegrityError:
         await db.rollback()
         raise HTTPException(
@@ -156,7 +171,9 @@ async def update_donor_endpoint(
             "date_of_birth": donor.date_of_birth.isoformat(),
             "nic_number": donor.nic_number,
         },
+        commit=False,
     )
+    await db.commit()
 
     return DonorResponse.model_validate(donor)
 
@@ -178,7 +195,7 @@ async def delete_donor_endpoint(
             detail="Donor not found",
         )
 
-    await delete_donor(db, donor)
+    await delete_donor(db, donor, commit=False)
 
     await create_audit_log(
         db,
@@ -189,7 +206,9 @@ async def delete_donor_endpoint(
             "full_name": donor.full_name,
             "nic_number": donor.nic_number,
         },
+        commit=False,
     )
+    await db.commit()
 
 
 @router.put("/{donor_id}/status", response_model=DonorResponse)
@@ -206,7 +225,29 @@ async def update_donor_status_endpoint(
             detail="Donor not found",
         )
 
-    donor = await update_donor_status(db, donor, payload.status)
+    previous_status = donor.status
+    try:
+        donor = await update_donor_status(db, donor, payload.status, commit=False)
+    except IllegalDonorStatusTransition as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        )
+
+    await create_audit_log(
+        db,
+        doctor_id=current_doctor.id,
+        action="updated_donor_status",
+        donor_id=donor_id,
+        details={
+            "previous_status": previous_status.value,
+            "new_status": donor.status.value,
+        },
+        commit=False,
+    )
+    await db.commit()
+
     return DonorResponse.model_validate(donor)
 
 
@@ -221,7 +262,9 @@ async def replace_donor_hla_typing_endpoint(
     """See ocr_verified's docstring on replace_patient_hla_typing_endpoint
     in app/api/patients.py — same contract."""
     await _ensure_donor_exists(db, donor_id, current_doctor.id)
-    await replace_donor_hla_typing(db, donor_id, entries, ocr_verified=ocr_verified)
+    await replace_donor_hla_typing(
+        db, donor_id, entries, ocr_verified=ocr_verified, doctor_id=current_doctor.id
+    )
 
 
 @router.get("/{donor_id}/hla-typings", response_model=list[HLATypingEntry])
@@ -251,7 +294,7 @@ async def upload_donor_report_file_endpoint(
     """
     await _ensure_donor_exists(db, donor_id, current_doctor.id)
 
-    report_file = await create_donor_report_file(db, donor_id, category, file)
+    report_file = await create_donor_report_file(db, donor_id, category, file, commit=False)
 
     await create_audit_log(
         db,
@@ -264,7 +307,9 @@ async def upload_donor_report_file_endpoint(
             "original_filename": report_file.original_filename,
             "size_bytes": report_file.size_bytes,
         },
+        commit=False,
     )
+    await db.commit()
 
     return ReportFileResponse.model_validate(report_file)
 
@@ -319,7 +364,7 @@ async def delete_donor_report_file_endpoint(
     file on disk). Not idempotent — deleting an already-deleted file 404s."""
     await _ensure_donor_exists(db, donor_id, current_doctor.id)
 
-    deleted = await delete_donor_report_file(db, donor_id, report_file_id)
+    deleted = await delete_donor_report_file(db, donor_id, report_file_id, commit=False)
     if deleted is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -336,7 +381,9 @@ async def delete_donor_report_file_endpoint(
             "category": deleted.category.value,
             "original_filename": deleted.original_filename,
         },
+        commit=False,
     )
+    await db.commit()
 
 
 # ----------------------------------------------------------------------

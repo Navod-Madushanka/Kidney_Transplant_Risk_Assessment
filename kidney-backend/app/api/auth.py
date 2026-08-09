@@ -36,7 +36,7 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
         data={
             "sub": str(doctor.id),
             "hospital_id": str(doctor.hospital_id),
-            "role": "doctor",
+            "role": "admin" if doctor.is_admin else "doctor",
         }
     )
 
@@ -57,7 +57,13 @@ async def login(credentials: LoginRequest, db: AsyncSession = Depends(get_db)):
         data={
             "sub": str(doctor.id),
             "hospital_id": str(doctor.hospital_id),
-            "role": "doctor",
+            # Real authorization always re-checks doctor.is_admin fresh
+            # from the DB on every request (see require_admin in
+            # app/core/dependencies.py) -- this claim is for the frontend
+            # to decide what to show, not something any endpoint trusts
+            # for access control, so a stale token can't grant stale admin
+            # access.
+            "role": "admin" if doctor.is_admin else "doctor",
         }
     )
 

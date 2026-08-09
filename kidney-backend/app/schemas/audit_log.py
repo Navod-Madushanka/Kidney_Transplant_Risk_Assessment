@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict
 
 class AuditLogResponse(BaseModel):
     id: uuid.UUID
+    seq: int
     doctor_id: uuid.UUID
     action: str
     patient_id: Optional[uuid.UUID] = None
@@ -28,3 +29,8 @@ class AuditChainVerificationResponse(BaseModel):
     reason: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class AuditLogListResponse(BaseModel):
+    rows: list[AuditLogResponse]
+    total_count: int

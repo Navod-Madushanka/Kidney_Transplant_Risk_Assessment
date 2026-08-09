@@ -91,7 +91,11 @@ def absolute_path_for(report_file: PatientReportFile | DonorReportFile) -> Path:
 
 
 async def create_patient_report_file(
-    db: AsyncSession, patient_id: uuid.UUID, category: ReportFileCategory, file: UploadFile
+    db: AsyncSession,
+    patient_id: uuid.UUID,
+    category: ReportFileCategory,
+    file: UploadFile,
+    commit: bool = True,
 ) -> PatientReportFile:
     """Create (or replace) the report file for this patient's category slot.
 
@@ -128,7 +132,9 @@ async def create_patient_report_file(
         size_bytes=size,
     )
     db.add(report_file)
-    await db.commit()
+    await db.flush()
+    if commit:
+        await db.commit()
     await db.refresh(report_file)
     return report_file
 
@@ -157,7 +163,7 @@ async def get_patient_report_file_by_id(
 
 
 async def delete_patient_report_file(
-    db: AsyncSession, patient_id: uuid.UUID, report_file_id: uuid.UUID
+    db: AsyncSession, patient_id: uuid.UUID, report_file_id: uuid.UUID, commit: bool = True
 ) -> DeletedReportFileInfo | None:
     report_file = await get_patient_report_file_by_id(db, patient_id, report_file_id)
     if report_file is None:
@@ -169,13 +175,19 @@ async def delete_patient_report_file(
     )
 
     await db.execute(delete(PatientReportFile).where(PatientReportFile.id == report_file_id))
-    await db.commit()
+    await db.flush()
+    if commit:
+        await db.commit()
     _delete_from_disk(storage_path)
     return info
 
 
 async def create_donor_report_file(
-    db: AsyncSession, donor_id: uuid.UUID, category: ReportFileCategory, file: UploadFile
+    db: AsyncSession,
+    donor_id: uuid.UUID,
+    category: ReportFileCategory,
+    file: UploadFile,
+    commit: bool = True,
 ) -> DonorReportFile:
     """Create (or replace) the report file for this donor's category slot.
 
@@ -212,7 +224,9 @@ async def create_donor_report_file(
         size_bytes=size,
     )
     db.add(report_file)
-    await db.commit()
+    await db.flush()
+    if commit:
+        await db.commit()
     await db.refresh(report_file)
     return report_file
 
@@ -239,7 +253,7 @@ async def get_donor_report_file_by_id(
 
 
 async def delete_donor_report_file(
-    db: AsyncSession, donor_id: uuid.UUID, report_file_id: uuid.UUID
+    db: AsyncSession, donor_id: uuid.UUID, report_file_id: uuid.UUID, commit: bool = True
 ) -> DeletedReportFileInfo | None:
     report_file = await get_donor_report_file_by_id(db, donor_id, report_file_id)
     if report_file is None:
@@ -251,6 +265,8 @@ async def delete_donor_report_file(
     )
 
     await db.execute(delete(DonorReportFile).where(DonorReportFile.id == report_file_id))
-    await db.commit()
+    await db.flush()
+    if commit:
+        await db.commit()
     _delete_from_disk(storage_path)
     return info

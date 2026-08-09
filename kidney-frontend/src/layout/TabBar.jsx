@@ -1,12 +1,19 @@
 // src/layout/TabBar.jsx
 import { NavLink } from "react-router-dom"
-import { Home, Users, Calculator, History } from "lucide-react"
+import { Home, Users, FilePlus, Repeat, FileText } from "lucide-react"
 
+// Review #2 bug 22: /calculator and /history were never real routes (see
+// App.jsx's <Routes> tree) -- every tap 404'd via the catch-all redirect.
+// Paths and labels below now match Sidebar.jsx's desktop nav exactly
+// (/checks/new "New Check", /reports "Reports"), which is also where
+// Paired Exchange -- previously missing from mobile nav entirely -- comes
+// from.
 const NAV_ITEMS = [
   { to: "/", label: "Dashboard", icon: Home },
   { to: "/patients", label: "Patients", icon: Users },
-  { to: "/calculator", label: "Calculator", icon: Calculator },
-  { to: "/history", label: "History", icon: History },
+  { to: "/checks/new", label: "New Check", icon: FilePlus },
+  { to: "/exchange", label: "Exchange", icon: Repeat },
+  { to: "/reports", label: "Reports", icon: FileText },
 ]
 
 export default function TabBar() {

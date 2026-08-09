@@ -44,6 +44,9 @@ class DonorCreate(BaseModel):
     # Set means this donor is only donating for that specific patient; see
     # the Donor model's docstring comment on this field.
     intended_recipient_id: uuid.UUID | None = None
+    # None means "no claim being made" -> trusted -- see PatientCreate's
+    # matching field.
+    details_verified: bool | None = None
 
 
 class DonorUpdate(BaseModel):
@@ -94,6 +97,7 @@ class DonorResponse(BaseModel):
     is_on_antihypertensive_medication: bool | None
     family_history_kidney_disease: bool | None
     hla_typing_verified: bool
+    details_verified: bool
     intended_recipient_id: uuid.UUID | None
     created_at: datetime
     updated_at: datetime

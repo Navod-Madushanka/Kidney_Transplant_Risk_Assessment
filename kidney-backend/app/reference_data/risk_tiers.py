@@ -1,7 +1,8 @@
 # app/reference_data/risk_tiers.py
 """
 HLA risk score → clinical risk tier boundaries.
-Source: slide 10.
+Source: project specification slide 10 -- see docs/clinical-basis.md for
+the full rationale and what is/isn't externally citable about these numbers.
 """
 
 from dataclasses import dataclass

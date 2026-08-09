@@ -132,6 +132,53 @@ async def test_donor_status_accepts_the_newly_added_values(auth_client: AsyncCli
         assert response.json()["status"] == new_status
 
 
+async def test_transplanted_donor_status_is_terminal(auth_client: AsyncClient):
+    # Regression coverage for review #2 bug 7: every status used to accept
+    # every other status unconditionally, so a transplanted donor could be
+    # silently flipped back to "available" and re-enter cross-hospital
+    # search/the exchange pool as a live organ.
+    donor = await create_donor(auth_client)
+
+    response = await auth_client.put(
+        f"/donors/{donor['id']}/status", json={"status": "transplanted"}
+    )
+    assert response.status_code == 200
+
+    response = await auth_client.put(
+        f"/donors/{donor['id']}/status", json={"status": "available"}
+    )
+    assert response.status_code == 409
+
+    get_response = await auth_client.get(f"/donors/{donor['id']}")
+    assert get_response.json()["status"] == "transplanted"
+
+
+async def test_deceased_donor_status_is_terminal(auth_client: AsyncClient):
+    donor = await create_donor(auth_client)
+
+    response = await auth_client.put(f"/donors/{donor['id']}/status", json={"status": "deceased"})
+    assert response.status_code == 200
+
+    response = await auth_client.put(
+        f"/donors/{donor['id']}/status", json={"status": "available"}
+    )
+    assert response.status_code == 409
+
+
+async def test_medically_unfit_donor_cannot_silently_become_available(auth_client: AsyncClient):
+    donor = await create_donor(auth_client)
+
+    response = await auth_client.put(
+        f"/donors/{donor['id']}/status", json={"status": "medically_unfit"}
+    )
+    assert response.status_code == 200
+
+    response = await auth_client.put(
+        f"/donors/{donor['id']}/status", json={"status": "available"}
+    )
+    assert response.status_code == 409
+
+
 # ---------------------------------------------------------------------
 # Update donor details — lighter mirror of the patient coverage in
 # test_patients.py, since the service/route code is a deliberate twin.

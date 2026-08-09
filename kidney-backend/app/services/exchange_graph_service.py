@@ -227,9 +227,11 @@ async def load_exchange_pool(db: AsyncSession) -> ExchangePoolData:
             Donor.status == DonorStatus.AVAILABLE,
             Donor.is_deleted.is_(False),
             Donor.hla_typing_verified.is_(True),
+            Donor.details_verified.is_(True),
             Patient.is_deleted.is_(False),
             Patient.hla_typing_verified.is_(True),
             Patient.antibody_profile_verified.is_(True),
+            Patient.details_verified.is_(True),
         )
     )
     rows = result.all()
@@ -268,8 +270,18 @@ async def load_exchange_pool(db: AsyncSession) -> ExchangePoolData:
             patient_blood_type=patient.blood_type.value,
             donor_blood_type=donor.blood_type.value,
         )
-        if direct_result.is_compatible:
-            # Would pass directly -- not an exchange candidate.
+        if direct_result.is_compatible or not direct_result.mismatch_result.data_completeness:
+            # Compatible pairs would pass directly -- not an exchange
+            # candidate. Incomplete typing is excluded for a different
+            # reason (review #2 bug 11): calculate_mismatch_result worst-
+            # cases a missing locus, which biases toward is_halted but
+            # doesn't guarantee it (one missing locus can still coexist
+            # with two genuinely-matching loci, landing under
+            # MAX_ACCEPTABLE_MISMATCHES) -- so an untyped pair could
+            # previously be *admitted* to the pool on guessed data with no
+            # flag anywhere, same gap match_pipeline.py already closes at
+            # Step 7 (see its data_completeness check) but this graph
+            # builder hadn't.
             continue
 
         nodes.append(

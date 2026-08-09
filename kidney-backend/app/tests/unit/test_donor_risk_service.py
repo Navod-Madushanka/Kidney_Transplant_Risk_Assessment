@@ -101,6 +101,43 @@ def test_black_or_white_is_population_validated():
     assert result.race_extrapolation_disclaimer is None
 
 
+def test_in_range_values_are_not_flagged():
+    band = AGE_BANDS[2]
+    result = assess_donor_risk(_base_case_input(band, "white", "male"))
+
+    assert result.values_outside_model_range == []
+
+
+def test_egfr_above_top_knot_is_flagged_but_still_projects():
+    # Review #2 bug 10: eGFR 200 vs the model's top spline knot of 120 used
+    # to silently extrapolate with no warning anywhere.
+    band = AGE_BANDS[2]
+    result = assess_donor_risk(_full_input(age_years=band.min_age, egfr=200.0))
+
+    assert result.has_sufficient_data_for_projection is True
+    assert any("eGFR" in flag for flag in result.values_outside_model_range)
+
+
+def test_bmi_above_upper_knot_is_flagged():
+    result = assess_donor_risk(_full_input(bmi=80.0))
+
+    assert any("BMI" in flag for flag in result.values_outside_model_range)
+
+
+def test_urine_acr_above_contraindication_ceiling_is_flagged():
+    result = assess_donor_risk(_full_input(urine_acr=500.0))
+
+    assert any("ACR" in flag for flag in result.values_outside_model_range)
+
+
+def test_systolic_bp_above_contraindication_ceiling_is_flagged():
+    result = assess_donor_risk(
+        _full_input(systolic_bp=180, is_on_antihypertensive_medication=False)
+    )
+
+    assert any("Systolic BP" in flag for flag in result.values_outside_model_range)
+
+
 def test_worse_risk_factors_increase_projected_risk_above_base_case():
     band = AGE_BANDS[2]  # 35-44
     baseline = assess_donor_risk(_base_case_input(band, "white", "male"))

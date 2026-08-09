@@ -9,8 +9,11 @@ from app.schemas.patient import PatientCreate, PatientUpdate
 
 
 async def create_patient(
-    db: AsyncSession, doctor_id: uuid.UUID, payload: PatientCreate
+    db: AsyncSession, doctor_id: uuid.UUID, payload: PatientCreate, commit: bool = True
 ) -> Patient:
+    """commit=False lets a caller fold this write into the same transaction
+    as a paired create_audit_log call (see create_audit_log's docstring) so
+    a crash between the two can't leave one without the other."""
     patient = Patient(
         doctor_id=doctor_id,
         full_name=payload.full_name,
@@ -18,9 +21,12 @@ async def create_patient(
         blood_type=payload.blood_type,
         rh_factor=payload.rh_factor,
         nic_number=payload.nic_number,
+        details_verified=True if payload.details_verified is None else payload.details_verified,
     )
     db.add(patient)
-    await db.commit()
+    await db.flush()
+    if commit:
+        await db.commit()
     await db.refresh(patient)
 
     return patient
@@ -50,23 +56,29 @@ async def get_patients_for_doctor(
     return list(result.scalars().all())
 
 
-async def delete_patient(db: AsyncSession, patient: Patient) -> Patient:
+async def delete_patient(db: AsyncSession, patient: Patient, commit: bool = True) -> Patient:
     """Soft-delete: hides the patient from lists/searches while keeping the
     row (and its HLA typings, report files, match reports) for audit
-    history — hard-deleting would hit FK RESTRICT on any of those."""
+    history — hard-deleting would hit FK RESTRICT on any of those.
+    commit=False — see create_patient's docstring."""
     patient.is_deleted = True
     patient.deleted_at = datetime.now(timezone.utc)
-    await db.commit()
+    await db.flush()
+    if commit:
+        await db.commit()
     await db.refresh(patient)
     return patient
 
 
 async def update_patient_details(
-    db: AsyncSession, patient: Patient, payload: PatientUpdate
+    db: AsyncSession, patient: Patient, payload: PatientUpdate, commit: bool = True
 ) -> Patient:
+    """commit=False — see create_patient's docstring."""
     patient.full_name = payload.full_name
     patient.date_of_birth = payload.date_of_birth
     patient.nic_number = payload.nic_number
-    await db.commit()
+    await db.flush()
+    if commit:
+        await db.commit()
     await db.refresh(patient)
     return patient

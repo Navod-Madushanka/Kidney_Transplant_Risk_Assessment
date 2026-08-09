@@ -89,16 +89,21 @@ export function buildInitialWizardState() {
 
     // Doctor's explicit "I reviewed this against the source document"
     // confirmation, one flag per OCR-sourced document group -- required by
-    // HlaTypingStep/BeadSpecificityStep before Continue will advance, but
-    // ONLY when that step's extraction.documents entry shows OCR actually
-    // ran for it (see each file's own wasOcrExtracted check). Sent to the
-    // backend as ocr_verified on submission (see api/compatibilityWizard.js)
-    // -- POST /compatibility/check refuses to run at all while either is
-    // unconfirmed (app/api/compatibility.py), rather than trusting a
-    // vision-LLM misread into a hard reject. crossmatch doesn't need an
-    // entry here: its gating field (is_positive) is never OCR-filled in the
-    // first place, see the crossmatch comment below.
+    // DetailsStep/HlaTypingStep/BeadSpecificityStep before Continue will
+    // advance, but ONLY when that step's extraction.documents entry shows
+    // OCR actually ran for it (see each file's own wasOcrExtracted /
+    // wasAnyDocumentOcrExtracted check). Sent to the backend as
+    // ocr_verified/details_verified on submission (see
+    // api/compatibilityWizard.js) -- POST /compatibility/check refuses to
+    // run at all while hla_typing/bead_specificity is unconfirmed
+    // (app/api/compatibility.py), and (as of the details_verified fix)
+    // the same is now true of `details`, rather than trusting a
+    // vision-LLM misread of a name/DOB/blood-type into a hard reject.
+    // crossmatch doesn't need an entry here: its gating field
+    // (is_positive) is never OCR-filled in the first place, see the
+    // crossmatch comment below.
     ocr_verified: {
+      details: false,
       hla_typing: false,
       bead_specificity: false,
     },
@@ -232,6 +237,8 @@ export function wizardReducer(state, action) {
       // group -- otherwise re-uploading a corrected photo after already
       // checking "reviewed" would silently keep trusting the old
       // confirmation against new, unreviewed data.
+      const hasAnyValue = (obj) => Object.values(obj || {}).some((value) => value);
+      const detailsChanged = hasAnyValue(patientDetails) || hasAnyValue(donorDetails);
       const hlaChanged =
         (patientHla && patientHla.length > 0) || (donorHla && donorHla.length > 0);
       const beadSpecificityChanged = beadSpecificity && beadSpecificity.length > 0;
@@ -246,6 +253,7 @@ export function wizardReducer(state, action) {
           beadSpecificity && beadSpecificity.length > 0 ? beadSpecificity : state.bead_specificity,
         crossmatch: crossmatch ? { ...state.crossmatch, ...crossmatch } : state.crossmatch,
         ocr_verified: {
+          details: detailsChanged ? false : state.ocr_verified.details,
           hla_typing: hlaChanged ? false : state.ocr_verified.hla_typing,
           bead_specificity: beadSpecificityChanged ? false : state.ocr_verified.bead_specificity,
         },

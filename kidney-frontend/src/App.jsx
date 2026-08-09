@@ -16,6 +16,7 @@ import DonorSearchPage from "./pages/DonorSearchPage"
 import ExchangePoolPage from "./pages/ExchangePoolPage"
 import ReportsListPage from "./pages/ReportsListPage"
 import NewCheckFromRecordsPage from "./pages/NewCheckFromRecordsPage"
+import AuditLogPage from "./pages/AuditLogPage"
 
 import { WizardProvider } from "./context/WizardProvider"
 import WizardLayout from "./layout/WizardLayout"
@@ -63,6 +64,12 @@ function App() {
             element={<NewCheckFromRecordsPage />}
             handle={{ title: "Start check from records" }}
           />
+          {/* Admin-only in practice (backend 403s a non-admin doctor -- see
+              AuditLogPage.jsx and app/core/dependencies.require_admin);
+              this route itself isn't gated beyond ProtectedRoute since the
+              real access control lives server-side, same as every other
+              route here. Sidebar.jsx only shows the nav link to admins. */}
+          <Route path="/audit-log" element={<AuditLogPage />} handle={{ title: "Audit log" }} />
         </Route>
 
         {/* Compatibility check wizard — its own full-screen layout branch,

@@ -81,6 +81,42 @@ async def test_match_excludes_a_directly_compatible_pair(auth_client: AsyncClien
     assert response.json()["nodes"] == []
 
 
+async def test_match_excludes_an_untyped_pair(
+    auth_client: AsyncClient, second_auth_client: AsyncClient
+):
+    # Review #2 bug 11: a donor with no HLA typing at all worst-cases to
+    # 6/6 mismatches (calculate_mismatch_result's missing-locus handling),
+    # which makes it `is_halted=True` and therefore "not directly
+    # compatible" -- exactly the shape of an exchange candidate, except
+    # the underlying reason is missing data, not a real mismatch. Such a
+    # pair used to be silently admitted to the pool on guessed data.
+    patient_a = await create_patient(auth_client, blood_type="A")
+    patient_b = await create_patient(second_auth_client, blood_type="B")
+    donor_a = await create_donor(
+        auth_client, blood_type="B", intended_recipient_id=patient_a["id"]
+    )
+    donor_b = await create_donor(
+        second_auth_client, blood_type="A", intended_recipient_id=patient_b["id"]
+    )
+
+    for client, patient_id in ((auth_client, patient_a["id"]), (second_auth_client, patient_b["id"])):
+        response = await client.put(f"/patients/{patient_id}/hla-typings", json=MATCHING_TYPING)
+        assert response.status_code == 204, response.text
+
+    # donor_a is left with no HLA typing at all -- donor_b is fully typed.
+    response = await second_auth_client.put(
+        f"/donors/{donor_b['id']}/hla-typings", json=MATCHING_TYPING
+    )
+    assert response.status_code == 204, response.text
+
+    response = await auth_client.get("/exchange/match", params={"policy": "max_transplants"})
+
+    assert response.status_code == 200
+    node_pair_ids = {node["pair_id"] for node in response.json()["nodes"]}
+    assert donor_a["id"] not in node_pair_ids
+    assert donor_b["id"] in node_pair_ids
+
+
 async def test_match_rejects_an_unknown_policy(auth_client: AsyncClient):
     response = await auth_client.get("/exchange/match", params={"policy": "not_a_real_policy"})
 

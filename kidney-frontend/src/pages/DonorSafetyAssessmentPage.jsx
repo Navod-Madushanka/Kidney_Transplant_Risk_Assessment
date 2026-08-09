@@ -100,6 +100,19 @@ export default function DonorSafetyAssessmentPage() {
             </div>
           )}
 
+          {result.values_outside_model_range?.length > 0 && (
+            <div className="border border-moderate rounded-lg p-4 bg-moderate-subtle">
+              <p className="text-[14px] font-semibold text-moderate">
+                Extrapolated beyond the model's validated input range
+              </p>
+              <ul className="list-disc list-inside text-[13px] text-moderate mt-1 space-y-0.5">
+                {result.values_outside_model_range.map((flag) => (
+                  <li key={flag}>{flag}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {!result.has_sufficient_data_for_projection && (
             <div className="border border-border rounded-lg p-8 text-center bg-surface flex flex-col items-center gap-3">
               <p className="text-[15px] text-text-muted">
@@ -169,16 +182,19 @@ export default function DonorSafetyAssessmentPage() {
           <Card>
             <Card.Header
               title="Clinician review flags"
-              subtitle="Not scored by the model — informational, for clinical judgment"
+              subtitle="For clinical judgment — see each row for whether it's also scored above"
             />
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
-                <span className="text-[14px] text-text-muted">Diabetes</span>
+                <span className="text-[14px] text-text-muted">
+                  Diabetes <span className="text-text-muted/70">(also scored above)</span>
+                </span>
                 {reviewFlagBadge(result.diabetes_review_flag)}
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-[14px] text-text-muted">
-                  Family history of kidney disease
+                  Family history of kidney disease{" "}
+                  <span className="text-text-muted/70">(not scored by the model)</span>
                 </span>
                 {reviewFlagBadge(result.family_history_flag)}
               </div>

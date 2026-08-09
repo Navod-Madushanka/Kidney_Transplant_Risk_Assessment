@@ -474,6 +474,60 @@ async def test_check_without_crossmatch_stops_at_pending(auth_client: AsyncClien
 # ---------------------------------------------------------------------
 
 
+async def test_unverified_patient_details_blocks_the_check(auth_client: AsyncClient):
+    # Review #2 bug 6: blood_type/DOB are OCR-extractable same as HLA
+    # typing but previously had no verification gate at all.
+    patient = await create_patient(auth_client, blood_type="AB", details_verified=False)
+    donor = await create_donor(auth_client, blood_type="O")
+
+    await auth_client.put(f"/patients/{patient['id']}/hla-typings", json=COMPATIBLE_PATIENT_HLA)
+    await auth_client.put(f"/donors/{donor['id']}/hla-typings", json=COMPATIBLE_DONOR_HLA)
+
+    response = await auth_client.post(
+        "/compatibility/check",
+        json={"patient_id": patient["id"], "donor_id": donor["id"]},
+    )
+
+    assert response.status_code == 422
+    assert "demographic details" in response.json()["detail"]
+
+
+async def test_unverified_donor_details_blocks_the_check(auth_client: AsyncClient):
+    patient = await create_patient(auth_client, blood_type="AB")
+    donor = await create_donor(auth_client, blood_type="O", details_verified=False)
+
+    await auth_client.put(f"/patients/{patient['id']}/hla-typings", json=COMPATIBLE_PATIENT_HLA)
+    await auth_client.put(f"/donors/{donor['id']}/hla-typings", json=COMPATIBLE_DONOR_HLA)
+
+    response = await auth_client.post(
+        "/compatibility/check",
+        json={"patient_id": patient["id"], "donor_id": donor["id"]},
+    )
+
+    assert response.status_code == 422
+    assert "demographic details" in response.json()["detail"]
+
+
+async def test_manual_patient_creation_without_details_verified_stays_trusted(
+    auth_client: AsyncClient,
+):
+    # The overwhelming common case: a doctor creating a patient/donor by
+    # hand never sends details_verified at all -- omitted means "not an
+    # OCR write, no claim being made," same contract as ocr_verified.
+    patient = await create_patient(auth_client, blood_type="AB")
+    donor = await create_donor(auth_client, blood_type="O")
+
+    await auth_client.put(f"/patients/{patient['id']}/hla-typings", json=COMPATIBLE_PATIENT_HLA)
+    await auth_client.put(f"/donors/{donor['id']}/hla-typings", json=COMPATIBLE_DONOR_HLA)
+
+    response = await auth_client.post(
+        "/compatibility/check",
+        json={"patient_id": patient["id"], "donor_id": donor["id"]},
+    )
+
+    assert response.status_code == 201
+
+
 async def test_unverified_patient_hla_typing_blocks_the_check(auth_client: AsyncClient):
     patient = await create_patient(auth_client, blood_type="AB")
     donor = await create_donor(auth_client, blood_type="O")
@@ -587,6 +641,35 @@ async def test_confirming_ocr_verified_true_lets_the_check_proceed(auth_client: 
         json={"patient_id": patient["id"], "donor_id": donor["id"]},
     )
     assert response.status_code == 201
+
+
+async def test_replacing_hla_typing_without_ocr_verified_preserves_prior_unverified_state(
+    auth_client: AsyncClient,
+):
+    # Review #2 bug 5: omitting ocr_verified used to unconditionally reset
+    # hla_typing_verified back to True (trusted) even when the record's
+    # current value was False -- a PUT with the query param simply left
+    # off silently cleared the block, with no trace it happened.
+    patient = await create_patient(auth_client, blood_type="AB")
+    donor = await create_donor(auth_client, blood_type="O")
+
+    await auth_client.put(
+        f"/patients/{patient['id']}/hla-typings",
+        json=COMPATIBLE_PATIENT_HLA,
+        params={"ocr_verified": "false"},
+    )
+    # Re-PUT the same data with ocr_verified omitted entirely -- must NOT
+    # silently re-trust it.
+    await auth_client.put(f"/patients/{patient['id']}/hla-typings", json=COMPATIBLE_PATIENT_HLA)
+    await auth_client.put(f"/donors/{donor['id']}/hla-typings", json=COMPATIBLE_DONOR_HLA)
+
+    response = await auth_client.post(
+        "/compatibility/check",
+        json={"patient_id": patient["id"], "donor_id": donor["id"]},
+    )
+
+    assert response.status_code == 422
+    assert "patient's HLA typing" in response.json()["detail"]
 
 
 async def test_manual_edits_without_ocr_verified_param_stay_trusted(auth_client: AsyncClient):

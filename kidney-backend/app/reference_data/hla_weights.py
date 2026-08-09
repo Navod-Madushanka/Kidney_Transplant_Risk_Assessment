@@ -1,7 +1,9 @@
 # app/reference_data/hla_weights.py
 """
 HLA locus mismatch weights, by threat tier.
-Source: slide 7 (tier definitions) and slide 8 (full locus list, worked example).
+Source: project specification slides 7 (tier definitions) and 8 (full locus
+list, worked example) -- see docs/clinical-basis.md §1 for the full table,
+tier rationale, and what is/isn't externally citable about these numbers.
 """
 from app.reference_data.hla_loci import HLA_LOCI
 

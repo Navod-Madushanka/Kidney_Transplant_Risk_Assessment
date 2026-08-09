@@ -13,6 +13,10 @@ class PatientCreate(BaseModel):
     blood_type: BloodType
     rh_factor: RhFactor
     nic_number: str | None = None
+    # None means "no claim being made" -> trusted, same contract as
+    # hla_typing_verified/antibody_profile_verified's ocr_verified param.
+    # Only the compatibility-check wizard ever passes an explicit value.
+    details_verified: bool | None = None
 
 
 class PatientUpdate(BaseModel):
@@ -35,6 +39,7 @@ class PatientResponse(BaseModel):
     nic_number: str | None
     hla_typing_verified: bool
     antibody_profile_verified: bool
+    details_verified: bool
     created_at: datetime
     updated_at: datetime
     model_config = ConfigDict(from_attributes=True)

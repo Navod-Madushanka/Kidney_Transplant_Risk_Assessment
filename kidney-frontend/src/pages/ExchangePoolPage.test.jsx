@@ -1,5 +1,6 @@
 // src/pages/ExchangePoolPage.test.jsx
 import { render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { describe, expect, it, vi } from "vitest"
 import { getExchangeMatch } from "../api/exchange"
@@ -92,5 +93,57 @@ describe("ExchangePoolPage", () => {
     expect(
       await screen.findByText("Couldn't load the exchange pool. Please try refreshing.")
     ).toBeInTheDocument()
+  })
+
+  it("labels the selected-cycle count tile 'Cycles selected', not 'Cycles found'", async () => {
+    // Review #2 bug 20: the API only ever returns the solver's already-
+    // selected cycles, never a separate "candidates found" count.
+    getExchangeMatch.mockResolvedValue(MATCH_RESPONSE)
+
+    renderPage()
+
+    expect(await screen.findByText("Cycles selected")).toBeInTheDocument()
+    expect(screen.queryByText("Cycles found")).not.toBeInTheDocument()
+  })
+
+  it("shows the loading spinner, not the stale error, when retrying the exact policy that previously failed", async () => {
+    // Review #2 bug 23: failedPolicy used to only ever be set, never
+    // cleared, so switching away and back to the SAME policy that had
+    // failed once kept showing the old error message for the whole new
+    // request (switching to a genuinely *different* policy already
+    // worked before this fix, since failedPolicy simply wouldn't match
+    // the new policy -- this test is specifically the same-policy retry).
+    const user = userEvent.setup()
+    let resolveRetry
+    getExchangeMatch
+      .mockRejectedValueOnce(new Error("boom")) // initial max_transplants load
+      .mockResolvedValueOnce(MATCH_RESPONSE) // switch to max_quality
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveRetry = () => resolve(MATCH_RESPONSE) // switch back to max_transplants
+          })
+      )
+
+    renderPage()
+
+    expect(
+      await screen.findByText("Couldn't load the exchange pool. Please try refreshing.")
+    ).toBeInTheDocument()
+
+    const select = screen.getByLabelText("Optimization policy")
+    await user.selectOptions(select, "max_quality")
+    expect(await screen.findByText("Incompatible pairs")).toBeInTheDocument()
+
+    await user.selectOptions(select, "max_transplants")
+    // The retry for max_transplants is still pending -- must show the
+    // spinner, not the stale error from the first max_transplants request.
+    expect(
+      screen.queryByText("Couldn't load the exchange pool. Please try refreshing.")
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole("status", { name: "Loading" })).toBeInTheDocument()
+
+    resolveRetry()
+    expect(await screen.findByText("Incompatible pairs")).toBeInTheDocument()
   })
 })

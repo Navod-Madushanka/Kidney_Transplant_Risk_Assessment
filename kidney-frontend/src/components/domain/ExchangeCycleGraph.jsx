@@ -11,6 +11,11 @@ import { useMemo, useState } from "react"
 // hue. See index.css for --color-accent / --color-border / --color-text-muted.
 const SELECTED_COLOR = "var(--color-accent)"
 const UNSELECTED_COLOR = "var(--color-border)"
+// The one legitimate use of the clinical moderate/high-risk colors on this
+// graph (see the comment above): requires_review is a real clinical flag
+// (a weak/moderate DSA that needs desensitization-protocol review before
+// this leg could actually be used, see dsa_threshold.py), not decoration.
+const REVIEW_COLOR = "var(--color-moderate)"
 
 const VIEW_SIZE = 560
 const CENTER = VIEW_SIZE / 2
@@ -121,7 +126,7 @@ export default function ExchangeCycleGraph({ nodes, edges, selectedCycles }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-4 text-[13px] text-text-muted">
+      <div className="flex items-center gap-4 text-[13px] text-text-muted flex-wrap">
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-0.5 w-5 rounded-full" style={{ backgroundColor: SELECTED_COLOR }} />
           Selected cycle
@@ -129,6 +134,16 @@ export default function ExchangeCycleGraph({ nodes, edges, selectedCycles }) {
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-0.5 w-5 rounded-full opacity-50" style={{ backgroundColor: UNSELECTED_COLOR }} />
           Compatible, not selected
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span
+            className="inline-block h-0.5 w-5 rounded-full"
+            style={{
+              backgroundColor: REVIEW_COLOR,
+              backgroundImage: `repeating-linear-gradient(to right, ${REVIEW_COLOR} 0 4px, transparent 4px 7px)`,
+            }}
+          />
+          Needs desensitization review (DSA)
         </span>
         <span>Arrows point donor → recipient.</span>
       </div>
@@ -166,6 +181,21 @@ export default function ExchangeCycleGraph({ nodes, edges, selectedCycles }) {
             const sign = hasReverse ? 1 : 0
             const line = directedEdgeGeometry(from, to, sign)
 
+            // Review #2 bug 13: only `strong` DSA halts the pipeline
+            // outright (dsa_threshold.py) -- a weak/moderate DSA on this
+            // leg sets requires_review instead and still renders as an
+            // ordinary edge here, with no indication a coordinator would
+            // need to send it for desensitization-protocol review before
+            // actually using it.
+            const needsReview = Boolean(edge.dsa_result?.requires_review)
+            const totalMismatches = edge.mismatch_result?.total_mismatches
+            const tooltipLines = [
+              `${totalMismatches ?? "?"} HLA mismatch${totalMismatches === 1 ? "" : "es"}`,
+              needsReview
+                ? "DSA: requires desensitization-protocol review"
+                : "DSA: no review needed",
+            ]
+
             return (
               <line
                 key={`${edge.from_pair_id}-${edge.to_pair_id}-${index}`}
@@ -173,11 +203,14 @@ export default function ExchangeCycleGraph({ nodes, edges, selectedCycles }) {
                 y1={line.from.y}
                 x2={line.to.x}
                 y2={line.to.y}
-                stroke={selected ? SELECTED_COLOR : UNSELECTED_COLOR}
+                stroke={needsReview ? REVIEW_COLOR : selected ? SELECTED_COLOR : UNSELECTED_COLOR}
                 strokeWidth={selected ? 2.5 : 1.5}
-                opacity={selected ? 1 : 0.45}
+                strokeDasharray={needsReview ? "4 3" : undefined}
+                opacity={selected || needsReview ? 1 : 0.45}
                 markerEnd={selected ? "url(#arrow-selected)" : "url(#arrow-unselected)"}
-              />
+              >
+                <title>{tooltipLines.join(" · ")}</title>
+              </line>
             )
           })}
 

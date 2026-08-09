@@ -10,21 +10,20 @@ after their own recipient has already received a kidney), so a 4+-way cycle
 is an increasingly hard logistical ask for an increasingly rare marginal
 benefit. Fine below ~300 pool pairs, per the original spec.
 
-KNOWN MVP LIMITATION: "at most one selected cycle per pair" below is
-enforced per *pair* (exchange_graph_service.ExchangePairNode, keyed by
-donor id), not per *patient*. A patient registered with two candidate
-donors appears as two separate pool nodes, and nothing here stops the
-solver selecting both in two different cycles -- double-booking that one
-patient. Not handled because it needs linking sibling nodes back to a
-shared patient identity in the ILP constraints, and no data in this pass
-exercises the multi-donor-per-patient case. Flagging for a real deployment,
-not fixing speculatively here.
+Two disjointness constraints keep a selection valid: at most one selected
+cycle per *pair* (exchange_graph_service.ExchangePairNode, keyed by donor
+id) AND at most one selected cycle per *patient* -- the latter closes what
+was previously a known gap (review #2 bug 4): a patient registered with two
+candidate donors appears as two separate pool nodes, and without the
+patient-level constraint the solver could select both in two different
+cycles, giving that one patient two simultaneous transplants.
 
 This is read-only: solving the exchange never writes to the database or
 transitions donor/patient status (see exchange_graph_service.py).
 """
 import itertools
 import uuid
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Callable
@@ -64,8 +63,25 @@ def _canonicalize(cycle: Cycle) -> Cycle:
 
 
 def enumerate_cycles(graph: ExchangeGraph) -> list[Cycle]:
+    """Only 2- and 3-cycles (see module docstring for why). The 3-cycle
+    search is edge-driven (review #2 bug 9), not the O(n^3) all-triples
+    scan it used to be: for every real edge i->j, only j's actual
+    out-neighbors k are considered (not every other node in the graph),
+    and (k, i) is a single O(1) set lookup -- O(|E|*d) where d is the
+    graph's max out-degree, instead of always paying n^3 regardless of
+    how sparse the graph actually is. 6x redundant work is also gone:
+    the old version tested all 6 permutations of every 3-node subset and
+    let `cycles.add(_canonicalize(...))`'s set-dedup quietly absorb the
+    waste; this version only ever discovers each 3-cycle from its edges
+    once per rotation (3 times, same as the old version's `cycles` set
+    still needs the same _canonicalize() collapse for -- see
+    _canonicalize's own docstring), not 6."""
     edge_set = {(edge.from_pair_id, edge.to_pair_id) for edge in graph.edges}
     pair_ids = [node.pair_id for node in graph.nodes]
+
+    out_neighbors: dict[uuid.UUID, list[uuid.UUID]] = defaultdict(list)
+    for edge in graph.edges:
+        out_neighbors[edge.from_pair_id].append(edge.to_pair_id)
 
     cycles: set[Cycle] = set()
 
@@ -73,9 +89,10 @@ def enumerate_cycles(graph: ExchangeGraph) -> list[Cycle]:
         if (i, j) in edge_set and (j, i) in edge_set:
             cycles.add(_canonicalize((i, j)))
 
-    for i, j, k in itertools.permutations(pair_ids, 3):
-        if (i, j) in edge_set and (j, k) in edge_set and (k, i) in edge_set:
-            cycles.add(_canonicalize((i, j, k)))
+    for i, j in edge_set:
+        for k in out_neighbors[j]:
+            if k != i and (k, i) in edge_set:
+                cycles.add(_canonicalize((i, j, k)))
 
     return sorted(cycles)
 
@@ -96,6 +113,12 @@ class GraphIndex:
     node_by_id: dict[uuid.UUID, ExchangePairNode]
     edge_by_pair: EdgeByPair
     patient_antibodies_by_patient: AntibodiesByPatient = field(default_factory=dict)
+    # Memoizes cpra_fraction per patient_id (review #2 bug 19) -- lives on
+    # GraphIndex itself, not threaded as an extra function parameter, so
+    # every WEIGHT_POLICIES entry keeps the exact same
+    # Callable[[Cycle, GraphIndex], float] signature regardless of whether
+    # its weight function happens to use the cache.
+    _cpra_fraction_cache: dict[uuid.UUID, float] = field(default_factory=dict)
 
 
 def build_graph_index(
@@ -130,6 +153,15 @@ def weight_max_quality(cycle: Cycle, index: GraphIndex) -> float:
 
 
 def cpra_fraction(patient_id: uuid.UUID, index: GraphIndex) -> float:
+    """Memoized per patient_id via index._cpra_fraction_cache (review #2
+    bug 19): calculate_cpra does a full population-frequency combination
+    over a patient's sensitized antigens, and the same patient can appear
+    in many candidate cycles (2- and 3-cycles alike) -- without this, an
+    equity_weighted solve recomputed the identical result from scratch
+    once per cycle the patient appeared in, not once per patient."""
+    if patient_id in index._cpra_fraction_cache:
+        return index._cpra_fraction_cache[patient_id]
+
     antibodies = index.patient_antibodies_by_patient.get(patient_id, [])
     # Same ">" threshold get_patient_sensitized_antigens uses (antibody_
     # profile_service.py) -- independent of any one donor's antigens, since
@@ -145,13 +177,21 @@ def cpra_fraction(patient_id: uuid.UUID, index: GraphIndex) -> float:
         reference_table_version=HLA_FREQUENCY_TABLE_VERSION,
         source_citation=HLA_FREQUENCY_TABLE_CITATION,
     )
-    return (cpra_result.cpra_percentage or 0.0) / 100.0
+    fraction = (cpra_result.cpra_percentage or 0.0) / 100.0
+    index._cpra_fraction_cache[patient_id] = fraction
+    return fraction
 
 
 def _wait_fraction(patient: Patient) -> float:
     """See exchange_weight_policies.py's module docstring: Patient.created_at
-    (registration date) is a disclosed proxy for actual waiting time."""
+    (registration date) is a disclosed proxy for actual waiting time.
+    created_at is a NOT NULL DB column, so this is unreachable through the
+    normal DB-backed code path -- the guard (review #2 bug 18) is for
+    synthetic/hand-built Patient objects (scripts, tests) that can leave it
+    unset, which is exactly how this was originally found."""
     created_at = patient.created_at
+    if created_at is None:
+        return 0.0
     if created_at.tzinfo is None:
         created_at = created_at.replace(tzinfo=timezone.utc)
     days_waiting = (datetime.now(timezone.utc) - created_at).days
@@ -239,11 +279,45 @@ def solve_exchange_matching(
         if involved_vars:
             problem += pulp.lpSum(involved_vars) <= 1
 
+    # Patient-level disjointness (review #2 bug 4): a pair-level constraint
+    # alone doesn't stop one *patient* with two candidate donors (two pool
+    # nodes) from being selected in two different cycles at once. Group by
+    # the *set* of distinct patients each cycle actually involves (a
+    # dedupe, not just a list) since a cycle could in principle touch the
+    # same patient via two different pair nodes.
+    cycles_by_patient: dict[uuid.UUID, list[pulp.LpVariable]] = defaultdict(list)
+    for cycle, var in zip(cycles, cycle_vars):
+        patient_ids = {index.node_by_id[pair_id].patient.id for pair_id in cycle}
+        for patient_id in patient_ids:
+            cycles_by_patient[patient_id].append(var)
+    for involved_vars in cycles_by_patient.values():
+        if len(involved_vars) > 1:
+            problem += pulp.lpSum(involved_vars) <= 1
+
     problem.solve(pulp.PULP_CBC_CMD(msg=False))
+
+    # Review #2 bug 8: `problem.solve()`'s return status was never checked
+    # -- an Infeasible/Not Solved CBC run used to render identically to a
+    # genuine "no cycles found" result (every var.value() comes back None,
+    # and `None == 1` is just False, so nothing errors, it just silently
+    # under-reports). Raising here turns a solver failure into a visible
+    # 500 instead of a confident-looking empty match.
+    solve_status = pulp.LpStatus[problem.status]
+    if solve_status != "Optimal":
+        raise RuntimeError(
+            f"Exchange matching solve did not reach an optimal solution "
+            f"(status: {solve_status!r}, policy: {policy_name!r}, "
+            f"{len(cycles)} candidate cycles)."
+        )
 
     selected_cycles = [
         SelectedCycle(pair_ids=cycle, weight=weight)
         for cycle, var, weight in zip(cycles, cycle_vars, weights)
-        if var.value() == 1
+        # Exact `== 1` used to silently drop any tolerance-level solver
+        # output (e.g. 0.9999999999, or 1.0000000001) as "not selected" --
+        # CBC's solutions for a binary MILP are numerically exact in
+        # practice, but treating anything within simplex/MILP tolerance of
+        # 1 as selected is the correct comparison regardless.
+        if var.value() is not None and var.value() > 0.5
     ]
     return ExchangeMatchResult(policy=policy_name, graph=graph, selected_cycles=selected_cycles)

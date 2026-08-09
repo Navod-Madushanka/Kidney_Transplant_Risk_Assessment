@@ -62,9 +62,18 @@ def calculate_pra_bucket(cpra_result: CPRAResult) -> PRABucketResult:
 
 
 def _bucket_for_percent(percent: float) -> str:
-    for bucket in PRA_BUCKETS:
-        if bucket.min_percent <= percent <= bucket.max_percent:
-            return bucket.name
-    # Values above 100 shouldn't occur, but fall back to the top bucket
-    # rather than raising if they somehow do.
-    return PRA_BUCKETS[-1].name
+    """Review #2 bug 17: the old `min <= x <= max` loop over
+    (0-29.999, 30-60, 60.001-100) left a real gap between 29.999 and 30 --
+    a value like 29.9995 matched no bucket and silently fell through to
+    `PRA_BUCKETS[-1]`, the *most severe* bucket (">60%"), the wrong
+    direction to fail in for a clinical severity classification. Explicit
+    half-open comparisons here make every real number in [0, inf) match
+    exactly one bucket, so there's no gap and no fallback needed at all --
+    this function is now total over its domain rather than needing an
+    escape hatch for values it can't otherwise classify.
+    """
+    if percent < PRA_BUCKETS[0].max_percent:
+        return PRA_BUCKETS[0].name
+    if percent <= PRA_BUCKETS[1].max_percent:
+        return PRA_BUCKETS[1].name
+    return PRA_BUCKETS[2].name
