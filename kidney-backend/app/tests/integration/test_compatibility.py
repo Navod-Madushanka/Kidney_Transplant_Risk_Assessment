@@ -688,6 +688,26 @@ async def test_full_check_still_blocked_for_non_owned_non_available_donor(
     assert response.status_code == 404
 
 
+async def test_full_check_blocked_for_available_donor_with_intended_recipient(
+    auth_client: AsyncClient, second_auth_client: AsyncClient
+):
+    # A donor committed to another doctor's patient is "available" but not
+    # actually free for the pool -- get_donor_for_compatibility_check must
+    # reject it the same way search does (see donor_search_service.py).
+    patient = await create_patient(auth_client, blood_type="AB")
+    other_doctors_patient = await create_patient(second_auth_client, blood_type="AB")
+    donor = await create_donor(
+        second_auth_client, blood_type="O", intended_recipient_id=other_doctors_patient["id"]
+    )
+
+    response = await auth_client.post(
+        "/compatibility/check",
+        json={"patient_id": patient["id"], "donor_id": donor["id"]},
+    )
+
+    assert response.status_code == 404
+
+
 async def test_cross_hospital_check_uses_distinct_audit_action(
     auth_client: AsyncClient, second_auth_client: AsyncClient, db_session
 ):

@@ -3,7 +3,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 
 from app.models.audit_log import AuditLog
-from app.tests.conftest import create_donor, make_donor_payload
+from app.tests.conftest import create_donor, create_patient, make_donor_payload
 
 
 async def test_create_donor(auth_client: AsyncClient):
@@ -298,6 +298,94 @@ async def test_delete_donor_writes_audit_log_entry(auth_client: AsyncClient, db_
     entries = result.scalars().all()
     assert len(entries) == 1
     assert entries[0].details["full_name"] == donor["full_name"]
+
+
+# ---------------------------------------------------------------------
+# intended_recipient_id — a living donor committed to a specific patient
+# rather than a free-floating pool organ. See donor_search_service.py and
+# the Donor model's docstring comment on this field.
+# ---------------------------------------------------------------------
+
+
+async def test_create_donor_with_intended_recipient(auth_client: AsyncClient):
+    patient = await create_patient(auth_client)
+
+    response = await auth_client.post(
+        "/donors", json=make_donor_payload(intended_recipient_id=patient["id"])
+    )
+
+    assert response.status_code == 201
+    assert response.json()["intended_recipient_id"] == patient["id"]
+
+
+async def test_donor_created_without_intended_recipient_defaults_to_none(auth_client: AsyncClient):
+    donor = await create_donor(auth_client)
+
+    assert donor["intended_recipient_id"] is None
+
+
+async def test_create_donor_rejects_another_doctors_patient_as_recipient(
+    auth_client: AsyncClient, second_auth_client: AsyncClient
+):
+    other_patient = await create_patient(second_auth_client)
+
+    response = await auth_client.post(
+        "/donors", json=make_donor_payload(intended_recipient_id=other_patient["id"])
+    )
+
+    assert response.status_code == 404
+
+
+async def test_create_donor_rejects_nonexistent_intended_recipient(auth_client: AsyncClient):
+    response = await auth_client.post(
+        "/donors",
+        json=make_donor_payload(
+            intended_recipient_id="00000000-0000-0000-0000-000000000000"
+        ),
+    )
+
+    assert response.status_code == 404
+
+
+async def test_update_donor_can_set_and_clear_intended_recipient(auth_client: AsyncClient):
+    patient = await create_patient(auth_client)
+    donor = await create_donor(auth_client)
+
+    set_response = await auth_client.put(
+        f"/donors/{donor['id']}",
+        json={
+            "full_name": donor["full_name"],
+            "date_of_birth": donor["date_of_birth"],
+            "intended_recipient_id": patient["id"],
+        },
+    )
+    assert set_response.status_code == 200
+    assert set_response.json()["intended_recipient_id"] == patient["id"]
+
+    clear_response = await auth_client.put(
+        f"/donors/{donor['id']}",
+        json={"full_name": donor["full_name"], "date_of_birth": donor["date_of_birth"]},
+    )
+    assert clear_response.status_code == 200
+    assert clear_response.json()["intended_recipient_id"] is None
+
+
+async def test_update_donor_rejects_another_doctors_patient_as_recipient(
+    auth_client: AsyncClient, second_auth_client: AsyncClient
+):
+    donor = await create_donor(auth_client)
+    other_patient = await create_patient(second_auth_client)
+
+    response = await auth_client.put(
+        f"/donors/{donor['id']}",
+        json={
+            "full_name": donor["full_name"],
+            "date_of_birth": donor["date_of_birth"],
+            "intended_recipient_id": other_patient["id"],
+        },
+    )
+
+    assert response.status_code == 404
 
 
 async def test_deleted_donors_nic_number_can_be_reused(auth_client: AsyncClient):

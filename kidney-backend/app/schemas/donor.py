@@ -27,6 +27,10 @@ class DonorCreate(BaseModel):
     bmi: float | None = _BMI_FIELD
     has_diabetes: bool | None = None
     is_smoker: bool | None = None
+    # None means altruistic/deceased -- poolable in cross-hospital search.
+    # Set means this donor is only donating for that specific patient; see
+    # the Donor model's docstring comment on this field.
+    intended_recipient_id: uuid.UUID | None = None
 
 
 class DonorUpdate(BaseModel):
@@ -46,6 +50,7 @@ class DonorUpdate(BaseModel):
     bmi: float | None = _BMI_FIELD
     has_diabetes: bool | None = None
     is_smoker: bool | None = None
+    intended_recipient_id: uuid.UUID | None = None
 
 
 class DonorResponse(BaseModel):
@@ -64,6 +69,7 @@ class DonorResponse(BaseModel):
     has_diabetes: bool | None
     is_smoker: bool | None
     hla_typing_verified: bool
+    intended_recipient_id: uuid.UUID | None
     created_at: datetime
     updated_at: datetime
 

@@ -87,3 +87,19 @@ class Donor(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     hla_typing_verified: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
     )
+
+    # Intended recipient (added 2026-08-09) -- most living donors in this
+    # system aren't free-floating organs; they're someone's relative,
+    # donating only if that specific patient gets a kidney. Before this
+    # field, an "available" donor looked identical to a deceased/altruistic
+    # donor and was pooled into every other hospital's cross-hospital
+    # search regardless of who they actually came in for (see
+    # donor_search_service.py's is_deleted/status filter, which this
+    # nullable-FK filter joins). NULL means altruistic/deceased -- genuinely
+    # poolable. Deliberately no ondelete behavior beyond FK default
+    # (RESTRICT): a patient with a donor pointing at them can't be
+    # hard-deleted, matching how patients/donors are soft-deleted
+    # everywhere else in this codebase.
+    intended_recipient_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("patients.id"), nullable=True, index=True
+    )

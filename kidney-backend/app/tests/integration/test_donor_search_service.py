@@ -135,6 +135,27 @@ async def test_missing_donor_and_patient_hla_typing_does_not_crash(
     assert candidates == []
 
 
+async def test_excludes_donors_with_an_intended_recipient(
+    auth_client: AsyncClient, second_auth_client: AsyncClient, db_session: AsyncSession
+):
+    # A donor committed to someone else's relative isn't a free-floating
+    # pool organ -- it must not surface just because it's ABO-compatible
+    # and currently "available". See donor_search_service.py's docstring.
+    patient = await create_patient(auth_client, blood_type="AB")
+    other_doctors_patient = await create_patient(second_auth_client, blood_type="AB")
+    await create_donor(
+        second_auth_client,
+        blood_type="O",
+        intended_recipient_id=other_doctors_patient["id"],
+    )
+
+    patient_obj = await _load_patient(db_session, patient["id"])
+    requesting_doctor_id = uuid.UUID(patient["doctor_id"])
+    candidates = await search_compatible_donors(db_session, patient_obj, requesting_doctor_id)
+
+    assert candidates == []
+
+
 async def test_empty_pool_returns_empty_list(auth_client: AsyncClient, db_session: AsyncSession):
     patient = await create_patient(auth_client, blood_type="AB")
 

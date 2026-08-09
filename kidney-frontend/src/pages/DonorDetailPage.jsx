@@ -9,6 +9,7 @@ import {
   replaceDonorHlaTypings,
   updateDonorStatus,
 } from "../api/donors"
+import { getPatient } from "../api/patients"
 import {
   listDonorReportFiles,
   uploadDonorReportFile,
@@ -36,6 +37,7 @@ export default function DonorDetailPage() {
   const navigate = useNavigate()
   const [donor, setDonor] = useState(null)
   const [donorLoadState, setDonorLoadState] = useState("loading")
+  const [intendedRecipient, setIntendedRecipient] = useState(null)
   const [hlaState, setHlaState] = useState({ state: "loading", data: [] })
   const [reportFilesState, setReportFilesState] = useState({ state: "loading", data: [] })
 
@@ -65,6 +67,20 @@ export default function DonorDetailPage() {
       cancelled = true
     }
   }, [donorId])
+
+  useEffect(() => {
+    if (!donor?.intended_recipient_id) {
+      setIntendedRecipient(null)
+      return
+    }
+    let cancelled = false
+    getPatient(donor.intended_recipient_id)
+      .then((data) => !cancelled && setIntendedRecipient(data))
+      .catch(() => !cancelled && setIntendedRecipient(null))
+    return () => {
+      cancelled = true
+    }
+  }, [donor?.intended_recipient_id])
 
   if (donorLoadState === "loading") {
     return (
@@ -150,6 +166,7 @@ export default function DonorDetailPage() {
             bmi: donor.bmi ?? "",
             hasDiabetes: donor.has_diabetes === true ? "yes" : donor.has_diabetes === false ? "no" : "unknown",
             isSmoker: donor.is_smoker === true ? "yes" : donor.is_smoker === false ? "no" : "unknown",
+            intendedRecipientId: donor.intended_recipient_id || "",
           }}
           onSubmit={handleEditSubmit}
         />
@@ -175,12 +192,22 @@ export default function DonorDetailPage() {
         </div>
       </Modal>
 
+      {donor.intended_recipient_id && (
+        <div className="rounded-lg border border-border bg-surface px-4 py-3 text-[14px]">
+          <p className="text-text-muted">Intended recipient</p>
+          <p className="text-text font-medium">
+            {intendedRecipient ? intendedRecipient.full_name : "Loading…"} — not shown in other
+            hospitals' cross-hospital searches while this is set.
+          </p>
+        </div>
+      )}
+
       <Select
         label="Availability status"
         value={donor.status}
         onChange={handleStatusChange}
         options={DONOR_STATUS_OPTIONS}
-        helperText="Only 'Available' donors are visible to other doctors' cross-hospital searches."
+        helperText="Only 'Available' donors with no intended recipient are visible to other doctors' cross-hospital searches."
       />
 
       <Card>

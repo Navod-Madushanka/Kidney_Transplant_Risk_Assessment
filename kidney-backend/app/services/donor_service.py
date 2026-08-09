@@ -25,6 +25,7 @@ async def create_donor(
         bmi=payload.bmi,
         has_diabetes=payload.has_diabetes,
         is_smoker=payload.is_smoker,
+        intended_recipient_id=payload.intended_recipient_id,
     )
     db.add(donor)
     await db.commit()
@@ -89,6 +90,7 @@ async def update_donor_details(
     donor.bmi = payload.bmi
     donor.has_diabetes = payload.has_diabetes
     donor.is_smoker = payload.is_smoker
+    donor.intended_recipient_id = payload.intended_recipient_id
     await db.commit()
     await db.refresh(donor)
     return donor
@@ -99,11 +101,17 @@ async def get_donor_for_compatibility_check(
 ) -> Donor | None:
     """Resolves a donor for POST /compatibility/check: the calling doctor's
     own donor (any status), OR a donor owned by a different doctor iff it's
-    currently AVAILABLE. Deliberately separate from get_donor_by_id_for_doctor
-    (which stays owner-only for CRUD/HLA-typing endpoints) so opening up
-    cross-hospital checks can't accidentally loosen anything else. Reads
-    status fresh rather than trusting an earlier search result, so a donor
-    reserved between search and submission cleanly 404s here.
+    currently AVAILABLE and has no intended_recipient_id. Deliberately
+    separate from get_donor_by_id_for_doctor (which stays owner-only for
+    CRUD/HLA-typing endpoints) so opening up cross-hospital checks can't
+    accidentally loosen anything else. Reads status fresh rather than
+    trusting an earlier search result, so a donor reserved between search
+    and submission cleanly 404s here.
+
+    The intended_recipient_id check keeps this consistent with
+    donor_search_service.py: a donor committed to a specific patient isn't
+    available to any other doctor just because its ID leaked out some other
+    way (e.g. it showed up in search before the recipient link was set).
     """
     result = await db.execute(
         select(Donor).where(Donor.id == donor_id, Donor.is_deleted.is_(False))
@@ -111,6 +119,8 @@ async def get_donor_for_compatibility_check(
     donor = result.scalar_one_or_none()
     if donor is None:
         return None
-    if donor.doctor_id == doctor_id or donor.status == DonorStatus.AVAILABLE:
+    if donor.doctor_id == doctor_id:
+        return donor
+    if donor.status == DonorStatus.AVAILABLE and donor.intended_recipient_id is None:
         return donor
     return None

@@ -7,6 +7,14 @@ deliberately cheap and read-only — no crossmatch, DSA, or cPRA — since those
 either need a same-day lab result (crossmatch) or would be wasteful to run
 against an entire pool up front. The full pipeline only runs once a doctor
 picks one candidate and calls POST /compatibility/check.
+
+Donors with an intended_recipient_id are excluded regardless of status:
+most living donors in this system aren't free-floating organs, they're
+someone's relative, donating only if that specific patient (who may belong
+to a different doctor entirely) gets a kidney. Pooling them into every
+other hospital's search treated living donation like deceased donation and
+offered doctors a donor who was never actually available to them. Only
+NULL (altruistic/deceased, or not yet linked to a recipient) is poolable.
 """
 import uuid
 from dataclasses import dataclass
@@ -55,6 +63,7 @@ async def search_compatible_donors(
             Donor.status == DonorStatus.AVAILABLE,
             Donor.doctor_id != requesting_doctor_id,
             Donor.is_deleted.is_(False),
+            Donor.intended_recipient_id.is_(None),
         )
     )
     rows = result.all()

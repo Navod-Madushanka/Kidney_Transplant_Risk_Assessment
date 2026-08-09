@@ -1,8 +1,10 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import InputField from "../../ui/InputField"
 import SegmentedControl from "../../ui/SegmentedControl"
+import Select from "../../ui/Select"
 import Button from "../../ui/Button"
 import { BLOOD_TYPE_OPTIONS, RH_FACTOR_OPTIONS } from "../../../constants/clinicalEnums"
+import { listPatients } from "../../../api/patients"
 
 const emptyForm = {
   fullName: "",
@@ -16,6 +18,7 @@ const emptyForm = {
   bmi: "",
   hasDiabetes: "unknown",
   isSmoker: "unknown",
+  intendedRecipientId: "",
 }
 
 // has_diabetes/is_smoker are nullable booleans on the backend (unknown/no/
@@ -65,7 +68,19 @@ export default function DonorForm({
   const [form, setForm] = useState({ ...emptyForm, ...initialValues })
   const [errors, setErrors] = useState({})
   const [formError, setFormError] = useState("")
+  const [patients, setPatients] = useState([])
+  const [patientsLoadState, setPatientsLoadState] = useState("loading")
   const isEdit = mode === "edit"
+
+  useEffect(() => {
+    let cancelled = false
+    listPatients()
+      .then((data) => !cancelled && (setPatients(data), setPatientsLoadState("loaded")))
+      .catch(() => !cancelled && setPatientsLoadState("error"))
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   function updateField(field) {
     return (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }))
@@ -102,6 +117,7 @@ export default function DonorForm({
       bmi: numberOrNull(form.bmi),
       has_diabetes: triStateToBool(form.hasDiabetes),
       is_smoker: triStateToBool(form.isSmoker),
+      intended_recipient_id: form.intendedRecipientId || null,
     }
     if (!isEdit) {
       payload.blood_type = form.bloodType
@@ -159,6 +175,22 @@ export default function DonorForm({
         helperText="Optional"
         value={form.nicNumber}
         onChange={updateField("nicNumber")}
+      />
+      <Select
+        label="Intended recipient"
+        placeholder={patientsLoadState === "loading" ? "Loading…" : "None — available for general pool"}
+        disabled={patientsLoadState === "loading"}
+        options={patients.map((p) => ({
+          value: p.id,
+          label: `${p.full_name} — ${p.nic_number || "no NIC"}`,
+        }))}
+        value={form.intendedRecipientId}
+        onChange={updateField("intendedRecipientId")}
+        helperText={
+          patientsLoadState === "error"
+            ? "Couldn't load your patients."
+            : "If this donor is only donating for one of your patients, select them here — they won't appear in other hospitals' searches. Leave blank for an altruistic/deceased donor."
+        }
       />
 
       <div className="pt-2 border-t border-border">

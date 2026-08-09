@@ -23,6 +23,7 @@ from app.services.donor_service import (
     update_donor_status,
 )
 from app.services.hla_typing_service import get_donor_hla_typings, replace_donor_hla_typing
+from app.services.patient_service import get_patient_by_id_for_doctor
 from app.services.report_file_service import (
     absolute_path_for,
     create_donor_report_file,
@@ -50,6 +51,8 @@ async def create_donor_endpoint(
     current_doctor: Doctor = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await _ensure_intended_recipient_valid(db, payload.intended_recipient_id, current_doctor.id)
+
     try:
         donor = await create_donor(db, current_doctor.id, payload)
     except IntegrityError:
@@ -97,6 +100,8 @@ async def update_donor_endpoint(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Donor not found",
         )
+
+    await _ensure_intended_recipient_valid(db, payload.intended_recipient_id, current_doctor.id)
 
     try:
         donor = await update_donor_details(db, donor, payload)
@@ -304,7 +309,7 @@ async def delete_donor_report_file_endpoint(
 
 
 # ----------------------------------------------------------------------
-# Internal helper
+# Internal helpers
 # ----------------------------------------------------------------------
 async def _ensure_donor_exists(
     db: AsyncSession, donor_id: uuid.UUID, doctor_id: uuid.UUID
@@ -315,4 +320,21 @@ async def _ensure_donor_exists(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Donor not found",
+        )
+
+
+async def _ensure_intended_recipient_valid(
+    db: AsyncSession, intended_recipient_id: uuid.UUID | None, doctor_id: uuid.UUID
+) -> None:
+    """Raise 404 if an intended_recipient_id is set but isn't one of the
+    calling doctor's own patients -- a donor can't be committed to a
+    patient the registering doctor can't see (patients are doctor-isolated,
+    unlike donors)."""
+    if intended_recipient_id is None:
+        return
+    recipient = await get_patient_by_id_for_doctor(db, intended_recipient_id, doctor_id)
+    if recipient is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Intended recipient not found",
         )

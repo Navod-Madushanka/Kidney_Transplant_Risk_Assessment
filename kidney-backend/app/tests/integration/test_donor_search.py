@@ -37,6 +37,23 @@ async def test_search_excludes_own_available_donors(auth_client: AsyncClient):
     assert response.json() == []
 
 
+async def test_search_excludes_donors_with_an_intended_recipient(
+    auth_client: AsyncClient, second_auth_client: AsyncClient
+):
+    patient = await create_patient(auth_client, blood_type="AB")
+    other_doctors_patient = await create_patient(second_auth_client, blood_type="AB")
+    await create_donor(
+        second_auth_client,
+        blood_type="O",
+        intended_recipient_id=other_doctors_patient["id"],
+    )
+
+    response = await auth_client.get(f"/patients/{patient['id']}/compatible-donors")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
 async def test_search_excludes_reserved_and_transplanted_donors(
     auth_client: AsyncClient, second_auth_client: AsyncClient
 ):
