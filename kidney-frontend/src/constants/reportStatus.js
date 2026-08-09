@@ -61,29 +61,29 @@ const FINAL_RISK_LEVEL_TO_BADGE_STATUS = {
   "High Risk": "high-risk",
 }
 
-// Legacy continuous HLA score tier
-// (kidney-backend/app/reference_data/risk_tiers.py) — kept only as a
-// fallback for reports where Step 7 has no answer yet (most often:
-// insufficient cPRA population sample), so there's still some signal
-// rather than a bare "—".
-const LEGACY_RISK_TIER_TO_BADGE_STATUS = {
-  "Low Risk": "low",
-  "Moderate Risk": "moderate",
-  "High-Moderate Risk": "high-moderate",
-  "High Genetic Risk": "high-risk",
-}
-
 /**
- * Given a report (or dashboard summary) with `overall_status` and,
- * where available, `final_risk_level` and/or the legacy `risk_tier`,
- * returns the {status, label} pair to feed straight into <Badge>.
+ * Given a report (or dashboard summary) with `overall_status` and, where
+ * available, `final_risk_level`, returns the {status, label} pair to feed
+ * straight into <Badge>.
  *
  * Precedence: a halted status always wins (it's the most important thing
  * to surface) > pending-crossmatch > a weak/moderate DSA flagged for
  * desensitization review (Step 5, see dsa_result.requires_review — present
  * only on full report payloads, not the dashboard's lighter summary
- * objects) > Step 7's final_risk_level > the legacy score-derived
- * risk_tier > a neutral "no check yet" placeholder.
+ * objects) > Step 7's final_risk_level > a "Cannot Assess" placeholder for
+ * a completed report that reached Step 7 without enough to classify > a
+ * neutral "no check yet" placeholder.
+ *
+ * Deliberately does NOT fall back to the legacy score-derived `risk_tier`
+ * (kidney-backend/app/reference_data/risk_tiers.py) the way this used to.
+ * That field is only ever non-null on a report that reached Step 7 (see
+ * match_pipeline.py) — so on exactly the reports where `final_risk_level`
+ * is null, `risk_tier` would silently paint a specific colored risk badge
+ * (e.g. "Moderate Risk") on a check Step 7 explicitly declined to classify,
+ * contradicting the "Cannot assess" explanation shown in the report body.
+ * `risk_tier` is still computed and returned by the API as a legacy
+ * reference figure (see ReportDetailPage's "Legacy scoring" section), it's
+ * just no longer trusted to stand in for a real answer here.
  *
  * Usage:
  *   const { status, label } = reportBadgeProps(report)
@@ -111,11 +111,8 @@ export function reportBadgeProps(report) {
     }
   }
 
-  if (report.risk_tier) {
-    return {
-      status: LEGACY_RISK_TIER_TO_BADGE_STATUS[report.risk_tier] ?? "neutral",
-      label: report.risk_tier,
-    }
+  if (report.overall_status === "completed") {
+    return { status: "pending", label: "Cannot Assess" }
   }
 
   return { status: "neutral", label: "—" }

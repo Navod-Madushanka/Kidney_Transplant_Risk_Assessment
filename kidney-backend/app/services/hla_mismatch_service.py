@@ -19,6 +19,12 @@ to fall through it. MismatchResult.data_completeness reflects whether any
 locus had to be scored this way, so callers (e.g. the Step 7 final risk
 classification in match_pipeline.py) can refuse to present a risk level
 built on incomplete typing data rather than showing a falsely favorable one.
+
+MismatchResult.missing_inputs names exactly which side(s)/locus/loci were
+absent (e.g. "donor DRB1 typing"), so a caller presenting a "cannot assess"
+message can say precisely what's missing instead of a generic "typing
+incomplete" -- doctors need to know what to go enter, not just that
+something's wrong.
 """
 from dataclasses import dataclass, field
 
@@ -46,6 +52,7 @@ class MismatchResult:
     bucket_name: str
     is_halted: bool
     data_completeness: bool = True
+    missing_inputs: list[str] = field(default_factory=list)
     locus_breakdown: list[LocusMismatchDetail] = field(default_factory=list)
 
 
@@ -61,6 +68,7 @@ def calculate_mismatch_result(
     locus_breakdown = []
     total_mismatches = 0
     data_completeness = True
+    missing_inputs: list[str] = []
 
     for locus in MISMATCH_COUNTED_LOCI:
         patient_alleles = patient_typing.get(locus, [])
@@ -73,6 +81,10 @@ def calculate_mismatch_result(
             # Score the worst case instead and flag the result incomplete.
             unique_mismatches = MAX_MISMATCHES_PER_LOCUS
             data_completeness = False
+            if not patient_alleles:
+                missing_inputs.append(f"patient {locus} typing")
+            if not donor_alleles:
+                missing_inputs.append(f"donor {locus} typing")
         else:
             donor_allele_set = set(donor_alleles)
             patient_allele_set = set(patient_alleles)
@@ -103,6 +115,7 @@ def calculate_mismatch_result(
         bucket_name=bucket_name,
         is_halted=is_halted,
         data_completeness=data_completeness,
+        missing_inputs=missing_inputs,
         locus_breakdown=locus_breakdown,
     )
 

@@ -89,6 +89,7 @@ def test_fully_typed_result_is_marked_complete():
     result = calculate_mismatch_result(patient, donor)
 
     assert result.data_completeness is True
+    assert result.missing_inputs == []
 
 
 def test_donor_with_no_hla_typing_at_all_is_not_a_perfect_match():
@@ -107,6 +108,7 @@ def test_donor_with_no_hla_typing_at_all_is_not_a_perfect_match():
     assert result.total_mismatches == 6
     assert result.bucket_name == "3-6 mismatches"
     assert result.data_completeness is False
+    assert result.missing_inputs == ["donor A typing", "donor B typing", "donor DRB1 typing"]
 
 
 def test_patient_with_no_hla_typing_at_all_is_also_incomplete():
@@ -122,6 +124,11 @@ def test_patient_with_no_hla_typing_at_all_is_also_incomplete():
     assert result.total_mismatches == 6
     assert result.bucket_name == "3-6 mismatches"
     assert result.data_completeness is False
+    assert result.missing_inputs == [
+        "patient A typing",
+        "patient B typing",
+        "patient DRB1 typing",
+    ]
 
 
 def test_donor_missing_a_single_locus_does_not_silently_improve_the_score():
@@ -138,3 +145,4 @@ def test_donor_missing_a_single_locus_does_not_silently_improve_the_score():
     assert result.total_mismatches == 6
     assert result.bucket_name == "3-6 mismatches"
     assert result.data_completeness is False
+    assert result.missing_inputs == ["donor DRB1 typing"]

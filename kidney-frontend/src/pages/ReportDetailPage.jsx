@@ -2,7 +2,6 @@
 import { useEffect, useState } from "react"
 import { useParams, Link } from "react-router-dom"
 import { getReport } from "../api/reports"
-import { deriveRiskTier } from "../constants/riskTiers"
 import {
   HALTED_STATUSES,
   HALT_DESCRIPTIONS,
@@ -157,16 +156,7 @@ export default function ReportDetailPage() {
     return <p className="text-[15px] text-text-muted">Couldn't load this report.</p>
   }
 
-  // The API doesn't return a `risk_tier` field (it was never persisted —
-  // see kidney-backend/app/services/dashboard_service.py's _derive_risk_tier
-  // docstring), so the legacy tier is re-derived client-side here, same as
-  // before Step 7 existed. Folded into reportBadgeProps as a fallback for
-  // when Step 7 has no final_risk_level yet (e.g. insufficient cPRA data).
-  const legacyRiskTier = deriveRiskTier(report.hla_scoring_result)
-  const { status: badgeStatus, label: badgeLabel } = reportBadgeProps({
-    ...report,
-    risk_tier: legacyRiskTier,
-  })
+  const { status: badgeStatus, label: badgeLabel } = reportBadgeProps(report)
 
   const isCompleted = report.overall_status === "completed"
 
@@ -223,7 +213,7 @@ export default function ReportDetailPage() {
           />
           {report.mismatch_result.data_completeness === false && (
             <p className="text-[13px] text-high-risk mb-2">
-              Incomplete typing — A/B/DRB1 typing is missing on at least one side of this pair.
+              Incomplete typing — {report.mismatch_result.missing_inputs.join(", ")} missing.
               Missing loci are scored at their worst case rather than treated as a match, so this
               total is a conservative estimate, not a confirmed mismatch count.
             </p>
@@ -327,19 +317,19 @@ export default function ReportDetailPage() {
             </div>
           ) : report.mismatch_result?.data_completeness === false ? (
             <p className="text-[14px] text-high-risk font-medium">
-              Cannot assess — A/B/DRB1 HLA typing is incomplete for this patient/donor pair, so
+              Cannot assess — {report.mismatch_result.missing_inputs.join(", ")} missing, so
               Step 7 can't combine a reliable mismatch bucket rather than guessing one.
             </p>
           ) : report.pra_bucket_result?.bucket_name === ">60%" ? (
-            <p className="text-[14px] text-text-muted">
-              No final classification yet — cPRA is above 60%, and no doctor-specified point
-              value exists for that bucket yet, so Step 7 can't combine a result rather than
-              guessing one. See Steps 5/6 (DSA, crossmatch) for this pairing's actual result.
+            <p className="text-[14px] text-high-risk font-medium">
+              Cannot assess — cPRA is above 60%, and no doctor-specified point value exists for
+              that bucket yet, so Step 7 can't combine a result rather than guessing one. See
+              Steps 5/6 (DSA, crossmatch) for this pairing's actual result.
             </p>
           ) : (
-            <p className="text-[14px] text-text-muted">
-              No final classification yet — Step 4 didn't have enough population data for a
-              PRA bucket, so Step 7 can't combine a result rather than guessing one.
+            <p className="text-[14px] text-high-risk font-medium">
+              Cannot assess — Step 4 didn't have enough population data for a PRA bucket, so
+              Step 7 can't combine a result rather than guessing one.
             </p>
           )}
         </Card>
