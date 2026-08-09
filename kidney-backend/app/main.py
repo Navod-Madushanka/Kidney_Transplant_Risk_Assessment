@@ -9,6 +9,7 @@ from app.api.auth import router as auth_router
 from app.api.compatibility import router as compatibility_router
 from app.api.dashboard import router as dashboard_router
 from app.api.donors import router as donors_router
+from app.api.exchange import router as exchange_router
 from app.api.ocr import router as ocr_router
 from app.api.patients import router as patients_router
 from app.core.dependencies import get_current_user
@@ -32,6 +33,7 @@ app.include_router(compatibility_router)
 app.include_router(dashboard_router)
 app.include_router(ocr_router)
 app.include_router(audit_logs_router)
+app.include_router(exchange_router)
 
 @app.get("/")
 def read_root():

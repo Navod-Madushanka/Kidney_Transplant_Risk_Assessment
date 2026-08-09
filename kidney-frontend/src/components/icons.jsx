@@ -29,6 +29,9 @@ export function HistoryIcon(props) {
 export function AuditIcon(props) {
   return <svg {...iconProps(props)}><path d="M12 3.5l7 3v5.2c0 4.4-3 8.1-7 9.3-4-1.2-7-4.9-7-9.3V6.5l7-3z" /><path d="M9 12l2 2 4-4.5" /></svg>
 }
+export function ExchangeIcon(props) {
+  return <svg {...iconProps(props)}><path d="M4 8h13M13 4l4 4-4 4" /><path d="M20 16H7M11 12l-4 4 4 4" /></svg>
+}
 export function LogoutIcon(props) {
   return <svg {...iconProps(props)}><path d="M9 4H6a2 2 0 00-2 2v12a2 2 0 002 2h3M15 16l4-4-4-4M19 12H9" /></svg>
 }

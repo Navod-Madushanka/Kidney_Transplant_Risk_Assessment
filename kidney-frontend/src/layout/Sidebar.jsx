@@ -1,13 +1,14 @@
 // src/layout/Sidebar.jsx
 import { NavLink } from "react-router-dom"
 import { useAuth } from "../hooks/useAuth"
-import { HomeIcon, PatientsIcon, DonorIcon, NewCheckIcon, HistoryIcon, AuditIcon, LogoutIcon } from "../components/icons"
+import { HomeIcon, PatientsIcon, DonorIcon, NewCheckIcon, HistoryIcon, ExchangeIcon, AuditIcon, LogoutIcon } from "../components/icons"
 
 const NAV_ITEMS = [
   { to: "/", label: "Dashboard", icon: HomeIcon, end: true },
   { to: "/patients", label: "Patients", icon: PatientsIcon },
   { to: "/donors", label: "Donors", icon: DonorIcon },
   { to: "/checks/new", label: "New Check", icon: NewCheckIcon },
+  { to: "/exchange", label: "Paired Exchange", icon: ExchangeIcon },
   { to: "/reports", label: "Reports", icon: HistoryIcon },
 ]
 

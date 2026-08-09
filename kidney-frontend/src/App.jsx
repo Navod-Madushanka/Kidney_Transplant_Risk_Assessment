@@ -12,6 +12,7 @@ import DonorsListPage from "./pages/DonorsListPage"
 import NewDonorPage from "./pages/NewDonorPage"
 import DonorDetailPage from "./pages/DonorDetailPage"
 import DonorSearchPage from "./pages/DonorSearchPage"
+import ExchangePoolPage from "./pages/ExchangePoolPage"
 import ReportsListPage from "./pages/ReportsListPage"
 import NewCheckFromRecordsPage from "./pages/NewCheckFromRecordsPage"
 
@@ -45,6 +46,11 @@ function App() {
           <Route path="/donors" element={<DonorsListPage />} handle={{ title: "Donors" }} />
           <Route path="/donors/new" element={<NewDonorPage />} handle={{ title: "Add donor" }} />
           <Route path="/donors/:donorId" element={<DonorDetailPage />} handle={{ title: "Donor" }} />
+          <Route
+            path="/exchange"
+            element={<ExchangePoolPage />}
+            handle={{ title: "Paired exchange" }}
+          />
           <Route path="/reports" element={<ReportsListPage />} handle={{ title: "Reports" }} />
           <Route
             path="/checks/start-from-records"

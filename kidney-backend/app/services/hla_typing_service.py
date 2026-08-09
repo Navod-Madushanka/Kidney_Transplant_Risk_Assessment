@@ -265,6 +265,27 @@ async def get_donor_hla_typing_entries_bulk(
     return entries_by_donor
 
 
+async def get_patient_hla_typing_entries_bulk(
+    db: AsyncSession, patient_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, list[PatientHLATyping]]:
+    """Same rows as get_patient_hla_typing_entries but for many patients in
+    one query, grouped by patient_id — mirrors get_donor_hla_typing_entries_
+    bulk above. Used by exchange_graph_service, which scores every donor in
+    an exchange pool against every OTHER pool member's recipient and would
+    otherwise fire one query per patient.
+    """
+    if not patient_ids:
+        return {}
+
+    result = await db.execute(
+        select(PatientHLATyping).where(PatientHLATyping.patient_id.in_(patient_ids))
+    )
+    entries_by_patient: dict[uuid.UUID, list[PatientHLATyping]] = {}
+    for row in result.scalars().all():
+        entries_by_patient.setdefault(row.patient_id, []).append(row)
+    return entries_by_patient
+
+
 def build_partial_typing_dict(entries: list, loci: tuple[str, ...]) -> dict[str, list[str]]:
     """Builds a locus -> [allele_1, allele_2] dict restricted to `loci`,
     from either PatientHLATyping or DonorHLATyping rows — permissive like

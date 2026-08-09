@@ -47,6 +47,26 @@ async def replace_patient_antibody_profiles(
     await db.commit()
 
 
+async def get_patient_antibody_profiles_bulk(
+    db: AsyncSession, patient_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, list[AntibodyProfile]]:
+    """Same rows as get_patient_antibody_profiles but for many patients in
+    one query, grouped by patient_id — mirrors hla_typing_service's donor/
+    patient bulk fetchers. Used by exchange_graph_service to DSA-screen an
+    entire exchange pool without one query per recipient.
+    """
+    if not patient_ids:
+        return {}
+
+    result = await db.execute(
+        select(AntibodyProfile).where(AntibodyProfile.patient_id.in_(patient_ids))
+    )
+    profiles_by_patient: dict[uuid.UUID, list[AntibodyProfile]] = {}
+    for row in result.scalars().all():
+        profiles_by_patient.setdefault(row.patient_id, []).append(row)
+    return profiles_by_patient
+
+
 async def get_patient_sensitized_antigens(
     db: AsyncSession, patient_id: uuid.UUID, mfi_cutoff_value: float
 ) -> list[str]:
