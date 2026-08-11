@@ -11,6 +11,7 @@ from app.api.dashboard import router as dashboard_router
 from app.api.donors import router as donors_router
 from app.api.exchange import router as exchange_router
 from app.api.ocr import router as ocr_router
+from app.api.pairs import router as pairs_router
 from app.api.patients import router as patients_router
 from app.core.dependencies import get_current_user
 from app.db.session import get_db
@@ -29,6 +30,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(patients_router)
 app.include_router(donors_router)
+app.include_router(pairs_router)
 app.include_router(compatibility_router)
 app.include_router(dashboard_router)
 app.include_router(ocr_router)

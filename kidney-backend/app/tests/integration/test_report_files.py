@@ -19,7 +19,11 @@ PDF_BYTES = b"%PDF-1.4 fake report bytes for testing"
 
 
 async def _upload(client: AsyncClient, entity: str, entity_id: str, **overrides):
-    data = {"category": overrides.get("category", "hla_typing_report")}
+    # bead_specificity_chart_page_1 is the default because it's valid for
+    # both entities post-F3.3: patients are now restricted to the two bead
+    # categories (hla_typing_report/crossmatch_report moved to the pair
+    # endpoint, see test_pairs.py), donors stay unrestricted.
+    data = {"category": overrides.get("category", "bead_specificity_chart_page_1")}
     filename = overrides.get("filename", "report.pdf")
     content = overrides.get("content", PDF_BYTES)
     content_type = overrides.get("content_type", "application/pdf")
@@ -42,7 +46,7 @@ async def test_upload_patient_report_file(auth_client: AsyncClient):
 
     assert response.status_code == 201
     body = response.json()
-    assert body["category"] == "hla_typing_report"
+    assert body["category"] == "bead_specificity_chart_page_1"
     assert body["original_filename"] == "report.pdf"
     assert body["content_type"] == "application/pdf"
     assert body["size_bytes"] == len(PDF_BYTES)
@@ -137,11 +141,21 @@ async def test_uploading_to_a_filled_category_removes_old_file_from_disk(
 
 async def test_uploading_different_categories_keeps_both(auth_client: AsyncClient):
     patient = await create_patient(auth_client)
-    await _upload(auth_client, "patients", patient["id"], category="hla_typing_report")
-    await _upload(auth_client, "patients", patient["id"], category="crossmatch_report")
+    await _upload(auth_client, "patients", patient["id"], category="bead_specificity_chart_page_1")
+    await _upload(auth_client, "patients", patient["id"], category="bead_specificity_chart_page_2")
 
     listed = await auth_client.get(f"/patients/{patient['id']}/report-files")
     assert len(listed.json()) == 2
+
+
+async def test_upload_rejects_category_not_valid_for_patient(auth_client: AsyncClient):
+    # hla_typing_report/crossmatch_report cover a patient+donor pair, not a
+    # patient alone -- see PairReportFile and POST /pairs/{id}/report-files.
+    patient = await create_patient(auth_client)
+
+    response = await _upload(auth_client, "patients", patient["id"], category="hla_typing_report")
+
+    assert response.status_code == 422
 
 
 async def test_list_returns_only_this_doctors_files(

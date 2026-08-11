@@ -1,10 +1,10 @@
 # app/services/report_file_service.py
 """
-Storage + CRUD for report files attached to patient/donor records — plain
-reference documents (lab reports, charts) for a doctor to upload/download/
-delete later. Deliberately separate from the OCR pipeline (app/api/ocr.py):
-nothing here extracts data from the file, it's just persisted bytes plus
-metadata.
+Storage + CRUD for report files attached to patient/donor/pair records —
+plain reference documents (lab reports, charts) for a doctor to upload/
+download/delete later. Deliberately separate from the OCR pipeline
+(app/api/ocr.py): nothing here extracts data from the file, it's just
+persisted bytes plus metadata.
 
 Files live on local disk under settings.report_files_storage_dir. The
 on-disk filename is always server-generated (a fresh uuid4, extension from
@@ -12,10 +12,16 @@ the validated content-type) — never derived from the client-supplied
 filename, which is stored purely as display metadata (original_filename)
 and never touches the filesystem. This rules out path traversal and
 collisions by construction.
+
+The patient/donor/pair CRUD below is one owner-parameterized implementation
+(_create_report_file/_list_report_files/_get_report_file_by_id/
+_delete_report_file) behind thin per-owner wrappers that keep their existing
+names and signatures, so call sites elsewhere don't change.
 """
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy import delete, select
@@ -23,7 +29,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.models.donor_report_file import DonorReportFile
-from app.models.enums import ReportFileCategory
+from app.models.enums import PAIR_REPORT_CATEGORIES, PATIENT_REPORT_CATEGORIES, ReportFileCategory
+from app.models.pair_report_file import PairReportFile
 from app.models.patient_report_file import PatientReportFile
 
 ALLOWED_CONTENT_TYPES: dict[str, str] = {
@@ -33,6 +40,8 @@ ALLOWED_CONTENT_TYPES: dict[str, str] = {
 }
 
 _CHUNK_SIZE = 1024 * 1024  # 1 MiB
+
+ReportFileModel = Any  # PatientReportFile | DonorReportFile | PairReportFile
 
 
 @dataclass
@@ -86,8 +95,124 @@ def _delete_from_disk(relative_path: str) -> None:
     (_upload_root() / relative_path).unlink(missing_ok=True)
 
 
-def absolute_path_for(report_file: PatientReportFile | DonorReportFile) -> Path:
+def absolute_path_for(report_file: ReportFileModel) -> Path:
     return _upload_root() / report_file.storage_path
+
+
+async def _create_report_file(
+    db: AsyncSession,
+    model: type[ReportFileModel],
+    owner_field: str,
+    owner_id: uuid.UUID,
+    kind: str,
+    category: ReportFileCategory,
+    file: UploadFile,
+    commit: bool = True,
+    allowed_categories: frozenset[ReportFileCategory] | None = None,
+) -> ReportFileModel:
+    """Create (or replace) the report file for this owner's category slot.
+
+    Each category is a dedicated, nullable slot rather than an open-ended
+    list — re-uploading to a filled slot replaces the previous file, both
+    the DB row and the bytes on disk.
+
+    allowed_categories=None means unrestricted (every ReportFileCategory
+    value accepted) -- used for the donor endpoint, which this codebase's
+    pair-registration feature deliberately leaves unrestricted at the API
+    layer since nothing in the UI can reach it anymore. Patient/pair
+    endpoints pass PATIENT_REPORT_CATEGORIES/PAIR_REPORT_CATEGORIES.
+    """
+    if allowed_categories is not None and category not in allowed_categories:
+        allowed = ", ".join(sorted(c.value for c in allowed_categories))
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Category '{category.value}' is not valid here. Allowed: {allowed}.",
+        )
+
+    _validate_content_type(file.content_type)
+
+    existing = await db.execute(
+        select(model).where(
+            getattr(model, owner_field) == owner_id,
+            model.category == category,
+        )
+    )
+    existing_report_file = existing.scalar_one_or_none()
+
+    relative_path = _build_storage_path(kind, owner_id, file.content_type)
+    size = await _save_upload(file, relative_path)
+
+    if existing_report_file is not None:
+        old_storage_path = existing_report_file.storage_path
+        await db.execute(delete(model).where(model.id == existing_report_file.id))
+        _delete_from_disk(old_storage_path)
+
+    report_file = model(
+        **{owner_field: owner_id},
+        category=category,
+        original_filename=file.filename or "upload",
+        storage_path=str(relative_path),
+        content_type=file.content_type,
+        size_bytes=size,
+    )
+    db.add(report_file)
+    await db.flush()
+    if commit:
+        await db.commit()
+    await db.refresh(report_file)
+    return report_file
+
+
+async def _list_report_files(
+    db: AsyncSession, model: type[ReportFileModel], owner_field: str, owner_id: uuid.UUID
+) -> list[ReportFileModel]:
+    result = await db.execute(
+        select(model)
+        .where(getattr(model, owner_field) == owner_id)
+        .order_by(model.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def _get_report_file_by_id(
+    db: AsyncSession,
+    model: type[ReportFileModel],
+    owner_field: str,
+    owner_id: uuid.UUID,
+    report_file_id: uuid.UUID,
+) -> ReportFileModel | None:
+    result = await db.execute(
+        select(model).where(
+            model.id == report_file_id,
+            getattr(model, owner_field) == owner_id,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def _delete_report_file(
+    db: AsyncSession,
+    model: type[ReportFileModel],
+    owner_field: str,
+    owner_id: uuid.UUID,
+    report_file_id: uuid.UUID,
+    commit: bool = True,
+) -> DeletedReportFileInfo | None:
+    report_file = await _get_report_file_by_id(db, model, owner_field, owner_id, report_file_id)
+    if report_file is None:
+        return None
+
+    storage_path = report_file.storage_path
+    info = DeletedReportFileInfo(
+        category=report_file.category, original_filename=report_file.original_filename
+    )
+
+    await db.execute(delete(model).where(model.id == report_file_id))
+    await db.flush()
+    if commit:
+        await db.commit()
+    _delete_from_disk(storage_path)
+    return info
 
 
 async def create_patient_report_file(
@@ -97,89 +222,37 @@ async def create_patient_report_file(
     file: UploadFile,
     commit: bool = True,
 ) -> PatientReportFile:
-    """Create (or replace) the report file for this patient's category slot.
-
-    Each category is a dedicated, nullable slot rather than an open-ended
-    list — re-uploading to a filled slot replaces the previous file, both
-    the DB row and the bytes on disk.
-    """
-    _validate_content_type(file.content_type)
-
-    existing = await db.execute(
-        select(PatientReportFile).where(
-            PatientReportFile.patient_id == patient_id,
-            PatientReportFile.category == category,
-        )
+    return await _create_report_file(
+        db,
+        PatientReportFile,
+        "patient_id",
+        patient_id,
+        "patients",
+        category,
+        file,
+        commit=commit,
+        allowed_categories=PATIENT_REPORT_CATEGORIES,
     )
-    existing_report_file = existing.scalar_one_or_none()
-
-    relative_path = _build_storage_path("patients", patient_id, file.content_type)
-    size = await _save_upload(file, relative_path)
-
-    if existing_report_file is not None:
-        old_storage_path = existing_report_file.storage_path
-        await db.execute(
-            delete(PatientReportFile).where(PatientReportFile.id == existing_report_file.id)
-        )
-        _delete_from_disk(old_storage_path)
-
-    report_file = PatientReportFile(
-        patient_id=patient_id,
-        category=category,
-        original_filename=file.filename or "upload",
-        storage_path=str(relative_path),
-        content_type=file.content_type,
-        size_bytes=size,
-    )
-    db.add(report_file)
-    await db.flush()
-    if commit:
-        await db.commit()
-    await db.refresh(report_file)
-    return report_file
 
 
 async def list_patient_report_files(
     db: AsyncSession, patient_id: uuid.UUID
 ) -> list[PatientReportFile]:
-    result = await db.execute(
-        select(PatientReportFile)
-        .where(PatientReportFile.patient_id == patient_id)
-        .order_by(PatientReportFile.created_at.desc())
-    )
-    return list(result.scalars().all())
+    return await _list_report_files(db, PatientReportFile, "patient_id", patient_id)
 
 
 async def get_patient_report_file_by_id(
     db: AsyncSession, patient_id: uuid.UUID, report_file_id: uuid.UUID
 ) -> PatientReportFile | None:
-    result = await db.execute(
-        select(PatientReportFile).where(
-            PatientReportFile.id == report_file_id,
-            PatientReportFile.patient_id == patient_id,
-        )
-    )
-    return result.scalar_one_or_none()
+    return await _get_report_file_by_id(db, PatientReportFile, "patient_id", patient_id, report_file_id)
 
 
 async def delete_patient_report_file(
     db: AsyncSession, patient_id: uuid.UUID, report_file_id: uuid.UUID, commit: bool = True
 ) -> DeletedReportFileInfo | None:
-    report_file = await get_patient_report_file_by_id(db, patient_id, report_file_id)
-    if report_file is None:
-        return None
-
-    storage_path = report_file.storage_path
-    info = DeletedReportFileInfo(
-        category=report_file.category, original_filename=report_file.original_filename
+    return await _delete_report_file(
+        db, PatientReportFile, "patient_id", patient_id, report_file_id, commit=commit
     )
-
-    await db.execute(delete(PatientReportFile).where(PatientReportFile.id == report_file_id))
-    await db.flush()
-    if commit:
-        await db.commit()
-    _delete_from_disk(storage_path)
-    return info
 
 
 async def create_donor_report_file(
@@ -189,84 +262,62 @@ async def create_donor_report_file(
     file: UploadFile,
     commit: bool = True,
 ) -> DonorReportFile:
-    """Create (or replace) the report file for this donor's category slot.
-
-    Each category is a dedicated, nullable slot rather than an open-ended
-    list — re-uploading to a filled slot replaces the previous file, both
-    the DB row and the bytes on disk.
-    """
-    _validate_content_type(file.content_type)
-
-    existing = await db.execute(
-        select(DonorReportFile).where(
-            DonorReportFile.donor_id == donor_id,
-            DonorReportFile.category == category,
-        )
+    return await _create_report_file(
+        db, DonorReportFile, "donor_id", donor_id, "donors", category, file, commit=commit
     )
-    existing_report_file = existing.scalar_one_or_none()
-
-    relative_path = _build_storage_path("donors", donor_id, file.content_type)
-    size = await _save_upload(file, relative_path)
-
-    if existing_report_file is not None:
-        old_storage_path = existing_report_file.storage_path
-        await db.execute(
-            delete(DonorReportFile).where(DonorReportFile.id == existing_report_file.id)
-        )
-        _delete_from_disk(old_storage_path)
-
-    report_file = DonorReportFile(
-        donor_id=donor_id,
-        category=category,
-        original_filename=file.filename or "upload",
-        storage_path=str(relative_path),
-        content_type=file.content_type,
-        size_bytes=size,
-    )
-    db.add(report_file)
-    await db.flush()
-    if commit:
-        await db.commit()
-    await db.refresh(report_file)
-    return report_file
 
 
 async def list_donor_report_files(db: AsyncSession, donor_id: uuid.UUID) -> list[DonorReportFile]:
-    result = await db.execute(
-        select(DonorReportFile)
-        .where(DonorReportFile.donor_id == donor_id)
-        .order_by(DonorReportFile.created_at.desc())
-    )
-    return list(result.scalars().all())
+    return await _list_report_files(db, DonorReportFile, "donor_id", donor_id)
 
 
 async def get_donor_report_file_by_id(
     db: AsyncSession, donor_id: uuid.UUID, report_file_id: uuid.UUID
 ) -> DonorReportFile | None:
-    result = await db.execute(
-        select(DonorReportFile).where(
-            DonorReportFile.id == report_file_id,
-            DonorReportFile.donor_id == donor_id,
-        )
-    )
-    return result.scalar_one_or_none()
+    return await _get_report_file_by_id(db, DonorReportFile, "donor_id", donor_id, report_file_id)
 
 
 async def delete_donor_report_file(
     db: AsyncSession, donor_id: uuid.UUID, report_file_id: uuid.UUID, commit: bool = True
 ) -> DeletedReportFileInfo | None:
-    report_file = await get_donor_report_file_by_id(db, donor_id, report_file_id)
-    if report_file is None:
-        return None
-
-    storage_path = report_file.storage_path
-    info = DeletedReportFileInfo(
-        category=report_file.category, original_filename=report_file.original_filename
+    return await _delete_report_file(
+        db, DonorReportFile, "donor_id", donor_id, report_file_id, commit=commit
     )
 
-    await db.execute(delete(DonorReportFile).where(DonorReportFile.id == report_file_id))
-    await db.flush()
-    if commit:
-        await db.commit()
-    _delete_from_disk(storage_path)
-    return info
+
+async def create_pair_report_file(
+    db: AsyncSession,
+    pair_id: uuid.UUID,
+    category: ReportFileCategory,
+    file: UploadFile,
+    commit: bool = True,
+) -> PairReportFile:
+    return await _create_report_file(
+        db,
+        PairReportFile,
+        "pair_id",
+        pair_id,
+        "pairs",
+        category,
+        file,
+        commit=commit,
+        allowed_categories=PAIR_REPORT_CATEGORIES,
+    )
+
+
+async def list_pair_report_files(db: AsyncSession, pair_id: uuid.UUID) -> list[PairReportFile]:
+    return await _list_report_files(db, PairReportFile, "pair_id", pair_id)
+
+
+async def get_pair_report_file_by_id(
+    db: AsyncSession, pair_id: uuid.UUID, report_file_id: uuid.UUID
+) -> PairReportFile | None:
+    return await _get_report_file_by_id(db, PairReportFile, "pair_id", pair_id, report_file_id)
+
+
+async def delete_pair_report_file(
+    db: AsyncSession, pair_id: uuid.UUID, report_file_id: uuid.UUID, commit: bool = True
+) -> DeletedReportFileInfo | None:
+    return await _delete_report_file(
+        db, PairReportFile, "pair_id", pair_id, report_file_id, commit=commit
+    )

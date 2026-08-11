@@ -2,9 +2,10 @@
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.enums import BloodType, RhFactor, Sex
+from app.schemas._validators import normalize_nic
 
 # LKDPI input -- see app/reference_data/lkdpi_model.py. Bound is a typo
 # guard, not a clinical ceiling, matching donor.py's _WEIGHT_FIELD-style
@@ -24,6 +25,8 @@ class PatientCreate(BaseModel):
     # hla_typing_verified/antibody_profile_verified's ocr_verified param.
     # Only the compatibility-check wizard ever passes an explicit value.
     details_verified: bool | None = None
+
+    _normalize_nic = field_validator("nic_number")(normalize_nic)
 
 
 class PatientUpdate(BaseModel):
@@ -46,6 +49,8 @@ class PatientUpdate(BaseModel):
     # this write may have just overwritten from a fresh OCR read, ever
     # passes an explicit True/False.
     details_verified: bool | None = None
+
+    _normalize_nic = field_validator("nic_number")(normalize_nic)
 
 
 class PatientResponse(BaseModel):

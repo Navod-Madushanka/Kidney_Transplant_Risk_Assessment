@@ -76,6 +76,23 @@ class ReportFileCategory(str, enum.Enum):
     OTHER = "other"
 
 
+# Which ReportFileCategory values each owner is allowed to hold, enforced in
+# report_file_service.py's _create_report_file (422 outside the set). The
+# HLA typing / crossmatch reports cover a patient and donor together (see
+# DonorPatientPair), so they're pair-only; the bead specificity chart is a
+# patient-only antibody screen. OTHER is deliberately in neither set --
+# legacy rows may still reference it, but nothing can upload to it anymore.
+PAIR_REPORT_CATEGORIES = frozenset(
+    {ReportFileCategory.HLA_TYPING_REPORT, ReportFileCategory.CROSSMATCH_REPORT}
+)
+PATIENT_REPORT_CATEGORIES = frozenset(
+    {
+        ReportFileCategory.BEAD_SPECIFICITY_CHART_PAGE_1,
+        ReportFileCategory.BEAD_SPECIFICITY_CHART_PAGE_2,
+    }
+)
+
+
 class OcrExtractionJobStatus(str, enum.Enum):
     RUNNING = "running"
     DONE = "done"

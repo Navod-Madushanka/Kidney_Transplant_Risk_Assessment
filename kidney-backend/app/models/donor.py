@@ -150,6 +150,13 @@ class Donor(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     # (RESTRICT): a patient with a donor pointing at them can't be
     # hard-deleted, matching how patients/donors are soft-deleted
     # everywhere else in this codebase.
+    #
+    # Authoritative for the matching engine (added 2026-08-11) --
+    # exchange_graph_service.load_exchange_pool reads this column directly
+    # and DonorPatientPair does NOT replace it. A DonorPatientPair row is
+    # authoritative for document ownership and the stored crossmatch only;
+    # see that model's docstring for the split and how the two are kept
+    # from silently drifting apart.
     intended_recipient_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("patients.id"), nullable=True, index=True
     )

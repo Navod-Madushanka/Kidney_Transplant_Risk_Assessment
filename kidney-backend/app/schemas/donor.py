@@ -2,9 +2,10 @@
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.enums import BloodType, DonorStatus, Race, RhFactor, Sex, SmokingStatus
+from app.schemas._validators import normalize_nic
 
 # Bounds are sanity checks against typos/garbage input, not clinical
 # accept/reject thresholds -- see Donor model's docstring comment on these
@@ -56,6 +57,8 @@ class DonorCreate(BaseModel):
     # matching field.
     details_verified: bool | None = None
 
+    _normalize_nic = field_validator("nic_number")(normalize_nic)
+
 
 class DonorUpdate(BaseModel):
     """blood_type/rh_factor are permanent once set (the compatibility
@@ -87,6 +90,8 @@ class DonorUpdate(BaseModel):
     # details_verified -- see PatientUpdate's matching field for the full
     # _resolve_verified contract.
     details_verified: bool | None = None
+
+    _normalize_nic = field_validator("nic_number")(normalize_nic)
 
 
 class DonorResponse(BaseModel):

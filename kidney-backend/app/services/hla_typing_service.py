@@ -157,6 +157,7 @@ async def replace_patient_hla_typing(
     entries: list[HLATypingEntry],
     ocr_verified: bool | None = None,
     doctor_id: uuid.UUID | None = None,
+    commit: bool = True,
 ) -> None:
     """doctor_id is only used to attribute the audit entry below -- omitted
     by internal/test callers that don't have a doctor in scope, in which
@@ -197,7 +198,8 @@ async def replace_patient_hla_typing(
             },
             commit=False,
         )
-    await db.commit()
+    if commit:
+        await db.commit()
 
 
 async def get_donor_hla_typing_dict(
@@ -240,6 +242,7 @@ async def replace_donor_hla_typing(
     entries: list[HLATypingEntry],
     ocr_verified: bool | None = None,
     doctor_id: uuid.UUID | None = None,
+    commit: bool = True,
 ) -> None:
     """doctor_id — see replace_patient_hla_typing's docstring, same contract."""
     previous_verified = (
@@ -277,7 +280,8 @@ async def replace_donor_hla_typing(
             },
             commit=False,
         )
-    await db.commit()
+    if commit:
+        await db.commit()
 
 
 async def get_patient_hla_typing_entries(
