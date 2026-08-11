@@ -28,6 +28,7 @@ import HlaTypingEditor from "../components/domain/hla/HlaTypingEditor"
 import AntibodyProfileEditor from "../components/domain/antibody/AntibodyProfileEditor"
 import SensitizationEventEditor from "../components/domain/sensitization/SensitizationEventEditor"
 import ReportFilesCard from "../components/domain/reportFiles/ReportFilesCard"
+import { enumToForm } from "../utils/formValue"
 import { reportBadgeProps } from "../constants/reportStatus"
 
 async function loadEditorData(fetchFn) {
@@ -145,6 +146,8 @@ export default function PatientDetailPage() {
             bloodType: patient.blood_type,
             rhFactor: patient.rh_factor,
             nicNumber: patient.nic_number || "",
+            sex: enumToForm(patient.sex),
+            weightKg: patient.weight_kg ?? "",
           }}
           onSubmit={handleEditSubmit}
         />

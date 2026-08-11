@@ -25,10 +25,10 @@ function personLabel(person) {
  * check with the Photos step pre-filled from whatever those two records
  * already have archived in their Report files card (see ReportFilesCard.jsx)
  * — a doctor doesn't have to re-locate and re-upload a document that's
- * already on file. Purely a convenience prefill: the wizard itself, its OCR
- * extraction, and its "always creates a fresh patient/donor record on
- * submit" behavior are all untouched (see ReviewStep.jsx) — this page only
- * decides what goes into state.photos before the doctor ever lands on it.
+ * already on file. Both IDs are carried into the wizard alongside the
+ * prefilled photos (see WizardProvider's lazy-init) so SubjectStep opens
+ * with this exact pair pre-selected instead of asking the doctor to pick
+ * it again.
  */
 export default function NewCheckFromRecordsPage() {
   const navigate = useNavigate()
@@ -106,7 +106,7 @@ export default function NewCheckFromRecordsPage() {
           })
         }
       }
-      navigate("/checks/new/photos", { state: { prefillPhotos } })
+      navigate("/checks/new/subject", { state: { prefillPhotos, patientId, donorId } })
     } catch (err) {
       setStartError(err.message || "Couldn't load the archived documents. Please try again.")
       setIsStarting(false)

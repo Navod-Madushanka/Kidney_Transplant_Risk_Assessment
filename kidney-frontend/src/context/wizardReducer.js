@@ -13,6 +13,29 @@ function emptyHlaRows() {
 
 export function buildInitialWizardState() {
   return {
+    // Part E — which existing patient/donor this check runs against. The
+    // wizard no longer creates a fresh patient/donor on every submission
+    // (see api/compatibilityWizard.js); SubjectStep.jsx is where mode
+    // becomes "select" and patientId/donorId/patientRecord/donorRecord get
+    // set, either from a doctor's own pick there or pre-supplied by
+    // NewCheckFromRecordsPage.jsx (see WizardProvider's lazy-init, same
+    // pattern as photos.prefillPhotos below). patientRecord/donorRecord
+    // hold a snapshot of each record's full_name/date_of_birth/blood_type/
+    // rh_factor/nic_number AS OF SELECTION TIME -- used by DetailsStep to
+    // detect an OCR read that disagrees with the linked record's
+    // (immutable) blood type, so that comparison isn't fooled by
+    // patient_details/donor_details having since been overwritten by OCR
+    // itself. readiness is the last GET /compatibility/readiness response
+    // for this pair.
+    subject: {
+      mode: "select",
+      patientId: null,
+      donorId: null,
+      patientRecord: null,
+      donorRecord: null,
+      readiness: null,
+    },
+
     // Phase 3 — raw uploads, keyed by what they contain rather than by
     // "patient"/"donor" position alone, since a mislabeled photo is a real
     // clinical risk. Values are File objects (or null) held only in memory;
@@ -128,6 +151,9 @@ export function buildInitialWizardState() {
 }
 
 export const WIZARD_ACTIONS = {
+  SET_SUBJECT: "SET_SUBJECT",
+  SET_READINESS: "SET_READINESS",
+  SET_LINKED_RECORDS: "SET_LINKED_RECORDS",
   SET_PHOTO: "SET_PHOTO",
   SET_PATIENT_DETAILS: "SET_PATIENT_DETAILS",
   SET_DONOR_DETAILS: "SET_DONOR_DETAILS",
@@ -152,6 +178,28 @@ function updateHlaRow(rows, locus, patch) {
 
 export function wizardReducer(state, action) {
   switch (action.type) {
+    case WIZARD_ACTIONS.SET_SUBJECT:
+      return {
+        ...state,
+        subject: { ...state.subject, ...action.patch },
+      };
+
+    case WIZARD_ACTIONS.SET_READINESS:
+      return {
+        ...state,
+        subject: { ...state.subject, readiness: action.readiness },
+      };
+
+    case WIZARD_ACTIONS.SET_LINKED_RECORDS:
+      return {
+        ...state,
+        subject: {
+          ...state.subject,
+          patientRecord: action.patientRecord,
+          donorRecord: action.donorRecord,
+        },
+      };
+
     case WIZARD_ACTIONS.SET_PHOTO:
       return {
         ...state,

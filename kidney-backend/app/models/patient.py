@@ -2,11 +2,11 @@
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Numeric, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
-from app.models.enums import BloodType, RhFactor
+from app.models.enums import BloodType, RhFactor, Sex
 from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 
 
@@ -103,3 +103,20 @@ class Patient(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     details_verified: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
     )
+
+    # LKDPI inputs (added 2026-08-10) -- see app/reference_data/lkdpi_model.py
+    # for the model these feed (Massie et al., AJT 2016). Both nullable:
+    # lkdpi_service.py refuses to score rather than substitute a default
+    # when either is missing, same contract as donor_risk_service.py.
+    # `sex` reuses the same Sex enum donors already use for the Grams model
+    # -- LKDPI's "donor and recipient both male" term needs the recipient's
+    # side of that comparison, which nothing on Patient captured before.
+    sex: Mapped[Sex | None] = mapped_column(
+        Enum(
+            Sex,
+            name="sex_enum",
+            values_callable=lambda enum_class: [member.value for member in enum_class],
+        ),
+        nullable=True,
+    )
+    weight_kg: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)

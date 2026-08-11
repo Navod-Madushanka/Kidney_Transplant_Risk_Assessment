@@ -7,8 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.dependencies import get_current_user
 from app.db.session import get_db
 from app.models.doctor import Doctor
+from app.schemas.compatibility_readiness import CompatibilityReadinessResponse
 from app.schemas.match_report import CompatibilityCheckRequest, MatchReportResponse
 from app.services.audit_service import create_audit_log
+from app.services.compatibility_precondition_service import (
+    build_compatibility_readiness,
+    unverified_data_reasons,
+)
 from app.services.donor_service import get_donor_for_compatibility_check
 from app.services.match_pipeline import CrossmatchInputData, run_match_pipeline
 from app.services.match_report_service import (
@@ -49,17 +54,7 @@ async def check_compatibility(
     # run_match_pipeline/create_match_report ever run, so an unverified
     # check never produces a MatchReport row at all -- this isn't a clinical
     # result to record, it's a request that shouldn't have been made yet.
-    unverified_reasons = []
-    if not patient.details_verified:
-        unverified_reasons.append("the patient's demographic details (name/DOB/blood type)")
-    if not donor.details_verified:
-        unverified_reasons.append("the donor's demographic details (name/DOB/blood type)")
-    if not patient.hla_typing_verified:
-        unverified_reasons.append("the patient's HLA typing")
-    if not donor.hla_typing_verified:
-        unverified_reasons.append("the donor's HLA typing")
-    if not patient.antibody_profile_verified:
-        unverified_reasons.append("the patient's antibody/bead-specificity profile")
+    unverified_reasons = unverified_data_reasons(patient, donor)
     if unverified_reasons:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -116,6 +111,45 @@ async def check_compatibility(
     await db.commit()
 
     return MatchReportResponse.model_validate(report)
+
+
+@router.get("/readiness", response_model=CompatibilityReadinessResponse)
+async def get_compatibility_readiness_endpoint(
+    patient_id: uuid.UUID,
+    donor_id: uuid.UUID,
+    current_doctor: Doctor = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Preview of what's missing before POST /compatibility/check would run
+    on this specific pair -- resolves both records with the exact same
+    functions that endpoint uses, so the two can never disagree about
+    visibility (a donor this doctor can't see 404s here exactly like it
+    would at submission time). See compatibility_precondition_service.py's
+    module docstring for the blocking vs. score-gap distinction."""
+    patient = await get_patient_by_id_for_doctor(db, patient_id, current_doctor.id)
+    if patient is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Patient not found",
+        )
+
+    donor = await get_donor_for_compatibility_check(db, donor_id, current_doctor.id)
+    if donor is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Donor not found",
+        )
+
+    readiness = await build_compatibility_readiness(db, patient, donor)
+    return CompatibilityReadinessResponse(
+        can_run=readiness.can_run,
+        blocking=[gap.__dict__ for gap in readiness.blocking],
+        lkdpi_gaps=[gap.__dict__ for gap in readiness.lkdpi_gaps],
+        donor_risk_projection_gaps=[gap.__dict__ for gap in readiness.donor_risk_projection_gaps],
+        donor_risk_contraindication_gaps=[
+            gap.__dict__ for gap in readiness.donor_risk_contraindication_gaps
+        ],
+    )
 
 
 @router.get("/reports/{report_id}", response_model=MatchReportResponse)

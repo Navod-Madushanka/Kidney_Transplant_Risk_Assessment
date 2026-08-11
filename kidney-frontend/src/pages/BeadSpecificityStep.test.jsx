@@ -47,7 +47,7 @@ describe("BeadSpecificityStep", () => {
     await user.click(screen.getByRole("button", { name: /continue/i }))
 
     expect(wizardValue.actions.setBeadSpecificity).toHaveBeenCalledWith([])
-    expect(wizardValue.actions.unlockStep).toHaveBeenCalledWith(5)
+    expect(wizardValue.actions.unlockStep).toHaveBeenCalledWith(6)
     expect(await screen.findByText("Review Step")).toBeInTheDocument()
   })
 
@@ -88,7 +88,7 @@ describe("BeadSpecificityStep", () => {
     expect(wizardValue.actions.setBeadSpecificity).toHaveBeenCalledWith([
       { antigen: "DQ7", mfi: 3500 },
     ])
-    expect(wizardValue.actions.unlockStep).toHaveBeenCalledWith(5)
+    expect(wizardValue.actions.unlockStep).toHaveBeenCalledWith(6)
     expect(await screen.findByText("Review Step")).toBeInTheDocument()
   })
 

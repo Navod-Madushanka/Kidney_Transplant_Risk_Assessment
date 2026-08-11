@@ -144,7 +144,7 @@ export default function BeadSpecificityStep() {
     if (needsVerification) return
 
     actions.setBeadSpecificity(populatedRows)
-    actions.unlockStep(5)
+    actions.unlockStep(6)
     navigate("/checks/new/review")
   }
 

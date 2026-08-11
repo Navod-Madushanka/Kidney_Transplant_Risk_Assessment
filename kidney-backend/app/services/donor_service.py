@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.donor import Donor
 from app.models.enums import DonorStatus
 from app.schemas.donor import DonorCreate, DonorUpdate
+from app.services.hla_typing_service import _resolve_verified
 
 
 async def create_donor(
@@ -34,6 +35,8 @@ async def create_donor(
         urine_acr=payload.urine_acr,
         is_on_antihypertensive_medication=payload.is_on_antihypertensive_medication,
         family_history_kidney_disease=payload.family_history_kidney_disease,
+        weight_kg=payload.weight_kg,
+        is_biologically_related=payload.is_biologically_related,
         intended_recipient_id=payload.intended_recipient_id,
         details_verified=True if payload.details_verified is None else payload.details_verified,
     )
@@ -178,7 +181,10 @@ async def update_donor_details(
     donor.urine_acr = payload.urine_acr
     donor.is_on_antihypertensive_medication = payload.is_on_antihypertensive_medication
     donor.family_history_kidney_disease = payload.family_history_kidney_disease
+    donor.weight_kg = payload.weight_kg
+    donor.is_biologically_related = payload.is_biologically_related
     donor.intended_recipient_id = payload.intended_recipient_id
+    donor.details_verified = _resolve_verified(payload.details_verified, donor.details_verified)
     await db.flush()
     if commit:
         await db.commit()

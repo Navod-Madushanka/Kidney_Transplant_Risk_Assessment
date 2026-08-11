@@ -49,6 +49,7 @@ from app.services.report_file_service import (
 from app.services.sensitization_event_service import (
     create_sensitization_events,
     get_sensitization_events_for_patient,
+    replace_sensitization_events,
 )
 
 router = APIRouter(prefix="/patients", tags=["patients"])
@@ -270,6 +271,30 @@ async def create_sensitization_events_endpoint(
     await _ensure_patient_exists(db, patient_id, current_doctor.id)
 
     events = await create_sensitization_events(db, patient_id, entries)
+    return [SensitizationEventResponse.model_validate(event) for event in events]
+
+
+@router.put("/{patient_id}/sensitization-events", response_model=list[SensitizationEventResponse])
+async def replace_sensitization_events_endpoint(
+    patient_id: uuid.UUID,
+    entries: list[SensitizationEventEntry],
+    current_doctor: Doctor = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Replace a patient's full sensitization-event set in one call --
+    delete-then-insert, mirroring PUT .../hla-typings and PUT
+    .../antibody-profiles. The compatibility-check wizard's sensitization
+    step is three booleans (an inherently complete statement of "as of
+    right now"), so this is the correct verb for it: calling the additive
+    POST below against a re-run check on the same linked patient would
+    re-add the same events and double-count them in
+    calculate_sensitization_score. POST stays as-is for the patient detail
+    page's genuinely additive "add one event" flow."""
+    await _ensure_patient_exists(db, patient_id, current_doctor.id)
+
+    events = await replace_sensitization_events(
+        db, patient_id, entries, doctor_id=current_doctor.id
+    )
     return [SensitizationEventResponse.model_validate(event) for event in events]
 
 

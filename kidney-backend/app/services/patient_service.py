@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.patient import Patient
 from app.schemas.patient import PatientCreate, PatientUpdate
+from app.services.hla_typing_service import _resolve_verified
 
 
 async def create_patient(
@@ -21,6 +22,8 @@ async def create_patient(
         blood_type=payload.blood_type,
         rh_factor=payload.rh_factor,
         nic_number=payload.nic_number,
+        sex=payload.sex,
+        weight_kg=payload.weight_kg,
         details_verified=True if payload.details_verified is None else payload.details_verified,
     )
     db.add(patient)
@@ -77,6 +80,11 @@ async def update_patient_details(
     patient.full_name = payload.full_name
     patient.date_of_birth = payload.date_of_birth
     patient.nic_number = payload.nic_number
+    patient.sex = payload.sex
+    patient.weight_kg = payload.weight_kg
+    patient.details_verified = _resolve_verified(
+        payload.details_verified, patient.details_verified
+    )
     await db.flush()
     if commit:
         await db.commit()

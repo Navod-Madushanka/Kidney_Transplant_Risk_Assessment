@@ -44,6 +44,8 @@ describe("PatientForm", () => {
       nic_number: null,
       blood_type: "O",
       rh_factor: "+",
+      sex: null,
+      weight_kg: null,
     })
   })
 
@@ -75,6 +77,8 @@ describe("PatientForm", () => {
       full_name: "Alice Renamed",
       date_of_birth: "1985-06-15",
       nic_number: "198506150000",
+      sex: null,
+      weight_kg: null,
     })
   })
 

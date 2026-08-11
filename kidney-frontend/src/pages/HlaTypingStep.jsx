@@ -98,7 +98,7 @@ export default function HlaTypingStep() {
 
     if (hasErrors || needsVerification) return
 
-    actions.unlockStep(3)
+    actions.unlockStep(4)
     navigate("/checks/new/sensitization")
   }
 

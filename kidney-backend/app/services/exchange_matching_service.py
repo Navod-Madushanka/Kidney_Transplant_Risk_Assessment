@@ -152,6 +152,26 @@ def weight_max_quality(cycle: Cycle, index: GraphIndex) -> float:
     )
 
 
+def weight_max_lkdpi_quality(cycle: Cycle, index: GraphIndex) -> float:
+    """Rewards a lower LKDPI (see app/services/lkdpi_service.py) per edge --
+    Sigma(100 - LKDPI), floored at 0 per edge so an unusually high LKDPI on
+    one edge can't push the whole cycle's weight negative and make "no
+    cycle" look better than "one bad-but-real cycle". An edge whose LKDPI
+    couldn't be computed (missing donor/recipient inputs -- weight, sex,
+    biological relationship, etc.) contributes 0, the same treatment a
+    maximally-poor LKDPI would get once floored -- this policy simply has
+    no opinion on an edge it can't score, rather than guessing one.
+    """
+    edges = _cycle_edges(cycle, index.edge_by_pair)
+    total = 0.0
+    for edge in edges:
+        lkdpi_result = edge.result.lkdpi_result
+        if lkdpi_result is None or lkdpi_result.score is None:
+            continue
+        total += max(0.0, 100.0 - lkdpi_result.score)
+    return total
+
+
 def cpra_fraction(patient_id: uuid.UUID, index: GraphIndex) -> float:
     """Memoized per patient_id via index._cpra_fraction_cache (review #2
     bug 19): calculate_cpra does a full population-frequency combination
@@ -217,6 +237,7 @@ WEIGHT_POLICIES: dict[str, Callable[[Cycle, GraphIndex], float]] = {
     "max_transplants": weight_max_transplants,
     "max_quality": weight_max_quality,
     "equity_weighted": weight_equity,
+    "max_lkdpi_quality": weight_max_lkdpi_quality,
 }
 
 

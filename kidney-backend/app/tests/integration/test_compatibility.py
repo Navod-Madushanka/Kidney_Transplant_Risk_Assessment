@@ -84,6 +84,11 @@ async def test_abo_incompatible_pair_halts_before_hla_scoring(auth_client: Async
     assert body["abo_result"]["is_compatible"] is False
     assert body["sensitization_result"] is None
     assert body["hla_scoring_result"] is None
+    assert body["outcome"]["verdict"] == "not_compatible"
+    assert body["outcome"]["risk_level"] is None
+    assert body["outcome"]["determined_at_step"] == 1
+    assert "O" in body["outcome"]["detail"]
+    assert "A" in body["outcome"]["detail"]
 
 
 async def test_full_mismatch_halts_step_3(auth_client: AsyncClient):
@@ -125,6 +130,8 @@ async def test_full_mismatch_halts_step_3(auth_client: AsyncClient):
     assert body["mismatch_result"]["is_halted"] is True
     assert body["pra_bucket_result"] is None
     assert body["final_risk_level"] is None
+    assert body["outcome"]["verdict"] == "not_compatible"
+    assert body["outcome"]["determined_at_step"] == 3
 
 
 async def test_dsa_match_halts_before_hla_scoring(auth_client: AsyncClient):
@@ -169,6 +176,8 @@ async def test_dsa_match_halts_before_hla_scoring(auth_client: AsyncClient):
     assert body["overall_status"] == "halted_dsa_trigger"
     assert body["dsa_result"]["is_halted"] is True
     assert body["hla_scoring_result"] is None
+    assert body["outcome"]["verdict"] == "not_compatible"
+    assert body["outcome"]["determined_at_step"] == 5
 
 
 async def test_dsa_match_on_drb1_locus_halts(auth_client: AsyncClient):
@@ -352,6 +361,10 @@ async def test_moderate_dsa_does_not_halt_but_flags_for_review(auth_client: Asyn
     assert body["dsa_result"]["requires_review"] is True
     assert body["dsa_result"]["matches"][0]["antigen"] == "B40"
     assert body["dsa_result"]["matches"][0]["severity"] == "moderate"
+    # Row 5: completed with a review flag present -> proceed_with_caution,
+    # not compatible outright, even though every gate technically passed.
+    assert body["outcome"]["verdict"] == "proceed_with_caution"
+    assert any(flag["code"] == "dsa_requires_review" for flag in body["outcome"]["review_flags"])
 
 
 async def test_full_pipeline_run_reaches_hla_scoring_and_risk_tier(auth_client: AsyncClient):
@@ -408,6 +421,116 @@ async def test_full_pipeline_run_reaches_hla_scoring_and_risk_tier(auth_client: 
     assert body["pra_bucket_result"]["percent"] == 0.0
     assert body["final_risk_level"] == "High-Average Risk"
 
+    # Row 6: completed, no review flags -> compatible, carrying the same
+    # final_risk_level rather than a separate numeric score.
+    assert body["outcome"]["verdict"] == "compatible"
+    assert body["outcome"]["risk_level"] == "High-Average Risk"
+    assert body["outcome"]["review_flags"] == []
+    assert body["outcome"]["action_required"] is None
+
+
+async def test_lkdpi_inputs_never_affect_verdict_or_risk_level(auth_client: AsyncClient):
+    # Part E6: LKDPI (app/services/lkdpi_service.py) must never influence
+    # the verdict, final_risk_level, or review flags -- it's a comparative
+    # index (external C-statistic 0.55) sitting alongside the verdict, not
+    # feeding into it. Two otherwise-identical pairs -- same blood types,
+    # same HLA typing, same negative crossmatch -- one with every LKDPI
+    # input populated and one with all of them left NULL, must produce
+    # byte-identical overall_status/outcome/final_risk_level and differ
+    # ONLY in lkdpi_result. Without this test, "keep them separate" is just
+    # a docstring.
+    patient_with = await create_patient(auth_client, blood_type="AB", sex="female", weight_kg=60)
+    donor_with = await create_donor(
+        auth_client,
+        blood_type="O",
+        sex="male",
+        race="white",
+        smoking_status="never",
+        egfr=95,
+        bmi=24.5,
+        systolic_bp=118,
+        weight_kg=78,
+        is_biologically_related=True,
+    )
+    patient_without = await create_patient(auth_client, blood_type="AB")
+    donor_without = await create_donor(auth_client, blood_type="O")
+
+    for patient_id, donor_id in (
+        (patient_with["id"], donor_with["id"]),
+        (patient_without["id"], donor_without["id"]),
+    ):
+        await auth_client.put(f"/patients/{patient_id}/hla-typings", json=COMPATIBLE_PATIENT_HLA)
+        await auth_client.put(f"/donors/{donor_id}/hla-typings", json=COMPATIBLE_DONOR_HLA)
+
+    response_with = await auth_client.post(
+        "/compatibility/check",
+        json={
+            "patient_id": patient_with["id"],
+            "donor_id": donor_with["id"],
+            "crossmatch": NEGATIVE_CROSSMATCH,
+        },
+    )
+    response_without = await auth_client.post(
+        "/compatibility/check",
+        json={
+            "patient_id": patient_without["id"],
+            "donor_id": donor_without["id"],
+            "crossmatch": NEGATIVE_CROSSMATCH,
+        },
+    )
+
+    assert response_with.status_code == 201
+    assert response_without.status_code == 201
+    body_with = response_with.json()
+    body_without = response_without.json()
+
+    assert body_with["overall_status"] == body_without["overall_status"] == "completed"
+    assert body_with["final_risk_level"] == body_without["final_risk_level"]
+    assert body_with["outcome"]["verdict"] == body_without["outcome"]["verdict"]
+    assert body_with["outcome"]["risk_level"] == body_without["outcome"]["risk_level"]
+    assert body_with["outcome"]["review_flags"] == body_without["outcome"]["review_flags"]
+    assert body_with["outcome"]["action_required"] == body_without["outcome"]["action_required"]
+
+    # The only field allowed to differ between the two runs.
+    assert body_with["lkdpi_result"]["has_sufficient_data"] is True
+    assert body_without["lkdpi_result"]["has_sufficient_data"] is False
+    assert body_with["lkdpi_result"] != body_without["lkdpi_result"]
+
+
+async def test_completed_check_with_incomplete_typing_is_cannot_assess(auth_client: AsyncClient):
+    # Row 3 of the outcome decision table: a completed check whose mismatch
+    # count was partly worst-cased due to missing typing must be
+    # cannot_assess, and action_required must name the exact missing locus
+    # from mismatch_result.missing_inputs rather than a generic message.
+    patient = await create_patient(auth_client, blood_type="AB")
+    donor = await create_donor(auth_client, blood_type="O")
+
+    await auth_client.put(f"/patients/{patient['id']}/hla-typings", json=COMPATIBLE_PATIENT_HLA)
+    # Donor typing omits DRB1 entirely -- Step 3 worst-cases that locus
+    # instead of treating the missing side as a match.
+    donor_typing_missing_drb1 = [
+        row for row in COMPATIBLE_DONOR_HLA if row["locus"] != "DRB1"
+    ]
+    await auth_client.put(f"/donors/{donor['id']}/hla-typings", json=donor_typing_missing_drb1)
+
+    response = await auth_client.post(
+        "/compatibility/check",
+        json={
+            "patient_id": patient["id"],
+            "donor_id": donor["id"],
+            "crossmatch": NEGATIVE_CROSSMATCH,
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["overall_status"] == "completed"
+    assert body["mismatch_result"]["data_completeness"] is False
+    assert body["mismatch_result"]["missing_inputs"] == ["donor DRB1 typing"]
+    assert body["outcome"]["verdict"] == "cannot_assess"
+    assert body["outcome"]["risk_level"] is None
+    assert "donor DRB1 typing" in body["outcome"]["action_required"]
+
 
 async def test_positive_crossmatch_halts_after_dsa(auth_client: AsyncClient):
     # Same compatible pair as the full-pipeline test above (passes Steps
@@ -439,6 +562,8 @@ async def test_positive_crossmatch_halts_after_dsa(auth_client: AsyncClient):
     # But Step 7 never ran.
     assert body["final_risk_level"] is None
     assert body["hla_scoring_result"] is None
+    assert body["outcome"]["verdict"] == "not_compatible"
+    assert body["outcome"]["determined_at_step"] == 6
 
 
 async def test_check_without_crossmatch_stops_at_pending(auth_client: AsyncClient):
@@ -462,6 +587,8 @@ async def test_check_without_crossmatch_stops_at_pending(auth_client: AsyncClien
     assert body["crossmatch_result"] is None
     assert body["dsa_result"] is not None
     assert body["final_risk_level"] is None
+    assert body["outcome"]["verdict"] == "cannot_assess"
+    assert body["outcome"]["determined_at_step"] == 6
 
 
 # ---------------------------------------------------------------------

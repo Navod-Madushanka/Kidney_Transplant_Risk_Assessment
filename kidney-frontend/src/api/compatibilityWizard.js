@@ -1,19 +1,25 @@
 // src/api/compatibilityWizard.js
 import { apiPost } from "./client"
 import {
-  createPatient,
+  updatePatient,
   replacePatientHlaTypings,
   replacePatientAntibodyProfiles,
-  createSensitizationEvents,
+  replacePatientSensitizationEvents,
 } from "./patients"
-import { createDonor, replaceDonorHlaTypings } from "./donors"
+import { updateDonor, replaceDonorHlaTypings } from "./donors"
 
 // Runs the full wizard submission as a sequence of backend calls. Resumable:
 // pass back the `progress` object from a previous failed attempt (thrown
 // errors carry it as `error.progress`) and any step already marked done
-// will be skipped rather than re-run — critical since createPatient/
-// createDonor aren't idempotent, and re-running them on retry would create
-// duplicate records for the same person.
+// will be skipped rather than re-run.
+//
+// Part E: this no longer creates a patient/donor on submit. SubjectStep.jsx
+// is where a doctor picks the two existing records this check runs
+// against (wizardState.subject.patientId/donorId) — every write below
+// updates those records instead, so a doctor can re-check the same real
+// pair without hitting the NIC-uniqueness 409 a fresh create used to throw
+// on a second check, and without silently forking a duplicate record for a
+// person who already exists.
 //
 // onStepComplete(progress) fires after every successful step so the caller
 // can persist progress into component state as it goes (not just at the
@@ -43,18 +49,34 @@ export async function submitCompatibilityCheck(
       ? wizardState.ocr_verified.details
       : undefined
 
-    if (!next.patientId) {
-      const patient = await createPatient(
-        buildPersonPayload(wizardState.patient_details, detailsOcrVerified)
+    // SubjectStep.jsx requires both to be set before Continue enables, so
+    // these are always present by the time a submission starts -- not
+    // re-derived or defaulted here.
+    next.patientId ??= wizardState.subject.patientId
+    next.donorId ??= wizardState.subject.donorId
+
+    if (!next.patientDetailsDone) {
+      await updatePatient(
+        next.patientId,
+        buildPatientUpdatePayload(
+          wizardState.patient_details,
+          wizardState.subject.patientRecord,
+          detailsOcrVerified
+        )
       )
-      await completeStep({ patientId: patient.id })
+      await completeStep({ patientDetailsDone: true })
     }
 
-    if (!next.donorId) {
-      const donor = await createDonor(
-        buildPersonPayload(wizardState.donor_details, detailsOcrVerified)
+    if (!next.donorDetailsDone) {
+      await updateDonor(
+        next.donorId,
+        buildDonorUpdatePayload(
+          wizardState.donor_details,
+          wizardState.subject.donorRecord,
+          detailsOcrVerified
+        )
       )
-      await completeStep({ donorId: donor.id })
+      await completeStep({ donorDetailsDone: true })
     }
 
     // undefined (not this document's OCR extraction status) vs an explicit
@@ -99,9 +121,13 @@ export async function submitCompatibilityCheck(
       wizardState.sensitization_dates
     )
     if (!next.sensitizationDone) {
-      if (sensitizationEntries.length > 0) {
-        await createSensitizationEvents(next.patientId, sensitizationEntries)
-      }
+      // Replace, not append (see the matching backend endpoint's
+      // docstring) -- the wizard's sensitization step is three booleans, a
+      // complete statement of "as of right now," and this patient may
+      // already have events on file from an earlier check against this
+      // same linked record. Sent even when empty, to correctly clear any
+      // previously-recorded events this run no longer confirms.
+      await replacePatientSensitizationEvents(next.patientId, sensitizationEntries)
       await completeStep({ sensitizationDone: true })
     }
 
@@ -142,13 +168,48 @@ function wasAnyDocumentOcrExtracted(wizardState) {
   )
 }
 
-function buildPersonPayload(details, detailsVerified) {
+// PatientUpdate/DonorUpdate are full-replace schemas (every clinical field
+// has a default of None, not "leave unchanged") -- omitting a field here
+// would silently wipe it, including exactly the LKDPI/donor-risk inputs
+// this whole part exists to preserve across re-checks. `record` is the
+// linked patient/donor snapshot SubjectStep.jsx fetched and stored on
+// wizardState.subject.{patient,donor}Record; every field below except
+// full_name/date_of_birth/nic_number (which `details` — DetailsStep's own
+// state — owns) is carried through unchanged from it. blood_type/rh_factor
+// are never sent: both are permanent once set and absent from
+// PatientUpdate/DonorUpdate entirely (see E3.6's blood-type conflict guard
+// on DetailsStep for what happens when OCR disagrees with them).
+function buildPatientUpdatePayload(details, record, detailsVerified) {
   return {
     full_name: details.full_name.trim(),
     date_of_birth: details.date_of_birth,
-    blood_type: details.blood_type,
-    rh_factor: details.rh_factor,
     nic_number: details.nic_number.trim() || null,
+    sex: record.sex,
+    weight_kg: record.weight_kg,
+    details_verified: detailsVerified,
+  }
+}
+
+function buildDonorUpdatePayload(details, record, detailsVerified) {
+  return {
+    full_name: details.full_name.trim(),
+    date_of_birth: details.date_of_birth,
+    nic_number: details.nic_number.trim() || null,
+    egfr: record.egfr,
+    systolic_bp: record.systolic_bp,
+    diastolic_bp: record.diastolic_bp,
+    bmi: record.bmi,
+    has_diabetes: record.has_diabetes,
+    sex: record.sex,
+    race: record.race,
+    smoking_status: record.smoking_status,
+    creatinine: record.creatinine,
+    urine_acr: record.urine_acr,
+    is_on_antihypertensive_medication: record.is_on_antihypertensive_medication,
+    family_history_kidney_disease: record.family_history_kidney_disease,
+    weight_kg: record.weight_kg,
+    is_biologically_related: record.is_biologically_related,
+    intended_recipient_id: record.intended_recipient_id,
     details_verified: detailsVerified,
   }
 }

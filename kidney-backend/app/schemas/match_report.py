@@ -45,6 +45,8 @@ class MatchReportResponse(BaseModel):
     hla_scoring_result: Optional[dict] = None
     cpra_result: Optional[dict] = None
     final_risk_level: Optional[str] = None
+    outcome: Optional[dict] = None
+    lkdpi_result: Optional[dict] = None
     created_at: datetime
     updated_at: datetime
 

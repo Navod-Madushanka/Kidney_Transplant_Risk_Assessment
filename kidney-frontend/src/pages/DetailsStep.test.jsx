@@ -30,11 +30,19 @@ function fullPersonDetails() {
   }
 }
 
-function makeWizardValue({ extraction, ocrVerified } = {}) {
+function makeWizardValue({
+  extraction,
+  ocrVerified,
+  patientDetails,
+  donorDetails,
+  patientRecord = null,
+  donorRecord = null,
+} = {}) {
   return {
     state: {
-      patient_details: fullPersonDetails(),
-      donor_details: fullPersonDetails(),
+      subject: { patientRecord, donorRecord },
+      patient_details: patientDetails ?? fullPersonDetails(),
+      donor_details: donorDetails ?? fullPersonDetails(),
       extraction: extraction ?? { documents: {} },
       ocr_verified: { details: ocrVerified ?? false, hla_typing: false, bead_specificity: false },
     },
@@ -122,5 +130,61 @@ describe("DetailsStep — OCR verification gate", () => {
     expect(
       screen.getByText(/I have reviewed these names, dates of birth, and blood groups/)
     ).toBeInTheDocument()
+  })
+})
+
+describe("DetailsStep — E3.6 blood-type conflict against the linked record", () => {
+  it("blocks Continue when the document's blood type disagrees with the linked patient record", async () => {
+    const user = userEvent.setup()
+    const wizardValue = makeWizardValue({
+      patientDetails: { ...fullPersonDetails(), blood_type: "B", rh_factor: "+" },
+      patientRecord: { blood_type: "A", rh_factor: "+" },
+    })
+    renderStep(wizardValue)
+
+    await user.click(screen.getByRole("button", { name: /continue/i }))
+
+    expect(await screen.findByText(/reads blood group B\+/)).toBeInTheDocument()
+    expect(screen.getByText(/record\s*says A\+/)).toBeInTheDocument()
+    expect(wizardValue.actions.unlockStep).not.toHaveBeenCalled()
+  })
+
+  it("blocks Continue when the donor's rh factor disagrees with the linked donor record", async () => {
+    const user = userEvent.setup()
+    const wizardValue = makeWizardValue({
+      donorDetails: { ...fullPersonDetails(), blood_type: "O", rh_factor: "+" },
+      donorRecord: { blood_type: "O", rh_factor: "-" },
+    })
+    renderStep(wizardValue)
+
+    await user.click(screen.getByRole("button", { name: /continue/i }))
+
+    expect(await screen.findByText(/reads blood group O\+/)).toBeInTheDocument()
+    expect(wizardValue.actions.unlockStep).not.toHaveBeenCalled()
+  })
+
+  it("allows Continue when details match the linked record", async () => {
+    const user = userEvent.setup()
+    const wizardValue = makeWizardValue({
+      patientDetails: { ...fullPersonDetails(), blood_type: "O", rh_factor: "+" },
+      patientRecord: { blood_type: "O", rh_factor: "+" },
+      donorDetails: { ...fullPersonDetails(), blood_type: "A", rh_factor: "-" },
+      donorRecord: { blood_type: "A", rh_factor: "-" },
+    })
+    renderStep(wizardValue)
+
+    await user.click(screen.getByRole("button", { name: /continue/i }))
+
+    expect(await screen.findByText("HLA Step")).toBeInTheDocument()
+  })
+
+  it("has nothing to compare against when there's no linked record yet", async () => {
+    const user = userEvent.setup()
+    const wizardValue = makeWizardValue({ patientRecord: null, donorRecord: null })
+    renderStep(wizardValue)
+
+    await user.click(screen.getByRole("button", { name: /continue/i }))
+
+    expect(await screen.findByText("HLA Step")).toBeInTheDocument()
   })
 })

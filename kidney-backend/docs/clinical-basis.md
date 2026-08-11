@@ -121,6 +121,31 @@ never a silent third category) and `app/services/donor_risk_service.py`'s docstr
 used, including the `values_outside_model_range` extrapolation flag for eGFR/BMI/ACR/SBP values
 outside the model's own validated input range.
 
+## 7. LKDPI — Living Kidney Donor Profile Index (`app/reference_data/lkdpi_model.py`)
+
+**Externally published, independently verifiable — no changes needed here, referenced for
+completeness.** Source: Massie ME, Leanza J, Fahmy LM, et al. "A Risk Index for Living Donor
+Kidney Transplantation." Am J Transplant 2016;16(7):2077-2084. doi:10.1111/ajt.13709. All 13
+coefficients in that module were checked directly against the paper's own full-text formula
+(PMC6114098, the NIH PubMed Central mirror) on 2026-08-10, not reconstructed from a secondary
+summary. See that module's docstring for the full coefficient table, the model's near-chance
+external discrimination (C-statistic 0.55 in both the European and Canadian validation cohorts),
+and the absence of any South Asian validation.
+
+The four display bands below the score, however, are **this project's own convention, not
+clinical policy** — Massie 2016 reports a median LKDPI of 12.8 (IQR -0.8 to 27.2) in the US
+derivation cohort but does not itself define risk bands:
+
+| Band | LKDPI | Meaning |
+|---|---|---|
+| Excellent | < 0 | Better than any deceased-donor kidney (~24% of US living donors) |
+| Good | 0 – 20 | Better than roughly 80% of deceased-donor kidneys |
+| Moderate | 20 – 40 | Around the median deceased donor |
+| Marginal | ≥ 40 | Worse than the median deceased donor (~4% of US living donors scored above 50) |
+
+If the doctors this app serves want different band boundaries, theirs win — update
+`LKDPI_BANDS` in `lkdpi_model.py` and this table together.
+
 ---
 
 ## What to do if you're revisiting these numbers
@@ -131,5 +156,7 @@ outside the model's own validated input range.
 - **§3, §4 (mismatch buckets, DSA bands)**: these are this codebase's own design decisions
   (bucket boundaries, banding structure) applied to a simpler, locally-justified rule set — safe
   to revise with a clear write-up of the new reasoning, same as any other application logic.
-- **§5, §6 (cPRA frequencies, donor risk model)**: re-derive from the cited paper directly, never
-  from this repo's transcription of it, if the numbers are ever in question.
+- **§5, §6 (cPRA frequencies, donor risk model), §7 (LKDPI coefficients)**: re-derive from the
+  cited paper directly, never from this repo's transcription of it, if the numbers are ever in
+  question. The LKDPI *bands* (unlike its coefficients) are a project convention and can be
+  revised by the doctors this app serves without re-checking the paper.

@@ -67,8 +67,18 @@ gate sequence itself. Because Step 3 only requires A/B/DRB1 (not all 9
 loci), it's now possible to reach "completed" without a full enough panel
 for the legacy score; that computation is wrapped defensively so an
 incomplete panel degrades to hla_scoring_result=None instead of a 500.
+
+LKDPI (app/reference_data/lkdpi_model.py, app/services/lkdpi_service.py) is
+computed once the pipeline reaches either "pending_crossmatch" or
+"completed" — i.e. whenever the verdict this report will get is NOT
+not_compatible (see report_outcome.py's HALTED_STATUSES, which is exactly
+the set of overall_status values that return before this point). There is
+no point scoring a transplant that cannot happen, so every halted_* return
+above carries lkdpi_result=None. Missing donor/patient inputs (weight, sex,
+biological relationship, etc.) make lkdpi_service.py refuse rather than
+guess, same as every other missing-data path in this module.
 """
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -82,6 +92,7 @@ from app.reference_data.hla_antigen_frequencies import (
     HLA_FREQUENCY_TABLE_SAMPLE_SIZE,
     HLA_FREQUENCY_TABLE_VERSION,
 )
+from app.reference_data.report_outcome import ReportOutcome
 from app.reference_data.risk_classification import classify_risk
 from app.services.abo_service import ABOResult, check_abo_compatibility
 from app.services.antibody_profile_service import (
@@ -96,6 +107,8 @@ from app.services.hla_mismatch_service import (
     MismatchResult,
     calculate_mismatch_result,
 )
+from app.services.lkdpi_input_adapter import lkdpi_input_from_records
+from app.services.lkdpi_service import LKDPIResult, calculate_lkdpi
 from app.services.hla_scoring_service import HLAScoringResult, calculate_hla_risk_score
 from app.services.hla_typing_service import (
     build_partial_typing_dict,
@@ -107,6 +120,7 @@ from app.services.hla_typing_service import (
     normalize_antibody_antigen,
 )
 from app.services.pra_bucket_service import PRABucketResult, calculate_pra_bucket
+from app.services.report_outcome_service import build_report_outcome
 from app.services.risk_tier_service import get_risk_tier
 from app.services.sensitization_event_service import get_patient_sensitization_event_types
 from app.services.sensitization_service import SensitizationResult, calculate_sensitization_score
@@ -138,6 +152,8 @@ class MatchPipelineResult:
     risk_tier: Optional[str] = None
     cpra_result: Optional[CPRAResult] = None
     final_risk_level: Optional[str] = None
+    outcome: Optional[ReportOutcome] = None
+    lkdpi_result: Optional[LKDPIResult] = None
 
 
 async def run_match_pipeline(
@@ -152,9 +168,14 @@ async def run_match_pipeline(
     )
 
     if not abo_result.is_compatible:
+        overall_status = "halted_abo_fail"
         return MatchPipelineResult(
-            overall_status="halted_abo_fail",
+            overall_status=overall_status,
             abo_result=abo_result,
+            outcome=build_report_outcome(
+                overall_status=overall_status,
+                abo_result=asdict(abo_result),
+            ),
         )
 
     # --- Step 2: Sensitization (informational only — see module docstring) ---
@@ -171,11 +192,17 @@ async def run_match_pipeline(
     mismatch_result = calculate_mismatch_result(patient_mismatch_typing, donor_mismatch_typing)
 
     if mismatch_result.is_halted:
+        overall_status = "halted_mismatch_reject"
         return MatchPipelineResult(
-            overall_status="halted_mismatch_reject",
+            overall_status=overall_status,
             abo_result=abo_result,
             sensitization_result=sensitization_result,
             mismatch_result=mismatch_result,
+            outcome=build_report_outcome(
+                overall_status=overall_status,
+                abo_result=asdict(abo_result),
+                mismatch_result=asdict(mismatch_result),
+            ),
         )
 
     # --- Step 4: PRA -----------------------------------------------------
@@ -226,14 +253,22 @@ async def run_match_pipeline(
     )
 
     if dsa_result.is_halted:
+        overall_status = "halted_dsa_trigger"
         return MatchPipelineResult(
-            overall_status="halted_dsa_trigger",
+            overall_status=overall_status,
             abo_result=abo_result,
             sensitization_result=sensitization_result,
             mismatch_result=mismatch_result,
             pra_bucket_result=pra_bucket_result,
             cpra_result=cpra_result,
             dsa_result=dsa_result,
+            outcome=build_report_outcome(
+                overall_status=overall_status,
+                abo_result=asdict(abo_result),
+                mismatch_result=asdict(mismatch_result),
+                pra_bucket_result=asdict(pra_bucket_result),
+                dsa_result=asdict(dsa_result),
+            ),
         )
 
     # --- Step 6: Crossmatch -------------------------------------------------
@@ -241,14 +276,27 @@ async def run_match_pipeline(
         # Every gate through Step 5 passed, but Step 6/7 can't run without a
         # submitted crossmatch result. Distinct status so callers don't
         # mistake this for a final "completed" result.
+        overall_status = "pending_crossmatch"
         return MatchPipelineResult(
-            overall_status="pending_crossmatch",
+            overall_status=overall_status,
             abo_result=abo_result,
             sensitization_result=sensitization_result,
             mismatch_result=mismatch_result,
             pra_bucket_result=pra_bucket_result,
             cpra_result=cpra_result,
             dsa_result=dsa_result,
+            outcome=build_report_outcome(
+                overall_status=overall_status,
+                abo_result=asdict(abo_result),
+                mismatch_result=asdict(mismatch_result),
+                pra_bucket_result=asdict(pra_bucket_result),
+                dsa_result=asdict(dsa_result),
+            ),
+            lkdpi_result=calculate_lkdpi(
+                lkdpi_input_from_records(
+                    donor, patient, mismatch_result, abo_incompatible=not abo_result.is_compatible
+                )
+            ),
         )
 
     crossmatch_result = check_crossmatch(
@@ -259,8 +307,9 @@ async def run_match_pipeline(
     )
 
     if crossmatch_result.is_halted:
+        overall_status = "halted_crossmatch_positive"
         return MatchPipelineResult(
-            overall_status="halted_crossmatch_positive",
+            overall_status=overall_status,
             abo_result=abo_result,
             sensitization_result=sensitization_result,
             mismatch_result=mismatch_result,
@@ -268,6 +317,14 @@ async def run_match_pipeline(
             cpra_result=cpra_result,
             dsa_result=dsa_result,
             crossmatch_result=crossmatch_result,
+            outcome=build_report_outcome(
+                overall_status=overall_status,
+                abo_result=asdict(abo_result),
+                mismatch_result=asdict(mismatch_result),
+                pra_bucket_result=asdict(pra_bucket_result),
+                dsa_result=asdict(dsa_result),
+                crossmatch_result=asdict(crossmatch_result),
+            ),
         )
 
     # --- Step 7: final risk classification ----------------------------------
@@ -297,8 +354,9 @@ async def run_match_pipeline(
         # reference-only, not required for a final result.
         pass
 
+    overall_status = "completed"
     return MatchPipelineResult(
-        overall_status="completed",
+        overall_status=overall_status,
         abo_result=abo_result,
         sensitization_result=sensitization_result,
         mismatch_result=mismatch_result,
@@ -309,4 +367,18 @@ async def run_match_pipeline(
         hla_scoring_result=hla_scoring_result,
         risk_tier=risk_tier,
         final_risk_level=final_risk_level,
+        outcome=build_report_outcome(
+            overall_status=overall_status,
+            abo_result=asdict(abo_result),
+            mismatch_result=asdict(mismatch_result),
+            pra_bucket_result=asdict(pra_bucket_result),
+            dsa_result=asdict(dsa_result),
+            crossmatch_result=asdict(crossmatch_result),
+            final_risk_level=final_risk_level,
+        ),
+        lkdpi_result=calculate_lkdpi(
+            lkdpi_input_from_records(
+                donor, patient, mismatch_result, abo_incompatible=not abo_result.is_compatible
+            )
+        ),
     )

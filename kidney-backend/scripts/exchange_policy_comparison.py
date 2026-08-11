@@ -26,7 +26,7 @@ from pathlib import Path
 
 from app.models.donor import Donor
 from app.models.donor_hla_typing import DonorHLATyping
-from app.models.enums import BloodType, DonorStatus, HLALocusEnum, RhFactor
+from app.models.enums import BloodType, DonorStatus, HLALocusEnum, Race, RhFactor, Sex, SmokingStatus
 from app.models.patient import Patient
 from app.models.patient_hla_typing import PatientHLATyping
 from app.reference_data.abo_compatibility import ABO_COMPATIBILITY
@@ -128,16 +128,32 @@ def build_synthetic_pool(seed: int = RANDOM_SEED, size: int = POOL_SIZE) -> Simu
         doctor_id = uuid.uuid4()
         hospital_name = f"Simulated Hospital {i % 6 + 1}"
 
+        # LKDPI inputs (app/services/lkdpi_service.py) -- randomized so
+        # weight_max_lkdpi_quality has a real, differentiated signal to rank
+        # edges by, same purpose as the mismatch/antibody randomization
+        # above. Donor age randomized 28-70, derived into a date_of_birth.
+        donor_dob = date.today() - timedelta(days=rng.randint(28, 70) * 365)
         donor = Donor(
             id=uuid.uuid4(),
             doctor_id=doctor_id,
             full_name=f"Sim Donor {i}",
-            date_of_birth=date(1970, 1, 1),
+            date_of_birth=donor_dob,
             blood_type=donor_bt,
             rh_factor=RhFactor.POSITIVE,
             status=DonorStatus.AVAILABLE,
             is_deleted=False,
             hla_typing_verified=True,
+            egfr=rng.uniform(60, 110),
+            bmi=rng.uniform(20, 32),
+            race=rng.choices([Race.BLACK, Race.WHITE, Race.OTHER], weights=[0.1, 0.6, 0.3])[0],
+            smoking_status=rng.choices(
+                [SmokingStatus.NEVER, SmokingStatus.FORMER, SmokingStatus.CURRENT],
+                weights=[0.6, 0.25, 0.15],
+            )[0],
+            systolic_bp=rng.uniform(105, 145),
+            sex=rng.choice([Sex.MALE, Sex.FEMALE]),
+            weight_kg=rng.uniform(55, 95),
+            is_biologically_related=rng.random() < 0.7,
         )
 
         registered_days_ago = rng.randint(0, MAX_WAIT_DAYS)
@@ -152,6 +168,8 @@ def build_synthetic_pool(seed: int = RANDOM_SEED, size: int = POOL_SIZE) -> Simu
             hla_typing_verified=True,
             antibody_profile_verified=True,
             created_at=now - timedelta(days=registered_days_ago),
+            sex=rng.choice([Sex.MALE, Sex.FEMALE]),
+            weight_kg=rng.uniform(50, 90),
         )
 
         node = ExchangePairNode(
@@ -209,8 +227,8 @@ def render_report(pool: SimulatedPool, results: dict) -> str:
         "## Summary",
         "",
         "| Policy | Cycles selected | Pairs transplanted | Total mismatch quality | "
-        "Total equity score |",
-        "|---|---|---|---|---|",
+        "Total equity score | Total LKDPI quality |",
+        "|---|---|---|---|---|---|",
     ]
 
     matched_by_policy: dict[str, set[uuid.UUID]] = {}
@@ -223,12 +241,16 @@ def render_report(pool: SimulatedPool, results: dict) -> str:
             score_cycle(cycle.pair_ids, index, "equity_weighted")
             for cycle in result.selected_cycles
         )
+        lkdpi_total = sum(
+            score_cycle(cycle.pair_ids, index, "max_lkdpi_quality")
+            for cycle in result.selected_cycles
+        )
         matched_by_policy[policy_name] = {
             pair_id for cycle in result.selected_cycles for pair_id in cycle.pair_ids
         }
         lines.append(
             f"| {policy_name} | {len(result.selected_cycles)} | {pairs_transplanted} | "
-            f"{quality_total:.1f} | {equity_total:.1f} |"
+            f"{quality_total:.1f} | {equity_total:.1f} | {lkdpi_total:.1f} |"
         )
 
     cpra_by_pair_id = {node.pair_id: cpra_fraction(node.patient.id, index) for node in pool.nodes}

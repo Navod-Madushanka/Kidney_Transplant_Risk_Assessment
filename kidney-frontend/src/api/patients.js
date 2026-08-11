@@ -24,6 +24,12 @@ export const replacePatientAntibodyProfiles = (id, entries, ocrVerified) =>
     entries
   )
 export const createSensitizationEvents = (id, entries) => apiPost(`/patients/${id}/sensitization-events`, entries)
+// Replace semantics (delete-then-insert), unlike createSensitizationEvents
+// above -- see the matching backend endpoint's docstring. Used by the
+// compatibility-check wizard, which re-submits the full current set on
+// every check rather than appending to whatever's already there.
+export const replacePatientSensitizationEvents = (id, entries) =>
+  apiPut(`/patients/${id}/sensitization-events`, entries)
 export const getPatientReports = (id) => apiGet(`/patients/${id}/reports`)
 export const getPatientHlaTypings = (id) => apiGet(`/patients/${id}/hla-typings`)
 export const getPatientAntibodyProfiles = (id) => apiGet(`/patients/${id}/antibody-profiles`)

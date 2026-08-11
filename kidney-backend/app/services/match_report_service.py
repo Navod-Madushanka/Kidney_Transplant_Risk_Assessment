@@ -40,6 +40,8 @@ async def create_match_report(
         hla_scoring_result=_to_json(pipeline_result.hla_scoring_result),
         cpra_result=_to_json(pipeline_result.cpra_result),
         final_risk_level=pipeline_result.final_risk_level,
+        outcome=_to_json(pipeline_result.outcome),
+        lkdpi_result=_to_json(pipeline_result.lkdpi_result),
     )
     db.add(report)
     await db.flush()

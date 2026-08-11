@@ -21,11 +21,22 @@ export function WizardProvider({ children }) {
 
   const [state, dispatch] = useReducer(
     wizardReducer,
-    location.state?.prefillPhotos,
-    (prefillPhotos) => {
+    location.state,
+    (locationState) => {
       const initial = buildInitialWizardState();
-      if (!prefillPhotos) return initial;
-      return { ...initial, photos: { ...initial.photos, ...prefillPhotos } };
+      if (!locationState) return initial;
+      const { prefillPhotos, patientId, donorId } = locationState;
+      return {
+        ...initial,
+        photos: prefillPhotos ? { ...initial.photos, ...prefillPhotos } : initial.photos,
+        // NewCheckFromRecordsPage.jsx navigates here with both IDs already
+        // picked -- seeds subject so SubjectStep opens pre-selected rather
+        // than making the doctor pick the same pair again.
+        subject:
+          patientId && donorId
+            ? { ...initial.subject, patientId, donorId }
+            : initial.subject,
+      };
     }
   );
 
@@ -37,6 +48,15 @@ export function WizardProvider({ children }) {
 
   const actions = useMemo(
     () => ({
+      setSubject: (patch) =>
+        dispatch({ type: WIZARD_ACTIONS.SET_SUBJECT, patch }),
+
+      setReadiness: (readiness) =>
+        dispatch({ type: WIZARD_ACTIONS.SET_READINESS, readiness }),
+
+      setLinkedRecords: (patientRecord, donorRecord) =>
+        dispatch({ type: WIZARD_ACTIONS.SET_LINKED_RECORDS, patientRecord, donorRecord }),
+
       setPhoto: (slot, file) =>
         dispatch({ type: WIZARD_ACTIONS.SET_PHOTO, slot, file }),
 

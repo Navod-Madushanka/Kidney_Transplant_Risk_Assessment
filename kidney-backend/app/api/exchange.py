@@ -112,6 +112,11 @@ async def match_exchange_pool_endpoint(
                 to_pair_id=edge.to_pair_id,
                 mismatch_result=asdict(edge.result.mismatch_result),
                 dsa_result=asdict(edge.result.dsa_result),
+                lkdpi_result=(
+                    asdict(edge.result.lkdpi_result)
+                    if edge.result.lkdpi_result is not None
+                    else None
+                ),
             )
             for edge in graph.edges
         ],

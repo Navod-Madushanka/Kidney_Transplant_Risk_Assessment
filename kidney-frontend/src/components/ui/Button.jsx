@@ -11,10 +11,12 @@ const VARIANT_STYLES = {
     "bg-high-risk text-white hover:brightness-90 active:brightness-90 disabled:bg-border disabled:text-text-muted",
 }
 
+// min-h-11 floor on every size (44px) so no Button variant ever falls
+// below the minimum comfortable touch target on mobile, even "sm".
 const SIZE_STYLES = {
-  sm: "h-9 px-3 text-[13px] gap-1.5",
-  md: "h-11 px-4 text-[15px] gap-2",
-  lg: "h-[52px] px-6 text-[17px] gap-2",
+  sm: "min-h-11 h-9 px-3 text-[13px] gap-1.5",
+  md: "min-h-11 h-11 px-4 text-[15px] gap-2",
+  lg: "min-h-11 h-[52px] px-6 text-[17px] gap-2",
 }
 
 /**

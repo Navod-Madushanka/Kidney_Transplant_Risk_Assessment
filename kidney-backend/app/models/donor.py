@@ -153,3 +153,13 @@ class Donor(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     intended_recipient_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("patients.id"), nullable=True, index=True
     )
+
+    # LKDPI inputs (added 2026-08-10) -- see app/reference_data/lkdpi_model.py
+    # (Massie et al., AJT 2016). `weight_kg` is genuinely new even though
+    # `bmi` already exists -- BMI alone can't give the donor/recipient
+    # weight ratio the model needs. `is_biologically_related` is a nullable
+    # tri-state (null = unknown, not "unrelated") for the same reason every
+    # other clinical field on this model is nullable: an unset field must
+    # never look like a confirmed "no".
+    weight_kg: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
+    is_biologically_related: Mapped[bool | None] = mapped_column(Boolean, nullable=True)

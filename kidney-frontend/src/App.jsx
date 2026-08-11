@@ -20,6 +20,7 @@ import AuditLogPage from "./pages/AuditLogPage"
 
 import { WizardProvider } from "./context/WizardProvider"
 import WizardLayout from "./layout/WizardLayout"
+import SubjectStep from "./pages/SubjectStep"
 import PhotoUploadsStep from "./pages/PhotoUploadsStep"
 import DetailsStep from "./pages/DetailsStep"
 import HlaTypingStep from "./pages/HlaTypingStep"
@@ -85,7 +86,8 @@ function App() {
             </WizardProvider>
           }
         >
-          <Route index element={<Navigate to="photos" replace />} />
+          <Route index element={<Navigate to="subject" replace />} />
+          <Route path="subject" element={<SubjectStep />} handle={{ title: "New Check" }} />
           <Route path="photos" element={<PhotoUploadsStep />} handle={{ title: "New Check" }} />
           <Route path="details" element={<DetailsStep />} handle={{ title: "New Check" }} />
           <Route path="hla" element={<HlaTypingStep />} handle={{ title: "New Check" }} />

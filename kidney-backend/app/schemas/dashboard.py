@@ -24,6 +24,13 @@ class LatestReportSummary(BaseModel):
     overall_status: str
     risk_tier: Optional[str] = None
     final_risk_level: Optional[str] = None
+    outcome: Optional[dict] = None
+    # Denormalized from lkdpi_result.{score,band} so list views (this one,
+    # RecentReportSummary below) can sort/filter by LKDPI without pulling
+    # the full contributions breakdown over the wire -- see
+    # app/services/lkdpi_service.py.
+    lkdpi_score: Optional[float] = None
+    lkdpi_band: Optional[str] = None
     created_at: datetime
 
 
@@ -49,4 +56,7 @@ class RecentReportSummary(BaseModel):
     overall_status: str
     risk_tier: Optional[str] = None
     final_risk_level: Optional[str] = None
+    outcome: Optional[dict] = None
+    lkdpi_score: Optional[float] = None
+    lkdpi_band: Optional[str] = None
     created_at: datetime

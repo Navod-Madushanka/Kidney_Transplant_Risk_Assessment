@@ -37,6 +37,8 @@ const emptyForm = {
   urineAcr: "",
   isOnAntihypertensiveMedication: "unknown",
   familyHistoryKidneyDisease: "unknown",
+  weightKg: "",
+  isBiologicallyRelated: "unknown",
   intendedRecipientId: "",
 }
 
@@ -118,6 +120,8 @@ export default function DonorForm({
       urine_acr: numberOrNull(form.urineAcr),
       is_on_antihypertensive_medication: triStateToBool(form.isOnAntihypertensiveMedication),
       family_history_kidney_disease: triStateToBool(form.familyHistoryKidneyDisease),
+      weight_kg: numberOrNull(form.weightKg),
+      is_biologically_related: triStateToBool(form.isBiologicallyRelated),
       intended_recipient_id: form.intendedRecipientId || null,
     }
     if (!isEdit) {
@@ -304,6 +308,31 @@ export default function DonorForm({
               onChange={updateValue("familyHistoryKidneyDisease")}
             />
           </div>
+        </div>
+      </div>
+
+      <div className="pt-2 border-t border-border">
+        <p className="text-[13px] font-semibold text-text-muted mb-3">
+          LKDPI inputs (donor side, in addition to eGFR/BMI/BP/smoking above) — used only for the
+          living-donor compatibility score, not the compatibility check itself
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <InputField
+            label="Weight"
+            type="number"
+            step="0.01"
+            min="0"
+            max="400"
+            helperText="kg — needed alongside recipient weight for the donor/recipient weight ratio"
+            value={form.weightKg}
+            onChange={updateField("weightKg")}
+          />
+          <SegmentedControl
+            label="Biologically related to recipient"
+            options={TRI_STATE_OPTIONS}
+            value={form.isBiologicallyRelated}
+            onChange={updateValue("isBiologicallyRelated")}
+          />
         </div>
       </div>
 

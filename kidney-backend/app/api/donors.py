@@ -17,11 +17,8 @@ from app.schemas.donor_risk import DonorRiskAssessmentResponse
 from app.schemas.hla_typing import HLATypingEntry
 from app.schemas.report_file import ReportFileResponse
 from app.services.audit_service import create_audit_log
-from app.services.donor_risk_service import (
-    DonorRiskAssessmentInput,
-    assess_donor_risk,
-    calculate_age_years,
-)
+from app.services.donor_risk_input_adapter import donor_risk_input_from_record
+from app.services.donor_risk_service import assess_donor_risk
 from app.services.donor_service import (
     IllegalDonorStatusTransition,
     create_donor,
@@ -124,7 +121,7 @@ async def get_donor_risk_assessment_endpoint(
             detail="Donor not found",
         )
 
-    result = assess_donor_risk(_build_donor_risk_input(donor))
+    result = assess_donor_risk(donor_risk_input_from_record(donor))
     return DonorRiskAssessmentResponse(**asdict(result))
 
 
@@ -399,31 +396,6 @@ async def _ensure_donor_exists(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Donor not found",
         )
-
-
-def _build_donor_risk_input(donor: Donor) -> DonorRiskAssessmentInput:
-    """Adapts a Donor ORM row into donor_risk_service's plain input
-    dataclass -- enum columns become their .value string (matching
-    match_pipeline.py's convention), age is derived from date_of_birth.
-    Numeric(...) columns come back from SQLAlchemy as decimal.Decimal, not
-    float -- DonorResponse gets a free Decimal->float coercion from
-    Pydantic's validation, but this dataclass has none, so it's done
-    explicitly here (mixing Decimal and float in donor_risk_service's
-    arithmetic raises TypeError otherwise)."""
-    return DonorRiskAssessmentInput(
-        age_years=calculate_age_years(donor.date_of_birth),
-        sex=donor.sex.value if donor.sex else None,
-        race=donor.race.value if donor.race else None,
-        egfr=float(donor.egfr) if donor.egfr is not None else None,
-        systolic_bp=donor.systolic_bp,
-        diastolic_bp=donor.diastolic_bp,
-        is_on_antihypertensive_medication=donor.is_on_antihypertensive_medication,
-        bmi=float(donor.bmi) if donor.bmi is not None else None,
-        has_diabetes=donor.has_diabetes,
-        urine_acr=float(donor.urine_acr) if donor.urine_acr is not None else None,
-        smoking_status=donor.smoking_status.value if donor.smoking_status else None,
-        family_history_kidney_disease=donor.family_history_kidney_disease,
-    )
 
 
 async def _ensure_intended_recipient_valid(

@@ -18,8 +18,8 @@ const NAV_ITEMS = [
 
 export default function TabBar() {
   return (
-    <nav 
-      className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-xl border-t border-gray-200 shadow-lg"
+    <nav
+      className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-surface/95 backdrop-blur-xl border-t border-border shadow-lg"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       <div className="max-w-md mx-auto flex items-center justify-around py-1">
@@ -29,8 +29,8 @@ export default function TabBar() {
             to={to}
             end={to === "/"}
             className={({ isActive }) => `
-              flex flex-col items-center justify-center py-2 px-3 text-[10px] font-medium transition-all flex-1
-              ${isActive ? "text-blue-600" : "text-gray-500"}
+              flex flex-col items-center justify-center min-h-11 py-2 px-3 text-[10px] font-medium transition-all flex-1
+              ${isActive ? "text-accent" : "text-text-muted"}
             `}
           >
             {({ isActive }) => (

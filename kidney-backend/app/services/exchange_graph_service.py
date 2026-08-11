@@ -50,6 +50,8 @@ from app.services.hla_typing_service import (
     hla_antigen_designation,
     normalize_antibody_antigen,
 )
+from app.services.lkdpi_input_adapter import lkdpi_input_from_records
+from app.services.lkdpi_service import LKDPIResult, calculate_lkdpi
 
 
 @dataclass
@@ -82,6 +84,13 @@ class PairEdgeResult:
     abo_result: ABOResult
     mismatch_result: MismatchResult
     dsa_result: DSAResult
+    # LKDPI for this specific directed edge (donor -> recipient), if this
+    # donor/recipient pair has the inputs for it -- see
+    # app/services/lkdpi_service.py. None both when the edge is incompatible
+    # (evaluate_pair_edge never computes it in that case -- see below) and
+    # when either side is missing an LKDPI input. Only used by
+    # exchange_matching_service.py's max_lkdpi_quality weight policy.
+    lkdpi_result: LKDPIResult | None = None
 
 
 @dataclass
@@ -150,6 +159,20 @@ def _donor_hla_antigens(donor_typing_entries: list[DonorHLATyping]) -> list[str]
     ]
 
 
+def _edge_lkdpi(donor: Donor, patient: Patient, edge_result: PairEdgeResult) -> LKDPIResult:
+    """Thin wrapper over the shared lkdpi_input_adapter (see E7.3) -- this
+    used to hand-roll its own copy of the same ORM->LKDPIInput conversion
+    match_pipeline.py builds, which had already drifted once."""
+    return calculate_lkdpi(
+        lkdpi_input_from_records(
+            donor,
+            patient,
+            edge_result.mismatch_result,
+            abo_incompatible=not edge_result.abo_result.is_compatible,
+        )
+    )
+
+
 def build_exchange_graph(
     nodes: list[ExchangePairNode],
     donor_typing_entries_by_donor: dict[uuid.UUID, list[DonorHLATyping]],
@@ -190,6 +213,11 @@ def build_exchange_graph(
                 donor_blood_type=donor_node.donor.blood_type.value,
             )
             if result.is_compatible:
+                # LKDPI is only needed on edges that actually make it into
+                # the graph -- computing it for every scored-but-rejected
+                # pair above would be wasted work (evaluate_pair_edge stays
+                # ABO/mismatch/DSA only, same as before).
+                result.lkdpi_result = _edge_lkdpi(donor_node.donor, recipient_node.patient, result)
                 edges.append(
                     ExchangeEdge(
                         from_pair_id=donor_node.pair_id,

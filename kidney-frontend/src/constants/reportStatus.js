@@ -61,29 +61,41 @@ const FINAL_RISK_LEVEL_TO_BADGE_STATUS = {
   "High Risk": "high-risk",
 }
 
+// Maps each of the four report.outcome.verdict values (see
+// kidney-backend/app/reference_data/report_outcome.py) to a <Badge> status
+// key. "cannot_assess" deliberately maps to "pending" (the accent token),
+// never to "halt"/"fail" (high-risk red) — cannot_assess means "the system
+// doesn't know yet," not "rejected," and painting it red told doctors the
+// opposite of what actually happened. See ReportDetailPage's verdict hero
+// for the same rule applied to the full-size verdict card.
+const VERDICT_TO_BADGE_STATUS = {
+  not_compatible: "halt",
+  cannot_assess: "pending",
+  proceed_with_caution: "moderate",
+  compatible: "clear",
+}
+
 /**
- * Given a report (or dashboard summary) with `overall_status` and, where
- * available, `final_risk_level`, returns the {status, label} pair to feed
- * straight into <Badge>.
+ * Given a report (or dashboard summary) with an `outcome` object (see
+ * report_outcome.py's ReportOutcome), returns the {status, label} pair to
+ * feed straight into <Badge>.
  *
- * Precedence: a halted status always wins (it's the most important thing
- * to surface) > pending-crossmatch > a weak/moderate DSA flagged for
- * desensitization review (Step 5, see dsa_result.requires_review — present
- * only on full report payloads, not the dashboard's lighter summary
- * objects) > Step 7's final_risk_level > a "Cannot Assess" placeholder for
- * a completed report that reached Step 7 without enough to classify > a
- * neutral "no check yet" placeholder.
+ * Reads report.outcome.verdict / risk_level directly rather than
+ * re-deriving clinical precedence from overall_status/dsa_result/
+ * final_risk_level here in the frontend — that derivation now lives in one
+ * place, app/services/report_outcome_service.py, so this file and the
+ * report detail page can't drift apart on what counts as "compatible" vs
+ * "needs review." When a risk_level is present (compatible, or proceed-
+ * with-caution reports that still carry a Step 7 classification), the
+ * label shows that specific level for extra precision in list views; the
+ * badge color still follows the verdict, not the risk tier, since a
+ * "High-Average Risk" pairing that ALSO has an open review flag must not
+ * look identical to one that cleared every gate clean.
  *
- * Deliberately does NOT fall back to the legacy score-derived `risk_tier`
- * (kidney-backend/app/reference_data/risk_tiers.py) the way this used to.
- * That field is only ever non-null on a report that reached Step 7 (see
- * match_pipeline.py) — so on exactly the reports where `final_risk_level`
- * is null, `risk_tier` would silently paint a specific colored risk badge
- * (e.g. "Moderate Risk") on a check Step 7 explicitly declined to classify,
- * contradicting the "Cannot assess" explanation shown in the report body.
- * `risk_tier` is still computed and returned by the API as a legacy
- * reference figure (see ReportDetailPage's "Legacy scoring" section), it's
- * just no longer trusted to stand in for a real answer here.
+ * Falls back to the old overall_status/dsa_result-derived logic only when
+ * `report.outcome` is null (e.g. a report from before this field existed,
+ * pre-backfill, or a lighter payload that never attached one) so every
+ * caller keeps working during the transition.
  *
  * Usage:
  *   const { status, label } = reportBadgeProps(report)
@@ -92,6 +104,19 @@ const FINAL_RISK_LEVEL_TO_BADGE_STATUS = {
 export function reportBadgeProps(report) {
   if (!report) return { status: "neutral", label: "No check yet" }
 
+  if (report.outcome) {
+    const { verdict, verdict_label: verdictLabel, risk_level: riskLevel } = report.outcome
+    const status = VERDICT_TO_BADGE_STATUS[verdict] ?? "neutral"
+    if (riskLevel) {
+      return {
+        status: verdict === "compatible" ? FINAL_RISK_LEVEL_TO_BADGE_STATUS[riskLevel] ?? status : status,
+        label: riskLevel,
+      }
+    }
+    return { status, label: verdictLabel ?? verdict }
+  }
+
+  // --- Fallback for reports with no outcome attached -----------------------
   if (HALTED_STATUSES.has(report.overall_status)) {
     return { status: "halt", label: HALT_BADGE_LABELS[report.overall_status] }
   }

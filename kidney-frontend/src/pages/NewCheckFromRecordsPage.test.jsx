@@ -39,7 +39,7 @@ function renderPage() {
     <MemoryRouter initialEntries={["/checks/start-from-records"]}>
       <Routes>
         <Route path="/checks/start-from-records" element={<NewCheckFromRecordsPage />} />
-        <Route path="/checks/new/photos" element={<div>Photos Step</div>} />
+        <Route path="/checks/new/subject" element={<div>Subject Step</div>} />
       </Routes>
     </MemoryRouter>
   )
@@ -96,7 +96,7 @@ describe("NewCheckFromRecordsPage", () => {
     await waitFor(() =>
       expect(fetchPatientReportFileBlob).toHaveBeenCalledWith("patient-1", "file-hla")
     )
-    expect(await screen.findByText("Photos Step")).toBeInTheDocument()
+    expect(await screen.findByText("Subject Step")).toBeInTheDocument()
   })
 
   it("still lets the doctor start the check manually if the archive lookup fails", async () => {
@@ -116,6 +116,6 @@ describe("NewCheckFromRecordsPage", () => {
     expect(startButton).toBeEnabled()
 
     await user.click(startButton)
-    expect(await screen.findByText("Photos Step")).toBeInTheDocument()
+    expect(await screen.findByText("Subject Step")).toBeInTheDocument()
   })
 })

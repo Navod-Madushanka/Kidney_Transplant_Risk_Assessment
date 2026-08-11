@@ -33,7 +33,7 @@ export default function SensitizationStep() {
   }
 
   function handleContinue() {
-    actions.unlockStep(4)
+    actions.unlockStep(5)
     navigate("/checks/new/bead-chart")
   }
 

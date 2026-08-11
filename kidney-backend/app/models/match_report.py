@@ -38,3 +38,19 @@ class MatchReport(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     pra_bucket_result: Mapped[dict] = mapped_column(JSONB, nullable=True)
     crossmatch_result: Mapped[dict] = mapped_column(JSONB, nullable=True)
     final_risk_level: Mapped[str] = mapped_column(String(50), nullable=True)
+
+    # The single headline verdict for this report (see
+    # app/reference_data/report_outcome.py) — computed once by
+    # run_match_pipeline and stored alongside the raw step results rather
+    # than re-derived on every read, so a later change to the decision
+    # table doesn't silently reinterpret an old report. nullable=True
+    # because this was added after reports already existed; see the
+    # migration that backfills it for pre-existing rows.
+    outcome: Mapped[dict] = mapped_column(JSONB, nullable=True)
+
+    # LKDPI score (see app/reference_data/lkdpi_model.py, app/services/
+    # lkdpi_service.py) -- computed after Step 7, only when the verdict
+    # isn't not_compatible (see match_pipeline.py). Null both for halted
+    # reports (nothing to score) and for pre-existing reports created
+    # before this column existed.
+    lkdpi_result: Mapped[dict] = mapped_column(JSONB, nullable=True)

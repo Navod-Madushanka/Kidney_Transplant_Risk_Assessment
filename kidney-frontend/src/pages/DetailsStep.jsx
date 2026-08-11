@@ -18,6 +18,28 @@ function validatePerson(details) {
   return errors
 }
 
+// E3.6: blood_type/rh_factor are permanent once set (PatientUpdate/
+// DonorUpdate don't even accept them -- see compatibilityWizard.js's
+// buildPatientUpdatePayload/buildDonorUpdatePayload). If OCR (or a
+// doctor's own edit) leaves `details` disagreeing with the linked record's
+// original blood type, silently dropping the disagreement on submit would
+// be the worst available failure mode here -- the check would run against
+// the record's real blood type while displaying whatever `details` says,
+// with no visible link between the two. Compared against `record` (the
+// snapshot SubjectStep.jsx took at selection time), not against `details`
+// itself, since `details` is exactly the field that may have just changed.
+function bloodTypeConflict(details, record) {
+  if (!record) return null
+  if (!details.blood_type || !details.rh_factor) return null
+  if (details.blood_type === record.blood_type && details.rh_factor === record.rh_factor) {
+    return null
+  }
+  return {
+    documentValue: `${details.blood_type}${details.rh_factor}`,
+    recordValue: `${record.blood_type}${record.rh_factor}`,
+  }
+}
+
 function PersonDetailsCard({ title, subtitle, details, onChange, errors }) {
   function updateField(field) {
     return (e) => onChange({ [field]: e.target.value })
@@ -88,6 +110,12 @@ export default function DetailsStep() {
     (doc) => doc?.status === "done"
   )
 
+  const patientBloodConflict = bloodTypeConflict(
+    state.patient_details,
+    state.subject.patientRecord
+  )
+  const donorBloodConflict = bloodTypeConflict(state.donor_details, state.subject.donorRecord)
+
   function handleContinue() {
     const nextPatientErrors = validatePerson(state.patient_details)
     const nextDonorErrors = validatePerson(state.donor_details)
@@ -99,11 +127,12 @@ export default function DetailsStep() {
       Object.keys(nextDonorErrors).length > 0
 
     const needsVerification = wasOcrExtracted && !state.ocr_verified?.details
+
     setVerificationError(needsVerification)
 
-    if (hasErrors || needsVerification) return
+    if (hasErrors || needsVerification || patientBloodConflict || donorBloodConflict) return
 
-    actions.unlockStep(2)
+    actions.unlockStep(3)
     navigate("/checks/new/hla")
   }
 
@@ -123,6 +152,15 @@ export default function DetailsStep() {
         errors={patientErrors}
         onChange={(patch) => actions.setPatientDetails(patch)}
       />
+      {patientBloodConflict && (
+        <div className="rounded-md border border-high-risk bg-high-risk-subtle p-4 -mt-2">
+          <p className="text-[13px] font-medium text-high-risk">
+            This reads blood group {patientBloodConflict.documentValue}, but this patient's record
+            says {patientBloodConflict.recordValue}. One of them is wrong. Blood group is permanent
+            once set — resolve this on the patient's own record before running the check.
+          </p>
+        </div>
+      )}
 
       <PersonDetailsCard
         title="Donor"
@@ -131,6 +169,15 @@ export default function DetailsStep() {
         errors={donorErrors}
         onChange={(patch) => actions.setDonorDetails(patch)}
       />
+      {donorBloodConflict && (
+        <div className="rounded-md border border-high-risk bg-high-risk-subtle p-4 -mt-2">
+          <p className="text-[13px] font-medium text-high-risk">
+            This reads blood group {donorBloodConflict.documentValue}, but this donor's record says{" "}
+            {donorBloodConflict.recordValue}. One of them is wrong. Blood group is permanent once
+            set — resolve this on the donor's own record before running the check.
+          </p>
+        </div>
+      )}
 
       {wasOcrExtracted && (
         <div
@@ -151,8 +198,7 @@ export default function DetailsStep() {
           {verificationError && (
             <p className="text-[13px] text-high-risk font-medium mt-2">
               Confirm this before continuing — the compatibility check refuses to run on
-              unverified OCR data, and blood type can't be corrected once these records
-              are created.
+              unverified OCR data, and blood type is permanent once set on a record.
             </p>
           )}
         </div>

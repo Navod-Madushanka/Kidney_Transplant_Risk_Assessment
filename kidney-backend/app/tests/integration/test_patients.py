@@ -355,6 +355,114 @@ async def test_delete_patient_writes_audit_log_entry(auth_client: AsyncClient, d
     assert entries[0].details["full_name"] == patient["full_name"]
 
 
+async def test_update_patient_details_verified_omitted_preserves_true(auth_client: AsyncClient):
+    # E2.1: PatientUpdate.details_verified=None ("no claim being made")
+    # must preserve the record's current value, never reset it -- same
+    # _resolve_verified contract as ocr_verified on PUT .../hla-typings.
+    # A brand-new patient starts details_verified=True (manual entry).
+    patient = await create_patient(auth_client)
+
+    response = await auth_client.put(
+        f"/patients/{patient['id']}",
+        json={"full_name": "Alice Patient", "date_of_birth": "1985-06-15"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["details_verified"] is True
+
+
+async def test_update_patient_details_verified_omitted_preserves_false(auth_client: AsyncClient):
+    # The regression case: a linked record whose details came from an
+    # unconfirmed OCR extraction (details_verified=False) must NOT silently
+    # flip back to trusted just because a later PUT omits the field.
+    patient = await create_patient(auth_client, details_verified=False)
+
+    response = await auth_client.put(
+        f"/patients/{patient['id']}",
+        json={"full_name": "Alice Patient", "date_of_birth": "1985-06-15"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["details_verified"] is False
+
+
+async def test_update_patient_details_verified_explicit_true_confirms_it(auth_client: AsyncClient):
+    patient = await create_patient(auth_client, details_verified=False)
+
+    response = await auth_client.put(
+        f"/patients/{patient['id']}",
+        json={
+            "full_name": "Alice Patient",
+            "date_of_birth": "1985-06-15",
+            "details_verified": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["details_verified"] is True
+
+
+async def test_update_patient_preserves_sex_and_weight_when_omitted_is_still_a_real_reset(
+    auth_client: AsyncClient,
+):
+    # PatientUpdate is a full-replace schema, not a partial patch -- sex/
+    # weight_kg default to None if the caller doesn't send them. This is
+    # intentional (see compatibilityWizard.js's buildPatientUpdatePayload,
+    # which always carries the linked record's current values through), but
+    # a bare PUT that omits them really does clear them -- documenting that
+    # contract here so it can't silently change later.
+    patient = await create_patient(auth_client, sex="female", weight_kg=60)
+    assert patient["sex"] == "female"
+
+    response = await auth_client.put(
+        f"/patients/{patient['id']}",
+        json={"full_name": "Alice Patient", "date_of_birth": "1985-06-15"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["sex"] is None
+    assert response.json()["weight_kg"] is None
+
+
+# ---------------------------------------------------------------------
+# PUT .../sensitization-events — replace semantics, unlike the additive
+# POST above. See app/services/sensitization_event_service.py.
+# ---------------------------------------------------------------------
+
+
+async def test_replace_sensitization_events_is_idempotent(auth_client: AsyncClient):
+    # Regression test for the doubling bug (Part E2.2): re-submitting the
+    # same event set via PUT must leave exactly one row per event type, not
+    # accumulate duplicates the way the additive POST would.
+    patient = await create_patient(auth_client)
+    entries = [{"event_type": "pregnancy", "event_date": "2020-01-01"}]
+
+    first = await auth_client.put(f"/patients/{patient['id']}/sensitization-events", json=entries)
+    second = await auth_client.put(f"/patients/{patient['id']}/sensitization-events", json=entries)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+
+    list_response = await auth_client.get(f"/patients/{patient['id']}/sensitization-events")
+    assert len(list_response.json()) == 1
+
+
+async def test_replace_sensitization_events_with_empty_list_clears_them(auth_client: AsyncClient):
+    patient = await create_patient(auth_client)
+    await auth_client.put(
+        f"/patients/{patient['id']}/sensitization-events",
+        json=[{"event_type": "pregnancy", "event_date": "2020-01-01"}],
+    )
+
+    response = await auth_client.put(f"/patients/{patient['id']}/sensitization-events", json=[])
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+    list_response = await auth_client.get(f"/patients/{patient['id']}/sensitization-events")
+    assert list_response.json() == []
+
+
 async def test_deleted_patients_nic_number_can_be_reused(auth_client: AsyncClient):
     # Found 2026-08-04: the (doctor_id, nic_number) unique constraint used
     # to apply to every row regardless of is_deleted, so re-registering a

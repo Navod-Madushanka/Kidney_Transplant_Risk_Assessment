@@ -20,6 +20,10 @@ _CREATININE_FIELD = Field(default=None, gt=0, le=30, description="mg/dL")
 # Upper bound is a typo guard, not a clinical ceiling: nephrotic-range
 # albuminuria can legitimately run into the thousands.
 _URINE_ACR_FIELD = Field(default=None, gt=0, le=20000, description="mg/g")
+# LKDPI input (app/reference_data/lkdpi_model.py) -- genuinely new even
+# though BMI already exists, since BMI alone can't give the donor/recipient
+# weight ratio the model needs.
+_WEIGHT_KG_FIELD = Field(default=None, gt=0, le=400, description="kg")
 
 
 class DonorCreate(BaseModel):
@@ -40,6 +44,10 @@ class DonorCreate(BaseModel):
     urine_acr: float | None = _URINE_ACR_FIELD
     is_on_antihypertensive_medication: bool | None = None
     family_history_kidney_disease: bool | None = None
+    weight_kg: float | None = _WEIGHT_KG_FIELD
+    # Nullable tri-state -- null = unknown, not "unrelated". See the Donor
+    # model's docstring comment on this field.
+    is_biologically_related: bool | None = None
     # None means altruistic/deceased -- poolable in cross-hospital search.
     # Set means this donor is only donating for that specific patient; see
     # the Donor model's docstring comment on this field.
@@ -72,7 +80,13 @@ class DonorUpdate(BaseModel):
     urine_acr: float | None = _URINE_ACR_FIELD
     is_on_antihypertensive_medication: bool | None = None
     family_history_kidney_disease: bool | None = None
+    weight_kg: float | None = _WEIGHT_KG_FIELD
+    is_biologically_related: bool | None = None
     intended_recipient_id: uuid.UUID | None = None
+    # None = "no claim being made" -> preserve the record's current
+    # details_verified -- see PatientUpdate's matching field for the full
+    # _resolve_verified contract.
+    details_verified: bool | None = None
 
 
 class DonorResponse(BaseModel):
@@ -96,6 +110,8 @@ class DonorResponse(BaseModel):
     urine_acr: float | None
     is_on_antihypertensive_medication: bool | None
     family_history_kidney_disease: bool | None
+    weight_kg: float | None
+    is_biologically_related: bool | None
     hla_typing_verified: bool
     details_verified: bool
     intended_recipient_id: uuid.UUID | None

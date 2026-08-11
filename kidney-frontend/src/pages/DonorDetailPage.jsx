@@ -178,6 +178,8 @@ export default function DonorDetailPage() {
             urineAcr: donor.urine_acr ?? "",
             isOnAntihypertensiveMedication: boolToTriState(donor.is_on_antihypertensive_medication),
             familyHistoryKidneyDisease: boolToTriState(donor.family_history_kidney_disease),
+            weightKg: donor.weight_kg ?? "",
+            isBiologicallyRelated: boolToTriState(donor.is_biologically_related),
             intendedRecipientId: donor.intended_recipient_id || "",
           }}
           onSubmit={handleEditSubmit}

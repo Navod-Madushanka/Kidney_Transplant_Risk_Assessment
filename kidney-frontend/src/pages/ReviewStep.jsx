@@ -21,8 +21,8 @@ const CROSSMATCH_RESULT_OPTIONS = [
 ]
 
 const SUBMISSION_STEPS = [
-  { key: "patientId", label: "Creating patient record" },
-  { key: "donorId", label: "Creating donor record" },
+  { key: "patientDetailsDone", label: "Updating patient record" },
+  { key: "donorDetailsDone", label: "Updating donor record" },
   { key: "patientHlaDone", label: "Saving patient HLA typing" },
   { key: "donorHlaDone", label: "Saving donor HLA typing" },
   { key: "antibodyProfilesDone", label: "Saving antibody profile" },

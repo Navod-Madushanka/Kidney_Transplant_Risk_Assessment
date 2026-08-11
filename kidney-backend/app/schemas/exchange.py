@@ -40,6 +40,11 @@ class ExchangeEdgeResponse(BaseModel):
     to_pair_id: uuid.UUID
     mismatch_result: dict
     dsa_result: dict
+    # None when this edge's donor/recipient are missing an LKDPI input --
+    # see app/services/lkdpi_service.py. Only used by the max_lkdpi_quality
+    # weight policy today; surfaced here so a coordinator can see why a
+    # given edge did or didn't influence that policy's cycle selection.
+    lkdpi_result: dict | None = None
 
 
 class ExchangeCycleResponse(BaseModel):

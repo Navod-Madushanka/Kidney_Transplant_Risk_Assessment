@@ -2,9 +2,18 @@ import { useState } from "react"
 import InputField from "../../ui/InputField"
 import SegmentedControl from "../../ui/SegmentedControl"
 import Button from "../../ui/Button"
-import { BLOOD_TYPE_OPTIONS, RH_FACTOR_OPTIONS } from "../../../constants/clinicalEnums"
+import { BLOOD_TYPE_OPTIONS, RH_FACTOR_OPTIONS, SEX_OPTIONS } from "../../../constants/clinicalEnums"
+import { formToEnum, numberOrNull, withUnknownOption } from "../../../utils/formValue"
 
-const emptyForm = { fullName: "", dateOfBirth: "", bloodType: "", rhFactor: "", nicNumber: "" }
+const emptyForm = {
+  fullName: "",
+  dateOfBirth: "",
+  bloodType: "",
+  rhFactor: "",
+  nicNumber: "",
+  sex: "unknown",
+  weightKg: "",
+}
 
 /**
  * Usage:
@@ -59,6 +68,8 @@ export default function PatientForm({
       full_name: form.fullName.trim(),
       date_of_birth: form.dateOfBirth,
       nic_number: form.nicNumber.trim() || null,
+      sex: formToEnum(form.sex),
+      weight_kg: numberOrNull(form.weightKg),
     }
     if (!isEdit) {
       payload.blood_type = form.bloodType
@@ -117,6 +128,31 @@ export default function PatientForm({
         value={form.nicNumber}
         onChange={updateField("nicNumber")}
       />
+
+      <div className="pt-2 border-t border-border">
+        <p className="text-[13px] font-semibold text-text-muted mb-3">
+          LKDPI inputs (recipient side) — used only for the living-donor compatibility score, not the
+          compatibility check itself
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <SegmentedControl
+            label="Sex"
+            options={withUnknownOption(SEX_OPTIONS)}
+            value={form.sex}
+            onChange={updateValue("sex")}
+          />
+          <InputField
+            label="Weight"
+            type="number"
+            step="0.01"
+            min="0"
+            max="400"
+            helperText="kg"
+            value={form.weightKg}
+            onChange={updateField("weightKg")}
+          />
+        </div>
+      </div>
 
       {formError && (
         <p role="alert" className="text-[13px] text-high-risk font-medium">
