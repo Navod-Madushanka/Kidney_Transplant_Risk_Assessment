@@ -42,6 +42,17 @@ export function parseOcrBloodType(raw) {
   return match ? match[1].toUpperCase() : ""
 }
 
+export function parseOcrRhFactor(raw) {
+  if (!raw) return ""
+  // Both source reports print Rh as part of the same blood-type string
+  // ("B Positive") that parseOcrBloodType reads the ABO group from -- this
+  // is a second parse over that same raw value, not a separate OCR field.
+  const trimmed = raw.trim().toLowerCase()
+  if (/(positive|pos|\+)$/.test(trimmed)) return "+"
+  if (/(negative|neg|-)$/.test(trimmed)) return "-"
+  return ""
+}
+
 export function parseOcrMfi(raw) {
   // The backend now sends this as a real JSON number (or null for a row
   // the OCR couldn't read) rather than a formatted string -- handle both
@@ -60,6 +71,7 @@ export function normalizeOcrBatchResponse(response) {
     nic_number: response.patient_details?.nic_number || "",
     date_of_birth: parseOcrDate(response.patient_details?.date_of_birth),
     blood_type: parseOcrBloodType(response.patient_details?.blood_type),
+    rh_factor: parseOcrRhFactor(response.patient_details?.blood_type),
   }
 
   const donorDetails = {
@@ -67,6 +79,7 @@ export function normalizeOcrBatchResponse(response) {
     nic_number: response.donor_details?.nic_number || "",
     date_of_birth: parseOcrDate(response.donor_details?.date_of_birth),
     blood_type: parseOcrBloodType(response.donor_details?.blood_type),
+    rh_factor: parseOcrRhFactor(response.donor_details?.blood_type),
   }
 
   const beadSpecificity = (response.bead_specificity || [])

@@ -4,7 +4,6 @@ import Card from "../../ui/Card"
 import FileUpload from "../../ui/FileUpload"
 import Button from "../../ui/Button"
 import Modal from "../../ui/Modal"
-import { REPORT_FILE_CATEGORY_OPTIONS } from "../../../constants/reportFileCategory"
 
 function formatFileSize(bytes) {
   if (bytes < 1024) return `${bytes} B`
@@ -162,6 +161,7 @@ function ReportFileSlot({ category, label, existingFile, onUpload, onDelete, onD
  *
  * Usage:
  *   <ReportFilesCard
+ *     categories={PATIENT_REPORT_CATEGORY_OPTIONS}
  *     loadState={reportFilesState.state}
  *     existingFiles={reportFilesState.data}
  *     onUpload={(category, file) => uploadPatientReportFile(patient.id, category, file)}
@@ -172,12 +172,24 @@ function ReportFileSlot({ category, label, existingFile, onUpload, onDelete, onD
  * Reference storage only — uploading here never extracts or auto-fills any
  * clinical field, unlike the compatibility-check wizard's OCR photo step.
  *
- * One dedicated slot per report category (HLA typing, crossmatch, bead
- * specificity chart, other) rather than an open-ended list — each slot is
- * independently optional, and the backend enforces at most one file per
- * (record, category), replacing on re-upload.
+ * One dedicated slot per report category rather than an open-ended list —
+ * each slot is independently optional, and the backend enforces at most
+ * one file per (record, category), replacing on re-upload. `categories`
+ * is required rather than defaulting to "every category that exists":
+ * the two joint lab documents (HLA typing, crossmatch) are owned by a
+ * DonorPatientPair now, not a patient, so this card must only ever offer
+ * the categories its caller's owner is actually allowed to hold (see
+ * PAIR_REPORT_CATEGORY_OPTIONS / PATIENT_REPORT_CATEGORY_OPTIONS in
+ * constants/reportFileCategory.js).
  */
-export default function ReportFilesCard({ loadState, existingFiles = [], onUpload, onDelete, onDownload }) {
+export default function ReportFilesCard({
+  categories,
+  loadState,
+  existingFiles = [],
+  onUpload,
+  onDelete,
+  onDownload,
+}) {
   const [overrides, setOverrides] = useState({})
 
   function filesByCategory(category) {
@@ -204,7 +216,7 @@ export default function ReportFilesCard({ loadState, existingFiles = [], onUploa
         <p className="text-[14px] text-text-muted">Couldn't load report files. Please refresh the page.</p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {REPORT_FILE_CATEGORY_OPTIONS.map(({ value, label }) => (
+          {categories.map(({ value, label }) => (
             <ReportFileSlot
               key={value}
               category={value}

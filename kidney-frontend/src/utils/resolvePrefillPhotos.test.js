@@ -15,7 +15,7 @@ function reportFile(category, overrides = {}) {
 }
 
 describe("resolvePrefillPhotos", () => {
-  it("returns null for every slot when neither record has any archived files", () => {
+  it("returns null for every slot when neither the pair nor the patient has any archived files", () => {
     const result = resolvePrefillPhotos([], [])
 
     expect(result).toEqual({
@@ -26,43 +26,50 @@ describe("resolvePrefillPhotos", () => {
     })
   })
 
-  it("prefers the patient's copy of the joint HLA typing report over the donor's", () => {
-    const patientFile = reportFile("hla_typing_report", { id: "patient-copy" })
-    const donorFile = reportFile("hla_typing_report", { id: "donor-copy" })
+  it("resolves the joint HLA typing report from the pair's archive", () => {
+    const pairFile = reportFile("hla_typing_report")
 
-    const result = resolvePrefillPhotos([patientFile], [donorFile])
+    const result = resolvePrefillPhotos([pairFile], [])
 
-    expect(result.hlaTypingReport).toEqual({ source: "patient", reportFile: patientFile })
+    expect(result.hlaTypingReport).toEqual({ source: "pair", reportFile: pairFile })
   })
 
-  it("falls back to the donor's crossmatch report when the patient doesn't have one archived", () => {
-    const donorFile = reportFile("crossmatch_report")
+  it("resolves the crossmatch report from the pair's archive", () => {
+    const pairFile = reportFile("crossmatch_report")
 
-    const result = resolvePrefillPhotos([], [donorFile])
+    const result = resolvePrefillPhotos([pairFile], [])
 
-    expect(result.crossmatchReport).toEqual({ source: "donor", reportFile: donorFile })
+    expect(result.crossmatchReport).toEqual({ source: "pair", reportFile: pairFile })
   })
 
-  it("never falls back to the donor's archive for bead specificity pages", () => {
-    const donorBeadChart = reportFile("bead_specificity_chart_page_1")
+  it("does not resolve a joint document from the patient's archive, even if present there", () => {
+    const patientFile = reportFile("hla_typing_report")
 
-    const result = resolvePrefillPhotos([], [donorBeadChart])
+    const result = resolvePrefillPhotos([], [patientFile])
 
-    expect(result.beadSpecificityPage1).toBeNull()
+    expect(result.hlaTypingReport).toBeNull()
   })
 
   it("resolves both bead specificity pages independently from the patient's archive", () => {
     const page1 = reportFile("bead_specificity_chart_page_1")
     const page2 = reportFile("bead_specificity_chart_page_2")
 
-    const result = resolvePrefillPhotos([page1, page2], [])
+    const result = resolvePrefillPhotos([], [page1, page2])
 
     expect(result.beadSpecificityPage1).toEqual({ source: "patient", reportFile: page1 })
     expect(result.beadSpecificityPage2).toEqual({ source: "patient", reportFile: page2 })
   })
 
+  it("does not resolve a bead specificity page from the pair's archive, even if present there", () => {
+    const pairBeadChart = reportFile("bead_specificity_chart_page_1")
+
+    const result = resolvePrefillPhotos([pairBeadChart], [])
+
+    expect(result.beadSpecificityPage1).toBeNull()
+  })
+
   it("ignores an 'other' category file entirely -- it doesn't map to any wizard slot", () => {
-    const result = resolvePrefillPhotos([reportFile("other")], [])
+    const result = resolvePrefillPhotos([reportFile("other")], [reportFile("other")])
 
     expect(Object.values(result).every((entry) => entry === null)).toBe(true)
   })

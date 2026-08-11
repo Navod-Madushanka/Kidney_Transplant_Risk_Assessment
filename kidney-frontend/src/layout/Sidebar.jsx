@@ -1,10 +1,27 @@
 // src/layout/Sidebar.jsx
 import { NavLink } from "react-router-dom"
 import { useAuth } from "../hooks/useAuth"
-import { HomeIcon, PatientsIcon, DonorIcon, NewCheckIcon, HistoryIcon, ExchangeIcon, AuditIcon, LogoutIcon } from "../components/icons"
+import {
+  HomeIcon,
+  PatientsIcon,
+  DonorIcon,
+  NewCheckIcon,
+  HistoryIcon,
+  ExchangeIcon,
+  AuditIcon,
+  LogoutIcon,
+  RegisterPairIcon,
+} from "../components/icons"
 
 const NAV_ITEMS = [
   { to: "/", label: "Dashboard", icon: HomeIcon, end: true },
+  // Primary way to add people (see implementation-prompt-part-f.md F6/F7)
+  // -- the two lab documents most checks start from cover a patient and
+  // donor together, so registering them together here is the front door.
+  // /patients/new and /donors/new still exist for the unassigned-donor
+  // case (see PatientsListPage.jsx/DonorsListPage.jsx's demoted "Register
+  // individually" links).
+  { to: "/pairs/new", label: "Register Patient & Donor", icon: RegisterPairIcon },
   { to: "/patients", label: "Patients", icon: PatientsIcon },
   { to: "/donors", label: "Donors", icon: DonorIcon },
   { to: "/checks/new", label: "New Check", icon: NewCheckIcon },

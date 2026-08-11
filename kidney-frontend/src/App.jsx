@@ -11,6 +11,7 @@ import PatientDetailPage from "./pages/PatientDetailPage"
 import DonorsListPage from "./pages/DonorsListPage"
 import NewDonorPage from "./pages/NewDonorPage"
 import DonorDetailPage from "./pages/DonorDetailPage"
+import NewPairPage from "./pages/NewPairPage"
 import DonorSafetyAssessmentPage from "./pages/DonorSafetyAssessmentPage"
 import DonorSearchPage from "./pages/DonorSearchPage"
 import ExchangePoolPage from "./pages/ExchangePoolPage"
@@ -38,6 +39,11 @@ function App() {
       <Route element={<ProtectedRoute />}>
         <Route element={<DashboardLayout />}>
           <Route path="/" element={<DashboardPage />} handle={{ title: "Dashboard" }} />
+          <Route
+            path="/pairs/new"
+            element={<NewPairPage />}
+            handle={{ title: "Register patient & donor" }}
+          />
           <Route path="/patients" element={<PatientsListPage />} handle={{ title: "Patients" }} />
           <Route path="/patients/new" element={<NewPatientPage />} handle={{ title: "Add patient" }} />
           <Route path="/patients/:patientId" element={<PatientDetailPage />} handle={{ title: "Patient" }} />

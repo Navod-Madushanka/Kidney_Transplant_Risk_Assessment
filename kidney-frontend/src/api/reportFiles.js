@@ -33,3 +33,16 @@ export const downloadDonorReportFile = (donorId, id, filename) =>
   apiDownloadFile(`/donors/${donorId}/report-files/${id}/download`, filename)
 export const fetchDonorReportFileBlob = (donorId, id) =>
   apiGetBlob(`/donors/${donorId}/report-files/${id}/download`)
+
+// Pair-owned documents (HLA typing / crossmatch reports) -- see
+// app/models/pair_report_file.py. Categories are restricted server-side to
+// PAIR_REPORT_CATEGORIES; uploading a bead-specificity category here 422s.
+export const listPairReportFiles = (pairId) => apiGet(`/pairs/${pairId}/report-files`)
+export const uploadPairReportFile = (pairId, category, file) =>
+  apiPostForm(`/pairs/${pairId}/report-files`, buildUploadForm(category, file))
+export const deletePairReportFile = (pairId, id) =>
+  apiDelete(`/pairs/${pairId}/report-files/${id}`)
+export const downloadPairReportFile = (pairId, id, filename) =>
+  apiDownloadFile(`/pairs/${pairId}/report-files/${id}/download`, filename)
+export const fetchPairReportFileBlob = (pairId, id) =>
+  apiGetBlob(`/pairs/${pairId}/report-files/${id}/download`)

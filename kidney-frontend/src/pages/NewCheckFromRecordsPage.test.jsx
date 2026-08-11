@@ -5,25 +5,28 @@ import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { describe, expect, it, vi } from "vitest"
 import { listPatients } from "../api/patients"
 import { listDonors } from "../api/donors"
+import { listPairs } from "../api/pairs"
 import {
   listPatientReportFiles,
-  listDonorReportFiles,
+  listPairReportFiles,
   fetchPatientReportFileBlob,
-  fetchDonorReportFileBlob,
+  fetchPairReportFileBlob,
 } from "../api/reportFiles"
 import NewCheckFromRecordsPage from "./NewCheckFromRecordsPage"
 
 vi.mock("../api/patients", () => ({ listPatients: vi.fn() }))
 vi.mock("../api/donors", () => ({ listDonors: vi.fn() }))
+vi.mock("../api/pairs", () => ({ listPairs: vi.fn() }))
 vi.mock("../api/reportFiles", () => ({
   listPatientReportFiles: vi.fn(),
-  listDonorReportFiles: vi.fn(),
+  listPairReportFiles: vi.fn(),
   fetchPatientReportFileBlob: vi.fn(),
-  fetchDonorReportFileBlob: vi.fn(),
+  fetchPairReportFileBlob: vi.fn(),
 }))
 
 const PATIENT = { id: "patient-1", full_name: "Alice Patient", nic_number: "199012345678" }
 const DONOR = { id: "donor-1", full_name: "Bob Donor", nic_number: "198512345678" }
+const PAIR = { id: "pair-1", patient_id: "patient-1", donor_id: "donor-1" }
 
 const HLA_FILE = {
   id: "file-hla",
@@ -65,15 +68,16 @@ describe("NewCheckFromRecordsPage", () => {
     const user = userEvent.setup()
     listPatients.mockResolvedValue([PATIENT])
     listDonors.mockResolvedValue([DONOR])
-    listPatientReportFiles.mockResolvedValue([HLA_FILE])
-    listDonorReportFiles.mockResolvedValue([])
+    listPairs.mockResolvedValue([PAIR])
+    listPairReportFiles.mockResolvedValue([HLA_FILE])
+    listPatientReportFiles.mockResolvedValue([])
 
     renderPage()
     await pickPatientAndDonor(user)
 
-    expect(await screen.findByText(/Found in patient's records — typing\.pdf/)).toBeInTheDocument()
+    expect(await screen.findByText(/Found in this pair's records — typing\.pdf/)).toBeInTheDocument()
     expect(screen.getByText("1 of 4 photo slots will be pre-filled")).toBeInTheDocument()
-    // Crossmatch wasn't archived for either side.
+    // Crossmatch wasn't archived on the pair.
     const crossmatchRow = screen.getByText("Crossmatch Report").closest("li")
     expect(crossmatchRow).toHaveTextContent("Not archived — upload manually")
   })
@@ -82,19 +86,20 @@ describe("NewCheckFromRecordsPage", () => {
     const user = userEvent.setup()
     listPatients.mockResolvedValue([PATIENT])
     listDonors.mockResolvedValue([DONOR])
-    listPatientReportFiles.mockResolvedValue([HLA_FILE])
-    listDonorReportFiles.mockResolvedValue([])
+    listPairs.mockResolvedValue([PAIR])
+    listPairReportFiles.mockResolvedValue([HLA_FILE])
+    listPatientReportFiles.mockResolvedValue([])
     const blob = new Blob(["fake pdf bytes"], { type: "application/pdf" })
-    fetchPatientReportFileBlob.mockResolvedValue(blob)
+    fetchPairReportFileBlob.mockResolvedValue(blob)
 
     renderPage()
     await pickPatientAndDonor(user)
-    await screen.findByText(/Found in patient's records/)
+    await screen.findByText(/Found in this pair's records/)
 
     await user.click(screen.getByRole("button", { name: "Start compatibility check" }))
 
     await waitFor(() =>
-      expect(fetchPatientReportFileBlob).toHaveBeenCalledWith("patient-1", "file-hla")
+      expect(fetchPairReportFileBlob).toHaveBeenCalledWith("pair-1", "file-hla")
     )
     expect(await screen.findByText("Subject Step")).toBeInTheDocument()
   })
@@ -103,8 +108,8 @@ describe("NewCheckFromRecordsPage", () => {
     const user = userEvent.setup()
     listPatients.mockResolvedValue([PATIENT])
     listDonors.mockResolvedValue([DONOR])
+    listPairs.mockResolvedValue([])
     listPatientReportFiles.mockRejectedValue(new Error("network down"))
-    listDonorReportFiles.mockResolvedValue([])
 
     renderPage()
     await pickPatientAndDonor(user)

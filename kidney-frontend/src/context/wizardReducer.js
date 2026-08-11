@@ -1,4 +1,5 @@
 import { HLA_LOCUS_OPTIONS } from "../constants/clinicalEnums";
+import { mergeDetails, mergeHlaRows, hasAnyValue } from "../utils/ocrHydrate";
 
 // One empty typing row per locus, in the canonical order — mirrors the
 // backend's HLA_LOCI list so nothing is silently missing when the pipeline
@@ -255,37 +256,11 @@ export function wizardReducer(state, action) {
       const { patientDetails, donorDetails, patientHla, donorHla, beadSpecificity, crossmatch } =
         action.payload;
 
-      // Only overwrite a field if OCR actually found something — never
-      // blank out a value the doctor already typed in by hand.
-      const mergeDetails = (existing, incoming) => {
-        const next = { ...existing };
-        for (const [key, value] of Object.entries(incoming || {})) {          if (value) next[key] = value;
-        }
-        return next;
-      };
-
-      // Matches incoming OCR rows to existing rows by locus (both sides
-      // use the same canonical HLA_LOCI codes), leaving any locus OCR
-      // didn't find untouched.
-      const mergeHlaRows = (existingRows, incomingRows) => {
-        if (!incomingRows || incomingRows.length === 0) return existingRows;
-        return existingRows.map((row) => {
-          const match = incomingRows.find((r) => r.locus === row.locus);
-          if (!match) return row;
-          return {
-            ...row,
-            allele_1: match.allele_1 || match.allele1 || row.allele_1,
-            allele_2: match.allele_2 || match.allele2 || row.allele_2,
-          };
-        });
-      };
-
       // A fresh extraction overwriting fields with output nobody has seen
       // yet invalidates any earlier verification of that same document
       // group -- otherwise re-uploading a corrected photo after already
       // checking "reviewed" would silently keep trusting the old
       // confirmation against new, unreviewed data.
-      const hasAnyValue = (obj) => Object.values(obj || {}).some((value) => value);
       const detailsChanged = hasAnyValue(patientDetails) || hasAnyValue(donorDetails);
       const hlaChanged =
         (patientHla && patientHla.length > 0) || (donorHla && donorHla.length > 0);

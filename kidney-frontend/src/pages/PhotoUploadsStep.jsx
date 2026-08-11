@@ -6,6 +6,7 @@ import { startExtractionJob } from "@/api/ocr"
 import FileUpload from "@/components/ui/FileUpload"
 import Button from "@/components/ui/Button"
 import Card from "@/components/ui/Card"
+import ExtractionProgressList from "@/components/domain/ocr/ExtractionProgressList"
 
 const UPLOAD_SLOTS = [
   {
@@ -33,19 +34,6 @@ const UPLOAD_SLOTS = [
     helperText: "T-cell / B-cell crossmatch result, if available yet",
   },
 ]
-
-// Bead specificity pages take 1.5-3 min each (8 sequential vision-model
-// calls per page) while HLA typing/crossmatch finish in seconds — extraction
-// runs as a background job on kidney-backend (see
-// useExtractionJobPolling.js) that keeps going and reports progress
-// regardless of which wizard step is open, so this maps the backend's
-// document_type tag to a friendly label for the running progress list.
-const DOCUMENT_TYPE_LABELS = {
-  hla_typing_report: "HLA typing report",
-  crossmatch_report: "Crossmatch report",
-  bead_specificity_page_1: "Bead specificity chart — page 1",
-  bead_specificity_page_2: "Bead specificity chart — page 2",
-}
 
 export default function PhotoUploadsStep() {
   const navigate = useNavigate()
@@ -128,55 +116,10 @@ export default function PhotoUploadsStep() {
         </div>
 
         {Object.keys(extractionDocuments).length > 0 && !isExtractionDone && (
-          <ul className="mt-3 flex flex-col gap-2.5">
-            {UPLOAD_SLOTS.filter(({ documentType }) => extractionDocuments[documentType]).map(
-              ({ documentType, label }) => {
-                const progress = extractionDocuments[documentType]
-                const isDone = progress.status === "done"
-                // Bead specificity's 8 tiles give a real percentage; HLA
-                // typing/crossmatch (total: 1) have no intermediate signal
-                // — an in-progress bar for those would just be a static,
-                // misleading number, so it pulses instead of claiming a %.
-                const isIndeterminate = progress.status === "in_progress" && progress.total <= 1
-                const percent = isDone
-                  ? 100
-                  : Math.round((progress.completed / Math.max(progress.total, 1)) * 100)
-                const displayLabel = DOCUMENT_TYPE_LABELS[documentType] || label
-
-                let statusText = "Waiting…"
-                if (isDone) statusText = "100%"
-                else if (isIndeterminate) statusText = "Reading…"
-                else if (progress.status === "in_progress")
-                  statusText = `${progress.completed}/${progress.total} sections — ${percent}%`
-
-                return (
-                  <li key={documentType} className="flex flex-col gap-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <span
-                        className={`text-[13px] ${
-                          isDone ? "text-clear font-medium" : "text-text"
-                        }`}
-                      >
-                        {isDone ? "✓ " : ""}
-                        {displayLabel}
-                      </span>
-                      <span className="text-[12px] text-text-muted tabular-nums shrink-0">
-                        {statusText}
-                      </span>
-                    </div>
-                    <div className="h-1.5 w-full rounded-full bg-border overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all duration-300 ${
-                          isDone ? "bg-clear" : "bg-accent"
-                        } ${isIndeterminate ? "animate-pulse" : ""}`}
-                        style={{ width: `${isIndeterminate ? 40 : percent}%` }}
-                      />
-                    </div>
-                  </li>
-                )
-              }
-            )}
-          </ul>
+          <ExtractionProgressList
+            documentSlots={UPLOAD_SLOTS}
+            extractionDocuments={extractionDocuments}
+          />
         )}
 
         {(startError || (extractionStatus === "failed" && state.extraction.error)) && (

@@ -54,6 +54,13 @@ const emptyForm = {
  * smoking/sex/race/antihypertensive medication/family history) are the
  * opposite — expected to change over a donor's workup — so they're always
  * editable in both modes.
+ *
+ * hideIntendedRecipientPicker: for NewPairPage.jsx, where the patient this
+ * donor is being registered for doesn't exist yet at donor-form-render
+ * time -- the picker could only ever show "None" there, and whatever it
+ * held would be silently overridden by POST /pairs setting
+ * intended_recipient_id to the newly-created patient anyway. Skips the
+ * listPatients() fetch too, not just the render.
  */
 export default function DonorForm({
   onSubmit,
@@ -61,6 +68,7 @@ export default function DonorForm({
   submitLabel = "Save donor",
   initialValues,
   mode = "create",
+  hideIntendedRecipientPicker = false,
 }) {
   const [form, setForm] = useState({ ...emptyForm, ...initialValues })
   const [errors, setErrors] = useState({})
@@ -70,6 +78,7 @@ export default function DonorForm({
   const isEdit = mode === "edit"
 
   useEffect(() => {
+    if (hideIntendedRecipientPicker) return
     let cancelled = false
     listPatients()
       .then((data) => !cancelled && (setPatients(data), setPatientsLoadState("loaded")))
@@ -77,7 +86,7 @@ export default function DonorForm({
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [hideIntendedRecipientPicker])
 
   function updateField(field) {
     return (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }))
@@ -181,22 +190,24 @@ export default function DonorForm({
         value={form.nicNumber}
         onChange={updateField("nicNumber")}
       />
-      <Select
-        label="Intended recipient"
-        placeholder={patientsLoadState === "loading" ? "Loading…" : "None — available for general pool"}
-        disabled={patientsLoadState === "loading"}
-        options={patients.map((p) => ({
-          value: p.id,
-          label: `${p.full_name} — ${p.nic_number || "no NIC"}`,
-        }))}
-        value={form.intendedRecipientId}
-        onChange={updateField("intendedRecipientId")}
-        helperText={
-          patientsLoadState === "error"
-            ? "Couldn't load your patients."
-            : "If this donor is only donating for one of your patients, select them here — they won't appear in other hospitals' searches. Leave blank for an altruistic/deceased donor."
-        }
-      />
+      {!hideIntendedRecipientPicker && (
+        <Select
+          label="Intended recipient"
+          placeholder={patientsLoadState === "loading" ? "Loading…" : "None — available for general pool"}
+          disabled={patientsLoadState === "loading"}
+          options={patients.map((p) => ({
+            value: p.id,
+            label: `${p.full_name} — ${p.nic_number || "no NIC"}`,
+          }))}
+          value={form.intendedRecipientId}
+          onChange={updateField("intendedRecipientId")}
+          helperText={
+            patientsLoadState === "error"
+              ? "Couldn't load your patients."
+              : "If this donor is only donating for one of your patients, select them here — they won't appear in other hospitals' searches. Leave blank for an altruistic/deceased donor."
+          }
+        />
+      )}
 
       <div className="pt-2 border-t border-border">
         <p className="text-[13px] font-semibold text-text-muted mb-3">

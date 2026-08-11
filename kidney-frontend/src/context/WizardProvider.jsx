@@ -44,7 +44,14 @@ export function WizardProvider({ children }) {
   // navigating to any other wizard step -- see
   // useExtractionJobPolling.js's docstring and extraction's own comment in
   // wizardReducer.js's buildInitialWizardState.
-  useExtractionJobPolling(dispatch, state.extraction.jobId, state.extraction.status);
+  useExtractionJobPolling({
+    jobId: state.extraction.jobId,
+    status: state.extraction.status,
+    onDocumentDone: (_documentType, payload) =>
+      dispatch({ type: WIZARD_ACTIONS.HYDRATE_FROM_OCR, payload }),
+    onStatusChange: (status, documents) =>
+      dispatch({ type: WIZARD_ACTIONS.SET_EXTRACTION_JOB_STATUS, status, documents }),
+  });
 
   const actions = useMemo(
     () => ({

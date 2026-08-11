@@ -28,8 +28,10 @@ import HlaTypingEditor from "../components/domain/hla/HlaTypingEditor"
 import AntibodyProfileEditor from "../components/domain/antibody/AntibodyProfileEditor"
 import SensitizationEventEditor from "../components/domain/sensitization/SensitizationEventEditor"
 import ReportFilesCard from "../components/domain/reportFiles/ReportFilesCard"
+import PairDocumentsCard from "../components/domain/reportFiles/PairDocumentsCard"
 import { enumToForm } from "../utils/formValue"
 import { reportBadgeProps } from "../constants/reportStatus"
+import { PATIENT_REPORT_CATEGORY_OPTIONS } from "../constants/reportFileCategory"
 
 async function loadEditorData(fetchFn) {
   try {
@@ -231,12 +233,15 @@ export default function PatientDetailPage() {
       />
 
       <ReportFilesCard
+        categories={PATIENT_REPORT_CATEGORY_OPTIONS}
         loadState={reportFilesState.state}
         existingFiles={reportFilesState.data}
         onUpload={(category, file) => uploadPatientReportFile(patient.id, category, file)}
         onDelete={(id) => deletePatientReportFile(patient.id, id)}
         onDownload={(id, filename) => downloadPatientReportFile(patient.id, id, filename)}
       />
+
+      <PairDocumentsCard patientId={patient.id} />
     </div>
   )
 }

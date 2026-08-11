@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 import ReportFilesCard from "./ReportFilesCard"
+import { PAIR_REPORT_CATEGORY_OPTIONS } from "../../../constants/reportFileCategory"
 
 const HLA_FILE = {
   id: "file-1",
@@ -15,6 +16,7 @@ const HLA_FILE = {
 
 function renderCard(overrides = {}) {
   const props = {
+    categories: PAIR_REPORT_CATEGORY_OPTIONS,
     loadState: "loaded",
     existingFiles: [HLA_FILE],
     onUpload: vi.fn(),
@@ -30,14 +32,11 @@ function slotFor(label) {
 }
 
 describe("ReportFilesCard", () => {
-  it("renders one dedicated slot per report category", () => {
+  it("renders one dedicated slot per category passed in", () => {
     renderCard({ existingFiles: [] })
 
     expect(screen.getByLabelText("HLA Typing Report")).toBeInTheDocument()
     expect(screen.getByLabelText("Crossmatch Report")).toBeInTheDocument()
-    expect(screen.getByLabelText("Bead Specificity Chart — Page 1")).toBeInTheDocument()
-    expect(screen.getByLabelText("Bead Specificity Chart — Page 2")).toBeInTheDocument()
-    expect(screen.getByLabelText("Other")).toBeInTheDocument()
   })
 
   it("shows an existing file in its matching category slot only", () => {

@@ -45,8 +45,14 @@ export default function DonorsListPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-[22px] font-bold text-text">Donors</h1>
+        {/* /pairs/new (via the sidebar) is the primary way to add people now
+            -- most donors arrive with a patient already lined up. This stays
+            for an altruistic/deceased donor with no intended recipient,
+            which is what feeds cross-hospital search. */}
         <Link to="/donors/new">
-          <Button>Add donor</Button>
+          <Button variant="ghost" size="sm">
+            Register individually
+          </Button>
         </Link>
       </div>
 

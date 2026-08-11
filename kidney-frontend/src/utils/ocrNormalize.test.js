@@ -1,6 +1,24 @@
 // src/utils/ocrNormalize.test.js
 import { describe, expect, it } from "vitest"
-import { normalizeOcrBatchResponse, parseOcrMfi } from "./ocrNormalize"
+import { normalizeOcrBatchResponse, parseOcrMfi, parseOcrRhFactor } from "./ocrNormalize"
+
+describe("parseOcrRhFactor", () => {
+  it("reads a positive Rh off the same blood-type string parseOcrBloodType parses", () => {
+    expect(parseOcrRhFactor("B Positive")).toBe("+")
+  })
+
+  it("reads a negative Rh off the same blood-type string parseOcrBloodType parses", () => {
+    expect(parseOcrRhFactor("B Negative")).toBe("-")
+  })
+
+  it("handles the terse +/- form", () => {
+    expect(parseOcrRhFactor("O+")).toBe("+")
+  })
+
+  it("returns an empty string when nothing is there to read", () => {
+    expect(parseOcrRhFactor("")).toBe("")
+  })
+})
 
 describe("parseOcrMfi", () => {
   it("passes through a real JSON number (the current backend contract)", () => {

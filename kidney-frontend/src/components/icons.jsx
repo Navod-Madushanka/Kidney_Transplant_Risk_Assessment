@@ -35,3 +35,12 @@ export function ExchangeIcon(props) {
 export function LogoutIcon(props) {
   return <svg {...iconProps(props)}><path d="M9 4H6a2 2 0 00-2 2v12a2 2 0 002 2h3M15 16l4-4-4-4M19 12H9" /></svg>
 }
+export function RegisterPairIcon(props) {
+  return (
+    <svg {...iconProps(props)}>
+      <circle cx="8" cy="8" r="3" />
+      <path d="M2.5 19c0-3.3 2.5-5.5 5.5-5.5s5.5 2.2 5.5 5.5" />
+      <path d="M18 5v6M15 8h6" />
+    </svg>
+  )
+}

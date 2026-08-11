@@ -10,12 +10,6 @@ import {
   updateDonorStatus,
 } from "../api/donors"
 import { getPatient } from "../api/patients"
-import {
-  listDonorReportFiles,
-  uploadDonorReportFile,
-  deleteDonorReportFile,
-  downloadDonorReportFile,
-} from "../api/reportFiles"
 import Badge from "../components/ui/Badge"
 import Button from "../components/ui/Button"
 import Card from "../components/ui/Card"
@@ -23,7 +17,7 @@ import Select from "../components/ui/Select"
 import Modal from "../components/ui/Modal"
 import DonorForm from "../components/domain/donor/DonorForm"
 import HlaTypingEditor from "../components/domain/hla/HlaTypingEditor"
-import ReportFilesCard from "../components/domain/reportFiles/ReportFilesCard"
+import PairDocumentsCard from "../components/domain/reportFiles/PairDocumentsCard"
 import { DONOR_STATUS_OPTIONS, donorStatusBadgeProps } from "../constants/donorStatus"
 import { RACE_OPTIONS, SEX_OPTIONS, SMOKING_STATUS_OPTIONS } from "../constants/clinicalEnums"
 import { boolToTriState, enumToForm } from "../utils/formValue"
@@ -45,7 +39,6 @@ export default function DonorDetailPage() {
   const [donorLoadState, setDonorLoadState] = useState("loading")
   const [intendedRecipient, setIntendedRecipient] = useState(null)
   const [hlaState, setHlaState] = useState({ state: "loading", data: [] })
-  const [reportFilesState, setReportFilesState] = useState({ state: "loading", data: [] })
 
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [isSavingEdit, setIsSavingEdit] = useState(false)
@@ -64,10 +57,6 @@ export default function DonorDetailPage() {
     getDonorHlaTypings(donorId)
       .then((data) => !cancelled && setHlaState({ state: "loaded", data }))
       .catch(() => !cancelled && setHlaState({ state: "error", data: [] }))
-
-    listDonorReportFiles(donorId)
-      .then((data) => !cancelled && setReportFilesState({ state: "loaded", data }))
-      .catch(() => !cancelled && setReportFilesState({ state: "error", data: [] }))
 
     return () => {
       cancelled = true
@@ -308,13 +297,7 @@ export default function DonorDetailPage() {
         onSave={(entries) => replaceDonorHlaTypings(donor.id, entries)}
       />
 
-      <ReportFilesCard
-        loadState={reportFilesState.state}
-        existingFiles={reportFilesState.data}
-        onUpload={(category, file) => uploadDonorReportFile(donor.id, category, file)}
-        onDelete={(id) => deleteDonorReportFile(donor.id, id)}
-        onDownload={(id, filename) => downloadDonorReportFile(donor.id, id, filename)}
-      />
+      <PairDocumentsCard donorId={donor.id} />
     </div>
   )
 }

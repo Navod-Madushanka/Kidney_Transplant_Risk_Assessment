@@ -39,8 +39,13 @@ export default function PatientsListPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-[22px] font-bold text-text">Patients</h1>
+        {/* /pairs/new (via the sidebar) is the primary way to add people now
+            -- most patients arrive with a donor already lined up. This stays
+            for the case that isn't a pair: a patient with no donor yet. */}
         <Link to="/patients/new">
-          <Button>Add patient</Button>
+          <Button variant="ghost" size="sm">
+            Register individually
+          </Button>
         </Link>
       </div>
 

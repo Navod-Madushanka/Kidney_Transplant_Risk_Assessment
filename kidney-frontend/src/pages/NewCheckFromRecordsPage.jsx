@@ -5,16 +5,17 @@ import { listPatients } from "../api/patients"
 import { listDonors } from "../api/donors"
 import {
   listPatientReportFiles,
-  listDonorReportFiles,
+  listPairReportFiles,
   fetchPatientReportFileBlob,
-  fetchDonorReportFileBlob,
+  fetchPairReportFileBlob,
 } from "../api/reportFiles"
+import { listPairs } from "../api/pairs"
 import { PREFILL_SLOTS, resolvePrefillPhotos } from "../utils/resolvePrefillPhotos"
 import Card from "../components/ui/Card"
 import Select from "../components/ui/Select"
 import Button from "../components/ui/Button"
 
-const SOURCE_LABELS = { patient: "patient's records", donor: "donor's records" }
+const SOURCE_LABELS = { patient: "patient's records", pair: "this pair's records" }
 
 function personLabel(person) {
   return `${person.full_name} — ${person.nic_number || "no NIC"}`
@@ -41,6 +42,7 @@ export default function NewCheckFromRecordsPage() {
   const [donorId, setDonorId] = useState("")
 
   const [matches, setMatches] = useState(null) // resolvePrefillPhotos() result, once both are picked
+  const [pairId, setPairId] = useState(null) // the DonorPatientPair linking this patient+donor, if any
   const [isResolving, setIsResolving] = useState(false)
   const [resolveError, setResolveError] = useState("")
 
@@ -65,20 +67,26 @@ export default function NewCheckFromRecordsPage() {
   useEffect(() => {
     if (!patientId || !donorId) {
       setMatches(null)
+      setPairId(null)
       return
     }
     let cancelled = false
     setIsResolving(true)
     setResolveError("")
-    Promise.all([listPatientReportFiles(patientId), listDonorReportFiles(donorId)])
-      .then(([patientFiles, donorFiles]) => {
+    Promise.all([listPatientReportFiles(patientId), listPairs({ patientId, donorId })])
+      .then(async ([patientFiles, pairs]) => {
         if (cancelled) return
-        setMatches(resolvePrefillPhotos(patientFiles, donorFiles))
+        const pair = pairs[0] ?? null
+        setPairId(pair?.id ?? null)
+        const pairFiles = pair ? await listPairReportFiles(pair.id) : []
+        if (cancelled) return
+        setMatches(resolvePrefillPhotos(pairFiles, patientFiles))
       })
       .catch(() => {
         if (cancelled) return
         setResolveError("Couldn't check archived report files for this pair. You can still start the check and upload documents manually.")
         setMatches(null)
+        setPairId(null)
       })
       .finally(() => !cancelled && setIsResolving(false))
     return () => {
@@ -100,7 +108,7 @@ export default function NewCheckFromRecordsPage() {
           const blob =
             match.source === "patient"
               ? await fetchPatientReportFileBlob(patientId, match.reportFile.id)
-              : await fetchDonorReportFileBlob(donorId, match.reportFile.id)
+              : await fetchPairReportFileBlob(pairId, match.reportFile.id)
           prefillPhotos[slot] = new File([blob], match.reportFile.original_filename, {
             type: match.reportFile.content_type,
           })
