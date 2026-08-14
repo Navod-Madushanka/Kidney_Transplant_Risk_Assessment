@@ -6,6 +6,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest"
 import { startExtractionJob, getExtractionJob } from "../api/ocr"
 import { createPair } from "../api/pairs"
 import { uploadPairReportFile, uploadPatientReportFile } from "../api/reportFiles"
+import { BackgroundJobsProvider } from "../context/BackgroundJobsProvider"
 import NewPairPage from "./NewPairPage"
 
 vi.mock("../api/ocr", () => ({
@@ -25,12 +26,14 @@ vi.mock("../api/patients", () => ({ listPatients: vi.fn().mockResolvedValue([]) 
 
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={["/pairs/new"]}>
-      <Routes>
-        <Route path="/pairs/new" element={<NewPairPage />} />
-        <Route path="/patients/:patientId" element={<div>Patient Detail</div>} />
-      </Routes>
-    </MemoryRouter>
+    <BackgroundJobsProvider>
+      <MemoryRouter initialEntries={["/pairs/new"]}>
+        <Routes>
+          <Route path="/pairs/new" element={<NewPairPage />} />
+          <Route path="/patients/:patientId" element={<div>Patient Detail</div>} />
+        </Routes>
+      </MemoryRouter>
+    </BackgroundJobsProvider>
   )
 }
 
@@ -145,5 +148,45 @@ describe("NewPairPage", () => {
     // Retry resumed from progress instead of re-registering the patient/donor.
     expect(createPair).toHaveBeenCalledTimes(1)
     expect(uploadPairReportFile).toHaveBeenCalledTimes(2)
+  })
+
+  it("kicks off a background bead-specificity extraction job after registering, without blocking navigation", async () => {
+    const user = userEvent.setup()
+    createPair.mockResolvedValue({ id: "pair-1", patient_id: "patient-1", donor_id: "donor-1" })
+    uploadPatientReportFile.mockResolvedValue({ id: "file-1" })
+    startExtractionJob.mockResolvedValue({ job_id: "bead-job-1" })
+
+    renderPage()
+    await user.upload(
+      screen.getByLabelText("Bead Specificity Chart — Page 1"),
+      new File(["x"], "bead1.pdf", { type: "application/pdf" })
+    )
+    await fillAndSaveBothForms(user)
+
+    await user.click(screen.getByRole("button", { name: /register patient/i }))
+
+    await waitFor(() => expect(screen.getByText("Patient Detail")).toBeInTheDocument())
+    expect(startExtractionJob).toHaveBeenCalledWith(
+      expect.objectContaining({ beadSpecificityPage1: expect.any(File) }),
+      "patient-1"
+    )
+  })
+
+  it("still navigates to the patient page if starting the background bead-specificity job fails", async () => {
+    const user = userEvent.setup()
+    createPair.mockResolvedValue({ id: "pair-1", patient_id: "patient-1", donor_id: "donor-1" })
+    uploadPatientReportFile.mockResolvedValue({ id: "file-1" })
+    startExtractionJob.mockRejectedValue(new Error("network down"))
+
+    renderPage()
+    await user.upload(
+      screen.getByLabelText("Bead Specificity Chart — Page 1"),
+      new File(["x"], "bead1.pdf", { type: "application/pdf" })
+    )
+    await fillAndSaveBothForms(user)
+
+    await user.click(screen.getByRole("button", { name: /register patient/i }))
+
+    await waitFor(() => expect(screen.getByText("Patient Detail")).toBeInTheDocument())
   })
 })

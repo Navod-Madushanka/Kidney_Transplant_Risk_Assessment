@@ -25,6 +25,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import async_session_maker
 from app.models.enums import OcrExtractionJobStatus
 from app.models.ocr_extraction_job import OcrExtractionJob
+from app.schemas.antibody_profile import AntibodyProfileEntry
+from app.services.antibody_profile_service import replace_patient_antibody_profiles
 from app.services.ocr_batch_service import DocumentChunk, ProgressEvent, stream_batch_extraction
 
 _EMPTY_DOCUMENT_RESULT = {
@@ -46,15 +48,22 @@ def _initial_documents(slots: list[str]) -> dict:
 
 
 async def create_extraction_job(
-    db: AsyncSession, doctor_id: uuid.UUID, files: dict[str, tuple[bytes, str, str]]
+    db: AsyncSession,
+    doctor_id: uuid.UUID,
+    files: dict[str, tuple[bytes, str, str]],
+    patient_id: uuid.UUID | None = None,
 ) -> OcrExtractionJob:
     """Creates the job row up front (status=running, every requested slot
     pending) so GET .../jobs/{id} has something valid to return the moment
     the caller has the job_id back — even before the background task
     (scheduled separately by the route, after this returns) has had a
-    chance to run at all."""
+    chance to run at all.
+
+    patient_id -- see OcrExtractionJob.patient_id's docstring. Only the
+    registration-time bead-specificity call path passes this."""
     job = OcrExtractionJob(
         doctor_id=doctor_id,
+        patient_id=patient_id,
         status=OcrExtractionJobStatus.RUNNING,
         documents=_initial_documents(list(files.keys())),
     )
@@ -111,6 +120,9 @@ async def run_extraction_job(job_id: uuid.UUID, files: dict[str, tuple[bytes, st
                 job.documents = documents
                 await db.commit()
 
+            if job.patient_id is not None:
+                await _save_bead_specificity_if_present(db, job)
+
             job.status = OcrExtractionJobStatus.DONE
             await db.commit()
         except Exception as exc:
@@ -118,6 +130,34 @@ async def run_extraction_job(job_id: uuid.UUID, files: dict[str, tuple[bytes, st
             job.status = OcrExtractionJobStatus.FAILED
             job.error = str(exc)
             await db.commit()
+
+
+async def _save_bead_specificity_if_present(db: AsyncSession, job: OcrExtractionJob) -> None:
+    """Auto-saves whatever bead-specificity rows this job's pages produced,
+    unattended -- unlike every other write to antibody_profiles, nobody is
+    necessarily watching this job to review and PUT the results themselves
+    (see NewPairPage.jsx, the only caller that passes patient_id today).
+    ocr_verified=False always, regardless of what the pages contained, since
+    a doctor hasn't seen this data yet -- see
+    antibody_profile_service.replace_patient_antibody_profiles's
+    _resolve_verified contract. Left inside run_extraction_job's own
+    try/except, so a failure here correctly fails the whole job rather than
+    reporting "done" with the save silently lost.
+
+    Simple concatenation of both pages, same merge run_batch_extraction
+    already does for the synchronous /extract-batch endpoint (see
+    ocr_batch_service.py's `result.bead_specificity.extend(...)`)."""
+    bead_rows = [
+        *job.documents.get("bead_specificity_page_1", {}).get("bead_specificity", []),
+        *job.documents.get("bead_specificity_page_2", {}).get("bead_specificity", []),
+    ]
+    if not bead_rows:
+        return
+
+    entries = [AntibodyProfileEntry(antigen=row["antigen"], mfi=row["mfi"]) for row in bead_rows]
+    await replace_patient_antibody_profiles(
+        db, job.patient_id, entries, ocr_verified=False, doctor_id=job.doctor_id
+    )
 
 
 async def get_extraction_job(

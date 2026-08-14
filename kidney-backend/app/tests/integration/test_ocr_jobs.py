@@ -21,6 +21,7 @@ import asyncio
 from httpx import AsyncClient
 
 from app.services import ocr_batch_service
+from app.tests.conftest import create_patient
 
 HLA_TYPING_RESPONSE = {
     "structured": {
@@ -198,6 +199,103 @@ async def test_get_unknown_job_returns_404(auth_client: AsyncClient):
         "/ocr/extract-batch/jobs/00000000-0000-0000-0000-000000000000"
     )
     assert response.status_code == 404
+
+
+def _fake_call_ocr_service_stream_by_filename(structured_by_filename, total_tiles=1):
+    # Unlike _fake_call_ocr_service_stream above (keyed by document_type),
+    # both bead-specificity pages map to the SAME document_type
+    # ("bead_specificity" -- see SLOT_DOCUMENT_TYPES), so a fake keyed by
+    # document_type can't return different rows per page. Keying by
+    # filename instead lets these tests prove page 1's and page 2's rows
+    # both land in the saved profile (concatenated), not just one of them.
+    async def _fake(file_bytes, filename, content_type, document_type):
+        for completed in range(total_tiles + 1):
+            yield {"type": "progress", "completed": completed, "total": total_tiles}
+        yield {
+            "type": "result",
+            "document_type": document_type,
+            "structured": structured_by_filename[filename],
+        }
+
+    return _fake
+
+
+async def test_bead_specificity_job_with_patient_id_saves_unverified_profiles(
+    monkeypatch, auth_client: AsyncClient
+):
+    patient = await create_patient(auth_client)
+    monkeypatch.setattr(
+        ocr_batch_service,
+        "call_ocr_service_stream",
+        _fake_call_ocr_service_stream_by_filename(
+            {
+                "page1.jpg": {"bead_specificity": [{"antigen": "A1", "mfi": 1000}]},
+                "page2.jpg": {"bead_specificity": [{"antigen": "B7", "mfi": 2500}]},
+            }
+        ),
+    )
+
+    start = await auth_client.post(
+        "/ocr/extract-batch/jobs",
+        files={
+            "bead_specificity_page_1": ("page1.jpg", b"fake-bytes", "image/jpeg"),
+            "bead_specificity_page_2": ("page2.jpg", b"fake-bytes", "image/jpeg"),
+        },
+        data={"patient_id": patient["id"]},
+    )
+    assert start.status_code == 202
+    job_id = start.json()["job_id"]
+
+    body = await _await_job_done(auth_client, job_id)
+    assert body["status"] == "done"
+
+    profiles_response = await auth_client.get(f"/patients/{patient['id']}/antibody-profiles")
+    profiles = {(p["antigen"], float(p["mfi"])) for p in profiles_response.json()}
+    assert profiles == {("A1", 1000.0), ("B7", 2500.0)}
+
+    patient_response = await auth_client.get(f"/patients/{patient['id']}")
+    assert patient_response.json()["antibody_profile_verified"] is False
+
+
+async def test_job_with_patient_id_from_another_doctor_returns_404(
+    auth_client: AsyncClient, second_auth_client: AsyncClient
+):
+    patient = await create_patient(second_auth_client)
+
+    response = await auth_client.post(
+        "/ocr/extract-batch/jobs",
+        files={"bead_specificity_page_1": FAKE_IMAGE},
+        data={"patient_id": patient["id"]},
+    )
+
+    assert response.status_code == 404
+
+
+async def test_job_without_patient_id_does_not_touch_antibody_profiles(
+    monkeypatch, auth_client: AsyncClient
+):
+    patient = await create_patient(auth_client)
+    monkeypatch.setattr(
+        ocr_batch_service,
+        "call_ocr_service_stream",
+        _fake_call_ocr_service_stream(
+            {"bead_specificity": {"bead_specificity": [{"antigen": "A23", "mfi": 490.5}]}},
+        ),
+    )
+
+    start = await auth_client.post(
+        "/ocr/extract-batch/jobs",
+        files={"bead_specificity_page_1": FAKE_IMAGE},
+    )
+    job_id = start.json()["job_id"]
+
+    body = await _await_job_done(auth_client, job_id)
+    assert body["status"] == "done"
+
+    profiles_response = await auth_client.get(f"/patients/{patient['id']}/antibody-profiles")
+    assert profiles_response.json() == []
+    patient_response = await auth_client.get(f"/patients/{patient['id']}")
+    assert patient_response.json()["antibody_profile_verified"] is True
 
 
 async def test_get_job_without_auth_returns_401(client: AsyncClient):

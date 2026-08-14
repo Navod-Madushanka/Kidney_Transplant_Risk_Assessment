@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom"
 import { startExtractionJob } from "../api/ocr"
 import { submitPairRegistration } from "../api/pairRegistration"
 import { useExtractionJobPolling } from "../hooks/useExtractionJobPolling"
+import { useBackgroundJobs } from "../hooks/useBackgroundJobs"
 import { mergeDetails, hasAnyValue } from "../utils/ocrHydrate"
 import { parseOcrDate } from "../utils/ocrNormalize"
 import FileUpload from "../components/ui/FileUpload"
@@ -51,6 +52,14 @@ const DOCUMENT_SLOTS = [
 
 const EXTRACTABLE_SLOTS = DOCUMENT_SLOTS.filter((s) => s.extractable)
 
+// Fed to BackgroundJobToast's ExtractionProgressList (see
+// BackgroundJobsProvider.jsx) -- documentType is all it needs, since
+// ExtractionProgressList already has friendly labels for both bead pages.
+const BEAD_SPECIFICITY_JOB_SLOTS = [
+  { documentType: "bead_specificity_page_1" },
+  { documentType: "bead_specificity_page_2" },
+]
+
 function buildCrossmatchInput(crossmatch) {
   if (!crossmatch) return null
   const { t_cell_result, b_cell_result, interpretation, remarks, test_date } = crossmatch
@@ -83,6 +92,7 @@ function buildCrossmatchInput(crossmatch) {
  */
 export default function NewPairPage() {
   const navigate = useNavigate()
+  const backgroundJobs = useBackgroundJobs()
 
   const [files, setFiles] = useState({
     hlaTypingReport: null,
@@ -215,6 +225,33 @@ export default function NewPairPage() {
         progress,
         setProgress
       )
+
+      // Best-effort, fire-and-forget: the two bead-specificity pages are
+      // stored-but-unread at registration time (see DOCUMENT_SLOTS' own
+      // comment above) -- reading them now, in the background, means the
+      // doctor doesn't have to re-transcribe the whole chart by hand later
+      // in the compatibility wizard. A failure here shouldn't block
+      // navigating to the newly-registered patient, since registration
+      // itself already succeeded.
+      if (files.beadSpecificityPage1 || files.beadSpecificityPage2) {
+        try {
+          const { job_id } = await startExtractionJob(
+            {
+              beadSpecificityPage1: files.beadSpecificityPage1,
+              beadSpecificityPage2: files.beadSpecificityPage2,
+            },
+            result.patientId
+          )
+          backgroundJobs.startJob({
+            jobId: job_id,
+            label: `Bead specificity chart — ${patientPayload.full_name}`,
+            documentSlots: BEAD_SPECIFICITY_JOB_SLOTS,
+          })
+        } catch {
+          // Swallowed on purpose -- see comment above.
+        }
+      }
+
       navigate(`/patients/${result.patientId}`)
     } catch (err) {
       setProgress(err.progress || progress)

@@ -34,10 +34,19 @@ function buildFormData(photos) {
 // connection entirely — see getExtractionJob below, and
 // WizardProvider.jsx's polling effect, which is what actually drives this
 // from the wizard.
-export function startExtractionJob(photos) {
+//
+// patientId -- only NewPairPage.jsx's registration-time bead-specificity
+// extraction passes this (the compatibility-check wizard's own Photos-step
+// jobs start before a patient is even selected). Ties the job to that
+// patient so it auto-saves its own results once done, unattended -- see
+// kidney-backend's OcrExtractionJob.patient_id docstring.
+export function startExtractionJob(photos, patientId) {
   const formData = buildFormData(photos)
   if (!formData) {
     return Promise.reject(new Error("Upload at least one document before extracting."))
+  }
+  if (patientId) {
+    formData.append("patient_id", patientId)
   }
 
   return apiPostForm("/ocr/extract-batch/jobs", formData)

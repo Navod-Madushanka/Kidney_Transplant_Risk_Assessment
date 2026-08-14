@@ -8,6 +8,7 @@ import {
   WIZARD_ACTIONS,
 } from "./wizardReducer";
 import { useExtractionJobPolling } from "../hooks/useExtractionJobPolling";
+import { mergeHlaRows } from "../utils/ocrHydrate";
 
 export function WizardProvider({ children }) {
   // NewCheckFromRecordsPage.jsx navigates here with
@@ -25,10 +26,43 @@ export function WizardProvider({ children }) {
     (locationState) => {
       const initial = buildInitialWizardState();
       if (!locationState) return initial;
-      const { prefillPhotos, patientId, donorId } = locationState;
+      const {
+        prefillPhotos,
+        patientId,
+        donorId,
+        prefillPatientHla,
+        prefillDonorHla,
+        prefillBeadSpecificity,
+      } = locationState;
       return {
         ...initial,
         photos: prefillPhotos ? { ...initial.photos, ...prefillPhotos } : initial.photos,
+        // Same merge helper HYDRATE_FROM_OCR uses (wizardReducer.js) --
+        // these rows are already-saved PatientHLATyping/DonorHLATyping
+        // data (see NewCheckFromRecordsPage.jsx), not fresh OCR output, so
+        // this intentionally does NOT touch ocr_verified/extraction --
+        // there's nothing here for the doctor to "review against the
+        // source document" that they haven't already confirmed when this
+        // record was first saved.
+        patient_hla: prefillPatientHla
+          ? mergeHlaRows(initial.patient_hla, prefillPatientHla)
+          : initial.patient_hla,
+        donor_hla: prefillDonorHla
+          ? mergeHlaRows(initial.donor_hla, prefillDonorHla)
+          : initial.donor_hla,
+        // Straight replace, not a merge -- bead_specificity isn't
+        // locus-keyed like HLA (antigen names are free-form), same
+        // full-replace semantics SET_BEAD_SPECIFICITY already uses. Unlike
+        // patient_hla/donor_hla above, this data's own trust may still be
+        // unconfirmed (Patient.antibody_profile_verified can be false, e.g.
+        // straight off the registration-time background job) --
+        // BeadSpecificityStep.jsx's wasOcrExtracted check reads that flag
+        // itself, from state.subject.patientRecord, rather than needing
+        // anything extra recorded here.
+        bead_specificity:
+          prefillBeadSpecificity && prefillBeadSpecificity.length > 0
+            ? prefillBeadSpecificity
+            : initial.bead_specificity,
         // NewCheckFromRecordsPage.jsx navigates here with both IDs already
         // picked -- seeds subject so SubjectStep opens pre-selected rather
         // than making the doctor pick the same pair again.

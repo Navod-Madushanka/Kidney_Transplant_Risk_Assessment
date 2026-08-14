@@ -1,16 +1,33 @@
 // src/pages/SubjectStep.jsx
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { useWizard } from "../hooks/useWizard"
-import { listPatients, getPatient } from "../api/patients"
-import { listDonors, getDonor } from "../api/donors"
+import { getPatient } from "../api/patients"
+import { getDonor } from "../api/donors"
 import { getCompatibilityReadiness } from "../api/compatibility"
+import { createPair } from "../api/pairs"
+import { hasAnyValue } from "../utils/ocrHydrate"
 import Card from "../components/ui/Card"
-import Select from "../components/ui/Select"
 import Button from "../components/ui/Button"
+import PatientForm from "../components/domain/patient/PatientForm"
+import DonorForm from "../components/domain/donor/DonorForm"
 
-function personLabel(person) {
-  return `${person.full_name} — ${person.nic_number || "no NIC"}`
+// Patient/donor Full name/DOB/blood group/Rh/NIC read the same way
+// regardless of source (OCR off the documents from the now-preceding
+// Photos step, or a plain empty form) -- PatientForm/DonorForm's
+// initialValues just need the wizard's snake_case detail fields remapped
+// to their camelCase form-field names. Sex/weight and the donor's clinical
+// panel aren't part of patient_details/donor_details (OCR doesn't read
+// those off an HLA typing report), so they're left for the doctor to fill
+// in here regardless of what got extracted.
+function formValuesFromDetails(details) {
+  return {
+    fullName: details.full_name || "",
+    dateOfBirth: details.date_of_birth || "",
+    bloodType: details.blood_type || "",
+    rhFactor: details.rh_factor || "",
+    nicNumber: details.nic_number || "",
+  }
 }
 
 // Seeds patient_details/donor_details from the linked record's own
@@ -61,30 +78,39 @@ export default function SubjectStep() {
   const navigate = useNavigate()
   const { state, actions } = useWizard()
 
-  const [patients, setPatients] = useState([])
-  const [donors, setDonors] = useState([])
-  const [loadState, setLoadState] = useState("loading")
   const [readinessState, setReadinessState] = useState("idle") // idle | loading | loaded | error
 
   const { patientId, donorId, readiness } = state.subject
 
-  useEffect(() => {
-    let cancelled = false
-    Promise.all([listPatients(), listDonors()])
-      .then(([patientList, donorList]) => {
-        if (cancelled) return
-        setPatients(patientList)
-        setDonors(donorList)
-        setLoadState("loaded")
-      })
-      .catch(() => !cancelled && setLoadState("error"))
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  // This step no longer offers a "pick an existing patient/donor from the
+  // database" UI -- that only lives on NewCheckFromRecordsPage.jsx now,
+  // which forwards here with patientId/donorId already chosen (seeded by
+  // WizardProvider's location.state lazy-init). Reaching this step with
+  // neither set means a doctor started a plain "New compatibility check",
+  // so the only way forward is registering a brand-new patient + donor
+  // right here.
+  const needsRegistration = !patientId || !donorId
+
+  const [patientPayload, setPatientPayload] = useState(null)
+  const [donorPayload, setDonorPayload] = useState(null)
+  const [isRegistering, setIsRegistering] = useState(false)
+  const [registerError, setRegisterError] = useState("")
+
+  // Sidesteps a real race: dispatching setSubject from handleRegister below
+  // re-renders this component with a new patientId/donorId *before* the
+  // navigate() call two lines later actually swaps the route out, so this
+  // effect's dependency array sees the change and would otherwise fire --
+  // redundantly re-fetching readiness/records handleRegister already has,
+  // and (worse) briefly repopulating state.subject.readiness with a
+  // blocking gap this same effect has no UI left on screen to show.
+  const skipNextReadinessFetch = useRef(false)
 
   useEffect(() => {
     if (!patientId || !donorId) return
+    if (skipNextReadinessFetch.current) {
+      skipNextReadinessFetch.current = false
+      return
+    }
     let cancelled = false
     setReadinessState("loading")
     Promise.all([
@@ -110,8 +136,125 @@ export default function SubjectStep() {
   const canContinue = readinessState === "loaded" && readiness?.can_run
 
   function handleContinue() {
-    actions.unlockStep(1)
-    navigate("/checks/new/photos")
+    actions.unlockStep(2)
+    navigate("/checks/new/details")
+  }
+
+  // One transaction on the backend (POST /pairs) -- a NIC conflict on
+  // either side rolls the whole thing back, so there's no orphaned patient
+  // to worry about on retry.
+  //
+  // Deliberately skips the readiness/blocking-gap preview below and goes
+  // straight to Details (Confirm details -- next in line now that Photos
+  // moved ahead of this step), the same way this wizard worked before Part
+  // E introduced that preview for re-used *existing* records (see
+  // compatibility_precondition_service.py's module docstring). A pair
+  // registered right here is brand new by definition -- it will always be
+  // missing HLA typing, since HlaTypingStep (a few steps from now) is where
+  // that gets entered. Showing "these must be resolved" for a gap the very
+  // next steps exist to fill would just dead-end the doctor.
+  async function handleRegister() {
+    setRegisterError("")
+    setIsRegistering(true)
+    try {
+      const pair = await createPair({ patient: patientPayload, donor: donorPayload })
+      skipNextReadinessFetch.current = true
+      actions.setSubject({ patientId: pair.patient_id, donorId: pair.donor_id })
+      actions.setLinkedRecords(pair.patient, pair.donor)
+      actions.setPatientDetails(detailsFromRecord(pair.patient))
+      actions.setDonorDetails(detailsFromRecord(pair.donor))
+      actions.unlockStep(2)
+      navigate("/checks/new/details")
+    } catch (err) {
+      setRegisterError(err.message || "Couldn't register this pair. Please try again.")
+      setIsRegistering(false)
+    }
+  }
+
+  if (needsRegistration) {
+    const patientHydrated = hasAnyValue(state.patient_details)
+    const donorHydrated = hasAnyValue(state.donor_details)
+
+    return (
+      <div className="flex flex-col gap-6">
+        <div>
+          <h1 className="text-[22px] font-bold text-text">Patient &amp; donor</h1>
+          <p className="text-[14px] text-text-muted mt-1">
+            Register the patient and donor this check is for. Everything the check writes — HLA
+            typing, sensitization events, the check itself — is saved onto these two new records.
+          </p>
+        </div>
+
+        <div>
+          <h2 className="text-[17px] font-semibold text-text mb-1">Patient</h2>
+          {patientHydrated && (
+            <p className="text-[13px] text-clear font-medium mb-2">
+              Auto-filled from the documents you uploaded — review before registering.
+            </p>
+          )}
+          <Card>
+            <PatientForm
+              key={JSON.stringify(state.patient_details)}
+              initialValues={formValuesFromDetails(state.patient_details)}
+              submitLabel={patientPayload ? "Patient details saved — update" : "Save patient details"}
+              onSubmit={(payload) => {
+                setPatientPayload(payload)
+                return Promise.resolve()
+              }}
+            />
+          </Card>
+        </div>
+
+        <div>
+          <h2 className="text-[17px] font-semibold text-text mb-1">Donor</h2>
+          {donorHydrated && (
+            <p className="text-[13px] text-clear font-medium mb-2">
+              Auto-filled from the documents you uploaded — review before registering.
+            </p>
+          )}
+          <Card>
+            <DonorForm
+              key={JSON.stringify(state.donor_details)}
+              initialValues={formValuesFromDetails(state.donor_details)}
+              hideIntendedRecipientPicker
+              submitLabel={donorPayload ? "Donor details saved — update" : "Save donor details"}
+              onSubmit={(payload) => {
+                setDonorPayload(payload)
+                return Promise.resolve()
+              }}
+            />
+          </Card>
+        </div>
+
+        <p className="text-[13px] text-text-muted">
+          Already registered this patient or donor?{" "}
+          <Link to="/checks/start-from-records" className="text-accent underline">
+            Start from their existing records instead
+          </Link>
+          .
+        </p>
+
+        {registerError && (
+          <p role="alert" className="text-[13px] text-high-risk font-medium">
+            {registerError}
+          </p>
+        )}
+
+        <div className="flex items-center justify-between">
+          <Button variant="secondary" onClick={() => navigate("/checks/new/photos")}>
+            Back
+          </Button>
+          <Button
+            size="lg"
+            loading={isRegistering}
+            disabled={!patientPayload || !donorPayload}
+            onClick={handleRegister}
+          >
+            Register patient &amp; donor
+          </Button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -119,51 +262,12 @@ export default function SubjectStep() {
       <div>
         <h1 className="text-[22px] font-bold text-text">Patient &amp; donor</h1>
         <p className="text-[14px] text-text-muted mt-1">
-          Pick the two existing records this check runs against. Everything the check writes —
-          HLA typing, sensitization events, the check itself — updates these records rather than
-          creating new ones, so re-checking the same real pair later works cleanly.
+          This check runs against the patient and donor below. Everything it writes — HLA typing,
+          sensitization events, the check itself — updates these two records.
         </p>
       </div>
 
-      <Card>
-        {loadState === "error" ? (
-          <p className="text-[14px] text-text-muted">
-            Couldn't load patients and donors. Please refresh the page.
-          </p>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Select
-              label="Patient"
-              placeholder={loadState === "loading" ? "Loading…" : "Select patient"}
-              disabled={loadState === "loading"}
-              options={patients.map((p) => ({ value: p.id, label: personLabel(p) }))}
-              value={patientId || ""}
-              onChange={(e) => actions.setSubject({ patientId: e.target.value })}
-            />
-            <Select
-              label="Donor"
-              placeholder={loadState === "loading" ? "Loading…" : "Select donor"}
-              disabled={loadState === "loading"}
-              options={donors.map((d) => ({ value: d.id, label: personLabel(d) }))}
-              value={donorId || ""}
-              onChange={(e) => actions.setSubject({ donorId: e.target.value })}
-            />
-          </div>
-        )}
-        <p className="text-[13px] text-text-muted mt-4">
-          Don't see the person you need?{" "}
-          <Link to="/patients/new" className="text-accent underline">
-            Register a new patient
-          </Link>{" "}
-          or{" "}
-          <Link to="/donors/new" className="text-accent underline">
-            register a new donor
-          </Link>
-          , then come back and select them here.
-        </p>
-      </Card>
-
-      {patientId && donorId && readinessState === "loading" && (
+      {readinessState === "loading" && (
         <p className="text-[13px] text-text-muted">Checking readiness…</p>
       )}
 
@@ -171,6 +275,16 @@ export default function SubjectStep() {
         <p className="text-[13px] text-high-risk font-medium">
           Couldn't check readiness for this pair. Please try again.
         </p>
+      )}
+
+      {readinessState === "loaded" && state.subject.patientRecord && state.subject.donorRecord && (
+        <Card>
+          <p className="text-[14px] text-text">
+            Patient: <span className="font-semibold">{state.subject.patientRecord.full_name}</span>
+            {" · "}
+            Donor: <span className="font-semibold">{state.subject.donorRecord.full_name}</span>
+          </p>
+        </Card>
       )}
 
       {readinessState === "loaded" && readiness && (
@@ -210,7 +324,10 @@ export default function SubjectStep() {
         </>
       )}
 
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between">
+        <Button variant="secondary" onClick={() => navigate("/checks/new/photos")}>
+          Back
+        </Button>
         <Button size="lg" onClick={handleContinue} disabled={!canContinue}>
           Continue
         </Button>

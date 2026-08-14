@@ -2,7 +2,16 @@
 import uuid
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+    status,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user
@@ -17,6 +26,7 @@ from app.schemas.ocr import (
 from app.services.ocr_batch_service import run_batch_extraction
 from app.services.ocr_client import call_ocr_service
 from app.services.ocr_job_service import create_extraction_job, get_extraction_job, run_extraction_job
+from app.services.patient_service import get_patient_by_id_for_doctor
 
 router = APIRouter(prefix="/ocr", tags=["ocr"])
 
@@ -105,6 +115,7 @@ async def start_extract_batch_job(
     bead_specificity_page_1: UploadFile | None = File(None),
     bead_specificity_page_2: UploadFile | None = File(None),
     crossmatch_report: UploadFile | None = File(None),
+    patient_id: uuid.UUID | None = Form(None),
     current_doctor: Doctor = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -121,15 +132,28 @@ async def start_extract_batch_job(
     results, from anywhere, at any pace. The job keeps running server-side
     regardless of whether anything is polling it.
 
-    All upfront validation (at-least-one-file, content-type) happens
-    before the job row is even created, so those failures still come back
-    as a normal synchronous JSON error response.
+    patient_id -- only NewPairPage.jsx's registration-time bead-specificity
+    extraction passes this (the compatibility-check wizard's own Photos-step
+    jobs start before a patient is even selected). When present, ties the
+    job to that patient so run_extraction_job can auto-save its results
+    unattended -- see OcrExtractionJob.patient_id's docstring. Ownership is
+    checked here, before the job row is even created, same as the other
+    upfront validation below.
+
+    All upfront validation (at-least-one-file, content-type, patient
+    ownership) happens before the job row is even created, so those
+    failures still come back as a normal synchronous JSON error response.
     """
+    if patient_id is not None:
+        patient = await get_patient_by_id_for_doctor(db, patient_id, current_doctor.id)
+        if patient is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
+
     files_payload = await _build_files_payload(
         hla_typing_report, crossmatch_report, bead_specificity_page_1, bead_specificity_page_2
     )
 
-    job = await create_extraction_job(db, current_doctor.id, files_payload)
+    job = await create_extraction_job(db, current_doctor.id, files_payload, patient_id=patient_id)
     background_tasks.add_task(run_extraction_job, job.id, files_payload)
 
     return OcrJobCreateResponse(job_id=job.id)

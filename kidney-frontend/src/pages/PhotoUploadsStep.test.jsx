@@ -30,7 +30,7 @@ function renderStep({ initialEntry = "/checks/new/photos" } = {}) {
       <WizardProvider>
         <Routes>
           <Route path="/checks/new/photos" element={<PhotoUploadsStep />} />
-          <Route path="/checks/new/details" element={<div>Details Step</div>} />
+          <Route path="/checks/new/subject" element={<div>Subject Step</div>} />
         </Routes>
         <PatientNamePeek />
       </WizardProvider>
@@ -131,7 +131,7 @@ describe("PhotoUploadsStep", () => {
     await user.click(screen.getByRole("button", { name: /extract from documents/i }))
     await user.click(screen.getByRole("button", { name: "Continue", exact: true }))
 
-    expect(await screen.findByText("Details Step")).toBeInTheDocument()
+    expect(await screen.findByText("Subject Step")).toBeInTheDocument()
     expect(await screen.findByTestId("patient-name-peek")).toHaveTextContent(
       "Rev.A.Premarathna Thero"
     )
@@ -168,7 +168,7 @@ describe("PhotoUploadsStep", () => {
     expect(await screen.findByText(/model_returned_unrecognized_locus:X/)).toBeInTheDocument()
   })
 
-  it("navigates to the details step on Continue without requiring extraction", async () => {
+  it("navigates to the subject step on Continue without requiring extraction", async () => {
     const user = userEvent.setup()
 
     renderStep()
@@ -176,7 +176,7 @@ describe("PhotoUploadsStep", () => {
     // FileUpload's helper text ("...chart continues...").
     await user.click(screen.getByRole("button", { name: "Continue", exact: true }))
 
-    expect(await screen.findByText("Details Step")).toBeInTheDocument()
+    expect(await screen.findByText("Subject Step")).toBeInTheDocument()
   })
 
   // Regression coverage for NewCheckFromRecordsPage.jsx: it navigates here

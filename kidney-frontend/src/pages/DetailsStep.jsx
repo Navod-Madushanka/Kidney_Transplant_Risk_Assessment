@@ -205,7 +205,7 @@ export default function DetailsStep() {
       )}
 
       <div className="flex items-center justify-between">
-        <Button variant="secondary" onClick={() => navigate("/checks/new/photos")}>
+        <Button variant="secondary" onClick={() => navigate("/checks/new/subject")}>
           Back
         </Button>
         <Button size="lg" onClick={handleContinue}>

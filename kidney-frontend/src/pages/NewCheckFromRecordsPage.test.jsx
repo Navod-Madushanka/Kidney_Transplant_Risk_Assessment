@@ -2,9 +2,9 @@
 import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
-import { describe, expect, it, vi } from "vitest"
-import { listPatients } from "../api/patients"
-import { listDonors } from "../api/donors"
+import { beforeEach, describe, expect, it, vi } from "vitest"
+import { listPatients, getPatientHlaTypings, getPatientAntibodyProfiles } from "../api/patients"
+import { listDonors, getDonorHlaTypings } from "../api/donors"
 import { listPairs } from "../api/pairs"
 import {
   listPatientReportFiles,
@@ -14,8 +14,12 @@ import {
 } from "../api/reportFiles"
 import NewCheckFromRecordsPage from "./NewCheckFromRecordsPage"
 
-vi.mock("../api/patients", () => ({ listPatients: vi.fn() }))
-vi.mock("../api/donors", () => ({ listDonors: vi.fn() }))
+vi.mock("../api/patients", () => ({
+  listPatients: vi.fn(),
+  getPatientHlaTypings: vi.fn(),
+  getPatientAntibodyProfiles: vi.fn(),
+}))
+vi.mock("../api/donors", () => ({ listDonors: vi.fn(), getDonorHlaTypings: vi.fn() }))
 vi.mock("../api/pairs", () => ({ listPairs: vi.fn() }))
 vi.mock("../api/reportFiles", () => ({
   listPatientReportFiles: vi.fn(),
@@ -54,6 +58,12 @@ async function pickPatientAndDonor(user) {
 }
 
 describe("NewCheckFromRecordsPage", () => {
+  beforeEach(() => {
+    getPatientHlaTypings.mockResolvedValue([])
+    getDonorHlaTypings.mockResolvedValue([])
+    getPatientAntibodyProfiles.mockResolvedValue([])
+  })
+
   it("lists patients and donors to choose from", async () => {
     listPatients.mockResolvedValue([PATIENT])
     listDonors.mockResolvedValue([DONOR])
@@ -101,6 +111,70 @@ describe("NewCheckFromRecordsPage", () => {
     await waitFor(() =>
       expect(fetchPairReportFileBlob).toHaveBeenCalledWith("pair-1", "file-hla")
     )
+    expect(await screen.findByText("Subject Step")).toBeInTheDocument()
+  })
+
+  it("fetches each record's saved HLA typing before starting the check", async () => {
+    const user = userEvent.setup()
+    listPatients.mockResolvedValue([PATIENT])
+    listDonors.mockResolvedValue([DONOR])
+    listPairs.mockResolvedValue([])
+    listPatientReportFiles.mockResolvedValue([])
+    getPatientHlaTypings.mockResolvedValue([{ locus: "A", allele_1: "01:01", allele_2: "02:01" }])
+    getDonorHlaTypings.mockResolvedValue([{ locus: "A", allele_1: "03:01", allele_2: "11:01" }])
+
+    renderPage()
+    await pickPatientAndDonor(user)
+    await user.click(screen.getByRole("button", { name: "Start compatibility check" }))
+
+    await waitFor(() => expect(getPatientHlaTypings).toHaveBeenCalledWith("patient-1"))
+    expect(getDonorHlaTypings).toHaveBeenCalledWith("donor-1")
+    expect(await screen.findByText("Subject Step")).toBeInTheDocument()
+  })
+
+  it("fetches the patient's saved antibody/bead-specificity profile before starting the check", async () => {
+    const user = userEvent.setup()
+    listPatients.mockResolvedValue([PATIENT])
+    listDonors.mockResolvedValue([DONOR])
+    listPairs.mockResolvedValue([])
+    listPatientReportFiles.mockResolvedValue([])
+    getPatientAntibodyProfiles.mockResolvedValue([{ antigen: "B7", mfi: 3500 }])
+
+    renderPage()
+    await pickPatientAndDonor(user)
+    await user.click(screen.getByRole("button", { name: "Start compatibility check" }))
+
+    await waitFor(() => expect(getPatientAntibodyProfiles).toHaveBeenCalledWith("patient-1"))
+    expect(await screen.findByText("Subject Step")).toBeInTheDocument()
+  })
+
+  it("still starts the check if fetching the saved antibody profile fails", async () => {
+    const user = userEvent.setup()
+    listPatients.mockResolvedValue([PATIENT])
+    listDonors.mockResolvedValue([DONOR])
+    listPairs.mockResolvedValue([])
+    listPatientReportFiles.mockResolvedValue([])
+    getPatientAntibodyProfiles.mockRejectedValue(new Error("network down"))
+
+    renderPage()
+    await pickPatientAndDonor(user)
+    await user.click(screen.getByRole("button", { name: "Start compatibility check" }))
+
+    expect(await screen.findByText("Subject Step")).toBeInTheDocument()
+  })
+
+  it("still starts the check if fetching saved HLA typing fails", async () => {
+    const user = userEvent.setup()
+    listPatients.mockResolvedValue([PATIENT])
+    listDonors.mockResolvedValue([DONOR])
+    listPairs.mockResolvedValue([])
+    listPatientReportFiles.mockResolvedValue([])
+    getPatientHlaTypings.mockRejectedValue(new Error("network down"))
+
+    renderPage()
+    await pickPatientAndDonor(user)
+    await user.click(screen.getByRole("button", { name: "Start compatibility check" }))
+
     expect(await screen.findByText("Subject Step")).toBeInTheDocument()
   })
 

@@ -10,8 +10,10 @@ import HaltedReportBanner from "../components/domain/dashboard/HaltedReportBanne
 import RecentReportRow from "../components/domain/dashboard/RecentReportRow"
 import { reportBadgeProps } from "../constants/reportStatus"
 
-const PATIENT_LIST_CAP = 5
-const RECENT_REPORTS_CAP = 5
+const PATIENT_LIST_CAP = 10
+const RECENT_REPORTS_CAP = 10
+// Roughly 4 rows tall, with a sliver of the 5th peeking in as a scroll hint.
+const SCROLL_BOX_CLASS = "max-h-72 overflow-y-auto"
 
 function DashboardPatientRow({ patient }) {
   const { status, label } = reportBadgeProps(patient.latest_report)
@@ -114,10 +116,12 @@ export default function DashboardPage() {
           )}
 
           {patientsState.status === "loaded" && patientsState.patients.length > 0 && (
-            <div className="divide-y divide-border">
-              {patientsState.patients.slice(0, PATIENT_LIST_CAP).map((patient) => (
-                <DashboardPatientRow key={patient.id} patient={patient} />
-              ))}
+            <div className={SCROLL_BOX_CLASS}>
+              <div className="divide-y divide-border">
+                {patientsState.patients.slice(0, PATIENT_LIST_CAP).map((patient) => (
+                  <DashboardPatientRow key={patient.id} patient={patient} />
+                ))}
+              </div>
             </div>
           )}
         </Card>
@@ -146,10 +150,12 @@ export default function DashboardPage() {
           )}
 
           {reportsState.status === "loaded" && reportsState.reports.length > 0 && (
-            <div className="divide-y divide-border">
-              {reportsState.reports.map((report) => (
-                <RecentReportRow key={report.id} report={report} />
-              ))}
+            <div className={SCROLL_BOX_CLASS}>
+              <div className="divide-y divide-border">
+                {reportsState.reports.map((report) => (
+                  <RecentReportRow key={report.id} report={report} />
+                ))}
+              </div>
             </div>
           )}
         </Card>

@@ -66,7 +66,13 @@ export function useExtractionJobPolling({ jobId, status, onDocumentDone, onStatu
         }
       }
 
-      callbacksRef.current.onStatusChange?.(job.status, job.documents || {})
+      // Third arg (the job's own backend-reported failure message, distinct
+      // from a poll request itself failing -- see the catch block above) is
+      // new and additive: existing callers (WizardProvider, NewPairPage)
+      // only destructure the first two params, so this doesn't change their
+      // behavior; BackgroundJobsProvider.jsx is the first caller that reads
+      // it, to show a real failure reason in its toast.
+      callbacksRef.current.onStatusChange?.(job.status, job.documents || {}, job.error ?? null)
 
       if (!cancelled && job.status === "running") {
         timeoutId = setTimeout(poll, POLL_INTERVAL_MS)

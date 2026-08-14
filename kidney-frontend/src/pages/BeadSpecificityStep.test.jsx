@@ -38,6 +38,23 @@ function makeOcrExtractedWizardValue(ocrVerified = false) {
   }
 }
 
+// Data that arrived without THIS session extracting anything -- e.g. the
+// registration-time background job (NewPairPage.jsx) saved it unattended,
+// or "start from records" prefilled it -- represented purely by the
+// patient's record itself being unverified, with no extraction.documents
+// entry at all.
+function makeUnverifiedRecordWizardValue(ocrVerified = false) {
+  return {
+    state: {
+      bead_specificity: [{ antigen: "DQ7", mfi: 1200 }],
+      extraction: { documents: {} },
+      ocr_verified: { hla_typing: false, bead_specificity: ocrVerified },
+      subject: { patientRecord: { antibody_profile_verified: false } },
+    },
+    actions: { setBeadSpecificity: vi.fn(), unlockStep: vi.fn(), setOcrVerified: vi.fn() },
+  }
+}
+
 describe("BeadSpecificityStep", () => {
   it("continuing with every row blank submits an empty list and advances", async () => {
     const user = userEvent.setup()
@@ -183,6 +200,40 @@ describe("BeadSpecificityStep", () => {
     )
 
     expect(wizardValue.actions.setOcrVerified).toHaveBeenCalledWith("bead_specificity", true)
+  })
+
+  it("shows a review confirmation when the patient's antibody profile is unverified, even with no OCR extraction this session", () => {
+    renderStep(makeUnverifiedRecordWizardValue())
+
+    expect(
+      screen.getByText("I have reviewed this bead specificity chart against the source document")
+    ).toBeInTheDocument()
+  })
+
+  it("blocks Continue on an unverified patient record until reviewed", async () => {
+    const user = userEvent.setup()
+    const wizardValue = makeUnverifiedRecordWizardValue(false)
+    renderStep(wizardValue)
+
+    await user.click(screen.getByRole("button", { name: /continue/i }))
+
+    expect(
+      await screen.findByText(/refuses to run on\s*unverified OCR data/)
+    ).toBeInTheDocument()
+    expect(wizardValue.actions.setBeadSpecificity).not.toHaveBeenCalled()
+  })
+
+  it("lets Continue through on an unverified patient record once reviewed", async () => {
+    const user = userEvent.setup()
+    const wizardValue = makeUnverifiedRecordWizardValue(true)
+    renderStep(wizardValue)
+
+    await user.click(screen.getByRole("button", { name: /continue/i }))
+
+    expect(wizardValue.actions.setBeadSpecificity).toHaveBeenCalledWith([
+      { antigen: "DQ7", mfi: 1200 },
+    ])
+    expect(await screen.findByText("Review Step")).toBeInTheDocument()
   })
 
   it("navigates back to the sensitization step without validating", async () => {

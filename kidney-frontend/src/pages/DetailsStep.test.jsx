@@ -12,7 +12,7 @@ function renderStep(wizardValue) {
       <MemoryRouter initialEntries={["/checks/new/details"]}>
         <Routes>
           <Route path="/checks/new/details" element={<DetailsStep />} />
-          <Route path="/checks/new/photos" element={<div>Photos Step</div>} />
+          <Route path="/checks/new/subject" element={<div>Subject Step</div>} />
           <Route path="/checks/new/hla" element={<div>HLA Step</div>} />
         </Routes>
       </MemoryRouter>

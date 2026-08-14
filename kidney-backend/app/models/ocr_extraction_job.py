@@ -25,6 +25,17 @@ class OcrExtractionJob(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     doctor_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("doctors.id"), nullable=False, index=True
     )
+    # Only set when a job is started against a patient that already exists
+    # (registration-time bead-specificity extraction -- see NewPairPage.jsx)
+    # as opposed to the compatibility-check wizard's own Photos-step jobs,
+    # which start before a patient is even selected (wizard route order is
+    # photos -> subject -> ...) and so never pass this. run_extraction_job
+    # uses it to auto-save extracted bead-specificity rows to
+    # antibody_profiles (unverified) once the job finishes, since nobody is
+    # necessarily still watching the wizard to do that save themselves.
+    patient_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("patients.id"), nullable=True, index=True
+    )
     status: Mapped[OcrExtractionJobStatus] = mapped_column(
         Enum(
             OcrExtractionJobStatus,

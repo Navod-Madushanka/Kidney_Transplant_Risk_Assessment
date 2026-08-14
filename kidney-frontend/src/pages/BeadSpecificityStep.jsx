@@ -45,10 +45,18 @@ export default function BeadSpecificityStep() {
 
   // Either page counts as "OCR extracted this document" — they merge into
   // one bead_specificity array, so one confirmation covers both. See
-  // ocr_verified's comment in wizardReducer.js.
+  // ocr_verified's comment in wizardReducer.js. Also true when the
+  // patient's antibody profile is already flagged unverified in their
+  // record (antibody_profile_verified === false) -- e.g. the registration-
+  // time background extraction job (see NewPairPage.jsx) saved it
+  // unattended, or the "start from records" prefill pulled in data nobody's
+  // reviewed yet. patientRecord is fetched fresh from GET /patients/{id}
+  // on every wizard entry path (see SubjectStep.jsx), so this catches "not
+  // yet confirmed" regardless of whether THIS session is what extracted it.
   const wasOcrExtracted =
     state.extraction?.documents?.["bead_specificity_page_1"]?.status === "done" ||
-    state.extraction?.documents?.["bead_specificity_page_2"]?.status === "done"
+    state.extraction?.documents?.["bead_specificity_page_2"]?.status === "done" ||
+    state.subject?.patientRecord?.antibody_profile_verified === false
 
   const visibleRows = useMemo(() => {
     if (!hasActiveFilter) return rows

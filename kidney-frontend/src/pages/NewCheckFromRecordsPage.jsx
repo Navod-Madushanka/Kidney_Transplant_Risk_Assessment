@@ -1,8 +1,8 @@
 // src/pages/NewCheckFromRecordsPage.jsx
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { listPatients } from "../api/patients"
-import { listDonors } from "../api/donors"
+import { listPatients, getPatientHlaTypings, getPatientAntibodyProfiles } from "../api/patients"
+import { listDonors, getDonorHlaTypings } from "../api/donors"
 import {
   listPatientReportFiles,
   listPairReportFiles,
@@ -29,7 +29,14 @@ function personLabel(person) {
  * already on file. Both IDs are carried into the wizard alongside the
  * prefilled photos (see WizardProvider's lazy-init) so SubjectStep opens
  * with this exact pair pre-selected instead of asking the doctor to pick
- * it again.
+ * it again. Each record's already-saved HLA typing (PatientHLATyping/
+ * DonorHLATyping — see HlaTypingEditor.jsx, the other writer of that data)
+ * and the patient's antibody/bead-specificity profile (AntibodyProfile —
+ * written either by the same editor or by the registration-time background
+ * extraction job, see NewPairPage.jsx) are fetched the same way and carried
+ * through so the HLA typing and Bead Specificity steps open pre-filled too,
+ * instead of asking the doctor to retype data that's already on file for
+ * this exact patient/donor.
  */
 export default function NewCheckFromRecordsPage() {
   const navigate = useNavigate()
@@ -114,7 +121,25 @@ export default function NewCheckFromRecordsPage() {
           })
         }
       }
-      navigate("/checks/new/subject", { state: { prefillPhotos, patientId, donorId } })
+      // Best-effort -- a doctor can still type alleles/rows in by hand on
+      // the HLA and Bead Specificity steps, so a failure here shouldn't
+      // block starting the check the way a failed photo fetch does above.
+      const [prefillPatientHla, prefillDonorHla, prefillBeadSpecificity] = await Promise.all([
+        getPatientHlaTypings(patientId).catch(() => []),
+        getDonorHlaTypings(donorId).catch(() => []),
+        getPatientAntibodyProfiles(patientId).catch(() => []),
+      ])
+
+      navigate("/checks/new/subject", {
+        state: {
+          prefillPhotos,
+          patientId,
+          donorId,
+          prefillPatientHla,
+          prefillDonorHla,
+          prefillBeadSpecificity,
+        },
+      })
     } catch (err) {
       setStartError(err.message || "Couldn't load the archived documents. Please try again.")
       setIsStarting(false)

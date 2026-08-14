@@ -6,8 +6,8 @@
 // defined once. Routes are relative segments under /checks/new/*.
 
 export const WIZARD_STEPS = [
-  { key: "subject", label: "Patient & Donor", path: "subject" },
   { key: "photos", label: "Photos", path: "photos" },
+  { key: "subject", label: "Patient & Donor", path: "subject" },
   { key: "details", label: "Confirm details", path: "details" },
   { key: "hla", label: "HLA Typing", path: "hla" },
   { key: "sensitization", label: "Sensitization", path: "sensitization" },

@@ -54,8 +54,8 @@ export default function PhotoUploadsStep() {
   const warnings = Object.values(extractionDocuments).flatMap((doc) => doc.errors || [])
 
   function handleContinue() {
-    actions.unlockStep(2)
-    navigate("/checks/new/details")
+    actions.unlockStep(1)
+    navigate("/checks/new/subject")
   }
 
   async function handleExtract() {
@@ -142,10 +142,7 @@ export default function PhotoUploadsStep() {
         )}
       </Card>
 
-      <div className="flex items-center justify-between">
-        <Button variant="secondary" onClick={() => navigate("/checks/new/subject")}>
-          Back
-        </Button>
+      <div className="flex justify-end">
         <Button size="lg" onClick={handleContinue}>
           Continue
         </Button>
