@@ -1,5 +1,6 @@
 # app/api/ocr.py
 import uuid
+from pathlib import Path
 
 import httpx
 from fastapi import (
@@ -18,14 +19,13 @@ from app.core.dependencies import get_current_user
 from app.db.session import get_db
 from app.models.doctor import Doctor
 from app.schemas.ocr import (
-    OcrBatchExtractResponse,
     OcrExtractResponse,
     OcrJobCreateResponse,
     OcrJobStatusResponse,
 )
-from app.services.ocr_batch_service import run_batch_extraction
 from app.services.ocr_client import call_ocr_service
 from app.services.ocr_job_service import create_extraction_job, get_extraction_job, run_extraction_job
+from app.services.ocr_spool_service import SpooledUpload, discard_spool, spool_uploads
 from app.services.patient_service import get_patient_by_id_for_doctor
 
 router = APIRouter(prefix="/ocr", tags=["ocr"])
@@ -46,14 +46,14 @@ async def _build_files_payload(
     crossmatch_report: UploadFile | None,
     bead_specificity_page_1: UploadFile | None,
     bead_specificity_page_2: UploadFile | None,
-) -> dict[str, tuple[bytes, str, str]]:
-    # Order here is dispatch order (stream_batch_extraction/
-    # run_batch_extraction iterate in insertion order) — HLA typing first
-    # since it's the primary identity source, crossmatch second since it's
-    # a fast single-shot call, bead specificity pages last since they're by
-    # far the slowest (8 tiles each). Phase 1 speed pass (2026-08-04): this
-    # puts the fastest/most valuable fields in front of the doctor first
-    # rather than behind two ~10min pages.
+) -> tuple[Path, dict[str, SpooledUpload]]:
+    # Order here is dispatch order (stream_batch_extraction iterates in
+    # insertion order) — HLA typing first since it's the primary identity
+    # source, crossmatch second since it's a fast single-shot call, bead
+    # specificity pages last since they're by far the slowest (8 tiles
+    # each). Phase 1 speed pass (2026-08-04): this puts the fastest/most
+    # valuable fields in front of the doctor first rather than behind two
+    # ~10min pages.
     slots = {
         "hla_typing_report": hla_typing_report,
         "crossmatch_report": crossmatch_report,
@@ -71,37 +71,10 @@ async def _build_files_payload(
     for f in provided.values():
         _validate_file(f)
 
-    files_payload = {}
-    for name, f in provided.items():
-        contents = await f.read()
-        files_payload[name] = (contents, f.filename, f.content_type)
-
-    return files_payload
-
-
-@router.post("/extract-batch", response_model=OcrBatchExtractResponse)
-async def extract_batch(
-    hla_typing_report: UploadFile | None = File(None),
-    bead_specificity_page_1: UploadFile | None = File(None),
-    bead_specificity_page_2: UploadFile | None = File(None),
-    crossmatch_report: UploadFile | None = File(None),
-    current_doctor: Doctor = Depends(get_current_user),
-):
-    files_payload = await _build_files_payload(
-        hla_typing_report, crossmatch_report, bead_specificity_page_1, bead_specificity_page_2
-    )
-
-    result = await run_batch_extraction(files_payload)
-
-    return OcrBatchExtractResponse(
-        patient_details=result.patient_details,
-        donor_details=result.donor_details,
-        patient_hla=result.patient_hla,
-        donor_hla=result.donor_hla,
-        bead_specificity=result.bead_specificity,
-        crossmatch=result.crossmatch,
-        errors=result.errors,
-    )
+    # Streams each upload straight to local disk instead of reading it
+    # fully into RAM — see app/services/ocr_spool_service.py. Raises 413
+    # mid-stream on an oversized file, before anything is buffered.
+    return await spool_uploads(provided)
 
 
 @router.post(
@@ -141,20 +114,26 @@ async def start_extract_batch_job(
     upfront validation below.
 
     All upfront validation (at-least-one-file, content-type, patient
-    ownership) happens before the job row is even created, so those
-    failures still come back as a normal synchronous JSON error response.
+    ownership, and now the per-file size cap enforced while spooling to
+    disk) happens before the job row is even created, so those failures
+    still come back as a normal synchronous JSON error response — including
+    a 413 for an oversized upload.
     """
     if patient_id is not None:
         patient = await get_patient_by_id_for_doctor(db, patient_id, current_doctor.id)
         if patient is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
 
-    files_payload = await _build_files_payload(
+    spool_dir, files = await _build_files_payload(
         hla_typing_report, crossmatch_report, bead_specificity_page_1, bead_specificity_page_2
     )
 
-    job = await create_extraction_job(db, current_doctor.id, files_payload, patient_id=patient_id)
-    background_tasks.add_task(run_extraction_job, job.id, files_payload)
+    try:
+        job = await create_extraction_job(db, current_doctor.id, list(files), patient_id=patient_id)
+    except Exception:
+        discard_spool(spool_dir)
+        raise
+    background_tasks.add_task(run_extraction_job, job.id, spool_dir, files)
 
     return OcrJobCreateResponse(job_id=job.id)
 
@@ -182,12 +161,9 @@ async def extract_lab_report(
     """Kept for any existing single-image callers — now must pass a
     document_type through to the OCR service."""
     _validate_file(file)
-    contents = await file.read()
-
+    spool_dir, files = await spool_uploads({"hla_typing_report": file})
     try:
-        result = await call_ocr_service(
-            contents, file.filename, file.content_type, "hla_typing_report"
-        )
+        result = await call_ocr_service(files["hla_typing_report"], "hla_typing_report")
     except httpx.TimeoutException:
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
@@ -203,5 +179,7 @@ async def extract_lab_report(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="OCR service unavailable",
         )
+    finally:
+        discard_spool(spool_dir)
 
     return result["structured"]

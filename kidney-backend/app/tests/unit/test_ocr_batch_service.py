@@ -4,6 +4,8 @@ call_ocr_service (monkeypatched) so these run without a live ocr-service /
 Ollama instance -- see app/tests/integration/test_*_live.py in ocr-service
 itself for the real network-hitting coverage.
 """
+import pytest
+
 from app.services import ocr_batch_service
 from app.services.ocr_batch_service import (
     DocumentChunk,
@@ -11,6 +13,7 @@ from app.services.ocr_batch_service import (
     run_batch_extraction,
     stream_batch_extraction,
 )
+from app.services.ocr_spool_service import SpooledUpload
 
 HLA_TYPING_RESPONSE = {
     "structured": {
@@ -21,11 +24,20 @@ HLA_TYPING_RESPONSE = {
     }
 }
 
-FAKE_FILE = (b"...", "file.jpg", "image/jpeg")
+
+@pytest.fixture
+def fake_file(tmp_path) -> SpooledUpload:
+    # call_ocr_service/call_ocr_service_stream are monkeypatched out in
+    # every test below, so nothing ever actually opens this path -- it
+    # only needs to look like a real spooled upload (Part G bounded-memory
+    # pass: these functions take a SpooledUpload, not raw bytes, now).
+    path = tmp_path / "file.jpg"
+    path.write_bytes(b"...")
+    return SpooledUpload(path=path, filename="file.jpg", content_type="image/jpeg")
 
 
 def _fake_call_ocr_service(responses_by_document_type):
-    async def _fake(file_bytes, filename, content_type, document_type):
+    async def _fake(upload, document_type):
         return responses_by_document_type[document_type]
 
     return _fake
@@ -36,7 +48,7 @@ def _fake_call_ocr_service_stream(structured_by_document_type, total_tiles=2):
     # extract_bead_specificity_stream): one {"type": "progress", ...} per
     # tile starting at completed=0 (before any tile has run) through
     # completed=total_tiles, then a single final {"type": "result", ...}.
-    async def _fake(file_bytes, filename, content_type, document_type):
+    async def _fake(upload, document_type):
         for completed in range(total_tiles + 1):
             yield {"type": "progress", "completed": completed, "total": total_tiles}
         yield {
@@ -58,7 +70,7 @@ def _crossmatch_response(patient_nic: str, donor_nic: str) -> dict:
     }
 
 
-async def test_matching_nic_across_documents_raises_no_identity_warning(monkeypatch):
+async def test_matching_nic_across_documents_raises_no_identity_warning(monkeypatch, fake_file):
     monkeypatch.setattr(
         ocr_batch_service,
         "call_ocr_service",
@@ -71,14 +83,14 @@ async def test_matching_nic_across_documents_raises_no_identity_warning(monkeypa
     )
 
     result = await run_batch_extraction(
-        {"hla_typing_report": FAKE_FILE, "crossmatch_report": FAKE_FILE}
+        {"hla_typing_report": fake_file, "crossmatch_report": fake_file}
     )
 
     assert result.errors == []
     assert result.patient_details["full_name"] == "Rev.A.Premarathna Thero"
 
 
-async def test_mismatched_patient_nic_across_documents_warns(monkeypatch):
+async def test_mismatched_patient_nic_across_documents_warns(monkeypatch, fake_file):
     # Regression test for a real gap (fixed 2026-08-02): uploading a
     # crossmatch report for a different patient than the HLA typing report
     # used to merge silently -- the HLA report's identity would just win
@@ -96,7 +108,7 @@ async def test_mismatched_patient_nic_across_documents_warns(monkeypatch):
     )
 
     result = await run_batch_extraction(
-        {"hla_typing_report": FAKE_FILE, "crossmatch_report": FAKE_FILE}
+        {"hla_typing_report": fake_file, "crossmatch_report": fake_file}
     )
 
     assert len(result.errors) == 1
@@ -107,7 +119,7 @@ async def test_mismatched_patient_nic_across_documents_warns(monkeypatch):
     assert result.patient_details["full_name"] == "Rev.A.Premarathna Thero"
 
 
-async def test_mismatched_donor_nic_across_documents_warns(monkeypatch):
+async def test_mismatched_donor_nic_across_documents_warns(monkeypatch, fake_file):
     monkeypatch.setattr(
         ocr_batch_service,
         "call_ocr_service",
@@ -120,26 +132,28 @@ async def test_mismatched_donor_nic_across_documents_warns(monkeypatch):
     )
 
     result = await run_batch_extraction(
-        {"hla_typing_report": FAKE_FILE, "crossmatch_report": FAKE_FILE}
+        {"hla_typing_report": fake_file, "crossmatch_report": fake_file}
     )
 
     assert len(result.errors) == 1
     assert result.errors[0]["field"] == "donor_details"
 
 
-async def test_no_crossmatch_document_raises_no_identity_warning(monkeypatch):
+async def test_no_crossmatch_document_raises_no_identity_warning(monkeypatch, fake_file):
     monkeypatch.setattr(
         ocr_batch_service,
         "call_ocr_service",
         _fake_call_ocr_service({"hla_typing_report": HLA_TYPING_RESPONSE}),
     )
 
-    result = await run_batch_extraction({"hla_typing_report": FAKE_FILE})
+    result = await run_batch_extraction({"hla_typing_report": fake_file})
 
     assert result.errors == []
 
 
-async def test_case_and_whitespace_differences_are_not_flagged_as_mismatches(monkeypatch):
+async def test_case_and_whitespace_differences_are_not_flagged_as_mismatches(
+    monkeypatch, fake_file
+):
     monkeypatch.setattr(
         ocr_batch_service,
         "call_ocr_service",
@@ -152,7 +166,7 @@ async def test_case_and_whitespace_differences_are_not_flagged_as_mismatches(mon
     )
 
     result = await run_batch_extraction(
-        {"hla_typing_report": FAKE_FILE, "crossmatch_report": FAKE_FILE}
+        {"hla_typing_report": fake_file, "crossmatch_report": fake_file}
     )
 
     assert result.errors == []
@@ -173,7 +187,7 @@ BEAD_SPECIFICITY_RESPONSE = {
 }
 
 
-async def test_stream_yields_one_chunk_per_document_in_order(monkeypatch):
+async def test_stream_yields_one_chunk_per_document_in_order(monkeypatch, fake_file):
     monkeypatch.setattr(
         ocr_batch_service,
         "call_ocr_service",
@@ -196,9 +210,9 @@ async def test_stream_yields_one_chunk_per_document_in_order(monkeypatch):
         event
         async for event in stream_batch_extraction(
             {
-                "hla_typing_report": FAKE_FILE,
-                "crossmatch_report": FAKE_FILE,
-                "bead_specificity_page_1": FAKE_FILE,
+                "hla_typing_report": fake_file,
+                "crossmatch_report": fake_file,
+                "bead_specificity_page_1": fake_file,
             }
         )
     ]
@@ -214,7 +228,7 @@ async def test_stream_yields_one_chunk_per_document_in_order(monkeypatch):
     assert chunks[2].bead_specificity == [{"antigen": "A23", "mfi": 490.5}]
 
 
-async def test_stream_emits_progress_events_before_each_document(monkeypatch):
+async def test_stream_emits_progress_events_before_each_document(monkeypatch, fake_file):
     # HLA typing/crossmatch are one LLM call each -- no intermediate
     # signal, so they only ever get a single completed=0/total=1 event.
     # Bead specificity relays real per-tile progress from
@@ -241,9 +255,9 @@ async def test_stream_emits_progress_events_before_each_document(monkeypatch):
         event
         async for event in stream_batch_extraction(
             {
-                "hla_typing_report": FAKE_FILE,
-                "crossmatch_report": FAKE_FILE,
-                "bead_specificity_page_1": FAKE_FILE,
+                "hla_typing_report": fake_file,
+                "crossmatch_report": fake_file,
+                "bead_specificity_page_1": fake_file,
             }
         )
     ]
@@ -268,7 +282,7 @@ async def test_stream_emits_progress_events_before_each_document(monkeypatch):
         assert events.index(p) < chunk_index
 
 
-async def test_stream_crossmatch_chunk_only_carries_gap_fill_fields(monkeypatch):
+async def test_stream_crossmatch_chunk_only_carries_gap_fill_fields(monkeypatch, fake_file):
     # HLA typing already reported full_name/nic_number for both roles --
     # crossmatch's OWN (different) patient_details/donor_details must not
     # appear in its chunk at all, since the merge precedence (HLA typing
@@ -288,7 +302,7 @@ async def test_stream_crossmatch_chunk_only_carries_gap_fill_fields(monkeypatch)
     events = [
         event
         async for event in stream_batch_extraction(
-            {"hla_typing_report": FAKE_FILE, "crossmatch_report": FAKE_FILE}
+            {"hla_typing_report": fake_file, "crossmatch_report": fake_file}
         )
     ]
     chunks = [e for e in events if isinstance(e, DocumentChunk)]
@@ -302,7 +316,9 @@ async def test_stream_crossmatch_chunk_only_carries_gap_fill_fields(monkeypatch)
     }
 
 
-async def test_stream_crossmatch_chunk_gap_fills_when_hla_typing_missing_a_field(monkeypatch):
+async def test_stream_crossmatch_chunk_gap_fills_when_hla_typing_missing_a_field(
+    monkeypatch, fake_file
+):
     hla_typing_missing_ref_no = {
         "structured": {
             **HLA_TYPING_RESPONSE["structured"],
@@ -333,7 +349,7 @@ async def test_stream_crossmatch_chunk_gap_fills_when_hla_typing_missing_a_field
     events = [
         event
         async for event in stream_batch_extraction(
-            {"hla_typing_report": FAKE_FILE, "crossmatch_report": FAKE_FILE}
+            {"hla_typing_report": fake_file, "crossmatch_report": fake_file}
         )
     ]
     chunks = [e for e in events if isinstance(e, DocumentChunk)]
@@ -343,7 +359,7 @@ async def test_stream_crossmatch_chunk_gap_fills_when_hla_typing_missing_a_field
     assert chunks[1].patient_details == {"hla_ref_no": "847/26M"}
 
 
-async def test_stream_crossmatch_chunk_carries_identity_mismatch_warning(monkeypatch):
+async def test_stream_crossmatch_chunk_carries_identity_mismatch_warning(monkeypatch, fake_file):
     monkeypatch.setattr(
         ocr_batch_service,
         "call_ocr_service",
@@ -358,7 +374,7 @@ async def test_stream_crossmatch_chunk_carries_identity_mismatch_warning(monkeyp
     events = [
         event
         async for event in stream_batch_extraction(
-            {"hla_typing_report": FAKE_FILE, "crossmatch_report": FAKE_FILE}
+            {"hla_typing_report": fake_file, "crossmatch_report": fake_file}
         )
     ]
     chunks = [e for e in events if isinstance(e, DocumentChunk)]
@@ -367,8 +383,8 @@ async def test_stream_crossmatch_chunk_carries_identity_mismatch_warning(monkeyp
     assert chunks[1].errors[0]["field"] == "patient_details"
 
 
-async def test_stream_failed_document_yields_error_chunk_and_continues(monkeypatch):
-    async def _fake(file_bytes, filename, content_type, document_type):
+async def test_stream_failed_document_yields_error_chunk_and_continues(monkeypatch, fake_file):
+    async def _fake(upload, document_type):
         if document_type == "hla_typing_report":
             raise RuntimeError("Ollama unreachable")
         return _crossmatch_response("198001610076", "823275544v")
@@ -378,7 +394,7 @@ async def test_stream_failed_document_yields_error_chunk_and_continues(monkeypat
     events = [
         event
         async for event in stream_batch_extraction(
-            {"hla_typing_report": FAKE_FILE, "crossmatch_report": FAKE_FILE}
+            {"hla_typing_report": fake_file, "crossmatch_report": fake_file}
         )
     ]
     chunks = [e for e in events if isinstance(e, DocumentChunk)]
@@ -394,7 +410,7 @@ async def test_stream_failed_document_yields_error_chunk_and_continues(monkeypat
     assert chunks[1].crossmatch == {"t_cell_result": "Compatible", "b_cell_result": "Compatible"}
 
 
-async def test_run_batch_extraction_matches_streamed_chunks_merged(monkeypatch):
+async def test_run_batch_extraction_matches_streamed_chunks_merged(monkeypatch, fake_file):
     # Regression guard for the generator+wrapper refactor itself:
     # run_batch_extraction must still produce the same merged result as
     # manually folding together everything stream_batch_extraction yields.
@@ -416,10 +432,10 @@ async def test_run_batch_extraction_matches_streamed_chunks_merged(monkeypatch):
         ),
     )
     files = {
-        "hla_typing_report": FAKE_FILE,
-        "crossmatch_report": FAKE_FILE,
-        "bead_specificity_page_1": FAKE_FILE,
-        "bead_specificity_page_2": FAKE_FILE,
+        "hla_typing_report": fake_file,
+        "crossmatch_report": fake_file,
+        "bead_specificity_page_1": fake_file,
+        "bead_specificity_page_2": fake_file,
     }
 
     result = await run_batch_extraction(files)

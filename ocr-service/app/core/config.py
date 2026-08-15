@@ -7,7 +7,14 @@ class Settings(BaseSettings):
     across main.py and ocr_test.py back in Phase 5.
     """
     ocr_service_api_key: str
-    max_upload_size_mb: int = 10  # reasonable ceiling for a phone photo
+    # Must stay equal to kidney-backend's Settings.ocr_upload_max_size_mb
+    # (see kidney-backend/app/core/config.py) — kidney-backend's spool
+    # rejects anything above its own cap before this service ever sees the
+    # upload, so a mismatch here just means one of the two caps is dead
+    # weight. Raised from 10 to 15 in the Part G bounded-memory pass to
+    # match: a 300dpi A4 scan of a bead-specificity chart is legitimately
+    # 3-6MB, and rejecting a real report is a clinical workflow failure.
+    max_upload_size_mb: int = 15
 
     # --- LLM extraction backend ---
     # Replaces PaddleOCR as of the OCR -> local vision-LLM migration (see

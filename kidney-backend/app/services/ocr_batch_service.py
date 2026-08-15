@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from typing import AsyncIterator
 
 from app.services.ocr_client import call_ocr_service, call_ocr_service_stream
+from app.services.ocr_spool_service import SpooledUpload
 
 SLOT_DOCUMENT_TYPES = {
     "hla_typing_report": "hla_typing_report",
@@ -58,15 +59,17 @@ class ProgressEvent:
 
 
 async def stream_batch_extraction(
-    files: dict[str, tuple[bytes, str, str]]
+    files: dict[str, SpooledUpload]
 ) -> AsyncIterator[DocumentChunk | ProgressEvent]:
-    """files: {slot_name: (file_bytes, filename, content_type)}.
+    """files: {slot_name: SpooledUpload} — each upload already spooled to
+    local disk by app/services/ocr_spool_service.py before this runs; see
+    ocr_client.py for how it's streamed from there to ocr-service.
 
     Calls the OCR service ONCE PER FILE, awaited sequentially — this is
-    the queue: PaddleOCR can only process one image at a time, so we
-    never fire concurrent requests at it. A failure on one image is
-    recorded in that document's chunk.errors and the rest of the batch
-    still completes.
+    the queue: the extraction backend can only process one image at a
+    time, so we never fire concurrent requests at it. A failure on one
+    image is recorded in that document's chunk.errors and the rest of the
+    batch still completes.
 
     Yields a ProgressEvent for a document before its DocumentChunk (see
     ProgressEvent's docstring), then the DocumentChunk once that document
@@ -84,16 +87,14 @@ async def stream_batch_extraction(
     known_patient_fields: dict = {}
     known_donor_fields: dict = {}
 
-    for slot, (file_bytes, filename, content_type) in files.items():
+    for slot, upload in files.items():
         document_type = SLOT_DOCUMENT_TYPES[slot]
         chunk = DocumentChunk(document_type=slot)
 
         try:
             if document_type == "bead_specificity":
                 structured: dict = {}
-                async for event in call_ocr_service_stream(
-                    file_bytes, filename, content_type, document_type
-                ):
+                async for event in call_ocr_service_stream(upload, document_type):
                     if event["type"] == "progress":
                         yield ProgressEvent(
                             document_type=slot,
@@ -104,7 +105,7 @@ async def stream_batch_extraction(
                         structured = event["structured"]
             else:
                 yield ProgressEvent(document_type=slot, completed=0, total=1)
-                response = await call_ocr_service(file_bytes, filename, content_type, document_type)
+                response = await call_ocr_service(upload, document_type)
                 structured = response.get("structured", {})
         except Exception as exc:
             chunk.errors.append({"field": slot, "message": f"OCR failed: {exc}"})
@@ -148,7 +149,7 @@ async def stream_batch_extraction(
         yield chunk
 
 
-async def run_batch_extraction(files: dict[str, tuple[bytes, str, str]]) -> BatchExtractionResult:
+async def run_batch_extraction(files: dict[str, SpooledUpload]) -> BatchExtractionResult:
     """Non-streaming callers: consumes stream_batch_extraction and merges
     every chunk into one final result — identical external behavior to
     before this function was refactored into a generator + wrapper.

@@ -18,6 +18,8 @@ router = APIRouter()
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png"}
 VALID_DOCUMENT_TYPES = {"hla_typing_report", "bead_specificity", "crossmatch"}
 
+_CHUNK_SIZE = 1024 * 1024  # 1 MiB
+
 
 async def _run_extraction(document_type: str, image_bytes: bytes) -> dict:
     if document_type == "hla_typing_report":
@@ -36,7 +38,17 @@ async def _authorize_and_read(
     auth, document_type, content-type, and size checks all raise a normal
     HTTPException, so they're done here BEFORE a streaming response ever
     starts (once StreamingResponse begins, failures can no longer come back
-    as a clean JSON error body)."""
+    as a clean JSON error body).
+
+    The size cap is enforced WHILE reading, not after: reading the whole
+    body first and comparing its length against max_bytes only rejects a
+    cap that's already been blown, since by the time that comparison runs
+    the oversized body is already fully resident. kidney-backend's own
+    upload cap (Settings.ocr_upload_max_size_mb) already rejects anything
+    this large before this service ever sees it in normal operation, but
+    this endpoint is reachable directly too, so it has to enforce its own
+    cap rather than relying on the caller's.
+    """
     if x_internal_api_key != settings.ocr_service_api_key:
         raise HTTPException(status_code=401, detail="Invalid API key")
 
@@ -53,13 +65,27 @@ async def _authorize_and_read(
         )
 
     max_bytes = settings.max_upload_size_mb * 1024 * 1024
-    contents = await file.read()
-    if len(contents) > max_bytes:
+
+    # Cheap pre-check when Starlette's multipart parser populated it —
+    # doesn't replace the running-total check below, since `.size` can be
+    # None.
+    if file.size is not None and file.size > max_bytes:
         raise HTTPException(
             status_code=413,
             detail=f"File too large. Max size is {settings.max_upload_size_mb}MB.",
         )
-    return contents
+
+    chunks = []
+    total = 0
+    while chunk := await file.read(_CHUNK_SIZE):
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large. Max size is {settings.max_upload_size_mb}MB.",
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 @router.post("/extract")

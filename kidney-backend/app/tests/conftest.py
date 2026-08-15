@@ -34,6 +34,13 @@ os.environ.setdefault("REPORT_FILES_STORAGE_DIR", _REPORT_FILES_TEST_DIR)
 # a real 20MB+ payload.
 os.environ.setdefault("REPORT_FILES_MAX_SIZE_MB", "1")
 
+_OCR_SPOOL_TEST_DIR = os.path.join(tempfile.gettempdir(), "kidney_test_ocr_spool")
+os.environ.setdefault("OCR_SPOOL_DIR", _OCR_SPOOL_TEST_DIR)
+# Small on purpose, same reasoning as REPORT_FILES_MAX_SIZE_MB above --
+# lets the oversized-upload test use a small payload instead of a real
+# 15MB+ one.
+os.environ.setdefault("OCR_UPLOAD_MAX_SIZE_MB", "1")
+
 import shutil  # noqa: E402
 import uuid  # noqa: E402
 from typing import AsyncIterator, Iterator  # noqa: E402
@@ -78,6 +85,15 @@ def _report_files_scratch_dir_cleanup() -> Iterator[None]:
     """
     yield
     shutil.rmtree(_REPORT_FILES_TEST_DIR, ignore_errors=True)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _ocr_spool_scratch_dir_cleanup() -> Iterator[None]:
+    """Same reasoning as _report_files_scratch_dir_cleanup above, for the
+    OCR upload spool directory (see OCR_SPOOL_DIR above and
+    app/services/ocr_spool_service.py)."""
+    yield
+    shutil.rmtree(_OCR_SPOOL_TEST_DIR, ignore_errors=True)
 
 
 @pytest_asyncio.fixture(autouse=True)

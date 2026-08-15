@@ -1,5 +1,11 @@
 // src/api/ocr.js
-import { apiGet, apiPostForm } from "./client"
+import { apiGet, apiPostForm, ApiError } from "./client"
+
+// Must match kidney-backend's Settings.ocr_upload_max_size_mb (app/core/
+// config.py) -- this is only for the error message below, the backend is
+// what actually enforces the cap. See that setting's docstring for why it
+// has to stay equal to ocr-service's own cap too.
+const UPLOAD_MAX_SIZE_MB = 15
 
 // Maps wizard state's photo slot keys to the multipart field names the
 // backend's /ocr/extract-batch/jobs endpoint expects (see kidney-backend's
@@ -40,16 +46,31 @@ function buildFormData(photos) {
 // jobs start before a patient is even selected). Ties the job to that
 // patient so it auto-saves its own results once done, unattended -- see
 // kidney-backend's OcrExtractionJob.patient_id docstring.
-export function startExtractionJob(photos, patientId) {
+export async function startExtractionJob(photos, patientId) {
   const formData = buildFormData(photos)
   if (!formData) {
-    return Promise.reject(new Error("Upload at least one document before extracting."))
+    throw new Error("Upload at least one document before extracting.")
   }
   if (patientId) {
     formData.append("patient_id", patientId)
   }
 
-  return apiPostForm("/ocr/extract-batch/jobs", formData)
+  try {
+    return await apiPostForm("/ocr/extract-batch/jobs", formData)
+  } catch (err) {
+    // A doctor who photographed a chart at full resolution needs to know
+    // to retake it smaller, not that "something went wrong" -- the
+    // generic extraction-failed path (see PhotoUploadsStep.jsx) doesn't
+    // say that, so a 413 gets its own message naming the actual limit.
+    if (err instanceof ApiError && err.status === 413) {
+      throw new ApiError(
+        `This image is larger than the ${UPLOAD_MAX_SIZE_MB} MB limit. Please retake it at a lower resolution and try again.`,
+        err.status,
+        err.data
+      )
+    }
+    throw err
+  }
 }
 
 // One snapshot of a job's current state: { job_id, status, documents, error }.

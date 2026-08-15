@@ -5,26 +5,29 @@ from typing import AsyncIterator
 import httpx
 
 from app.core.config import get_settings
+from app.services.ocr_spool_service import SpooledUpload
 
 
-async def call_ocr_service(
-    file_bytes: bytes, filename: str, content_type: str, document_type: str
-) -> dict:
+async def call_ocr_service(upload: SpooledUpload, document_type: str) -> dict:
     settings = get_settings()
     timeout = httpx.Timeout(settings.ocr_service_timeout_seconds, connect=5.0)
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        response = await client.post(
-            f"{settings.ocr_service_url}/extract",
-            headers={"X-Internal-API-Key": settings.ocr_service_api_key},
-            data={"document_type": document_type},
-            files={"file": (filename, file_bytes, content_type)},
-        )
-        response.raise_for_status()
-        return response.json()
+    # Streams the spooled file off disk instead of holding it in RAM --
+    # httpx reads a plain (sync) file object in chunks on the event loop,
+    # which is immaterial at local-disk speeds; see ocr_spool_service.py.
+    with upload.path.open("rb") as fh:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(
+                f"{settings.ocr_service_url}/extract",
+                headers={"X-Internal-API-Key": settings.ocr_service_api_key},
+                data={"document_type": document_type},
+                files={"file": (upload.filename, fh, upload.content_type)},
+            )
+            response.raise_for_status()
+            return response.json()
 
 
 async def call_ocr_service_stream(
-    file_bytes: bytes, filename: str, content_type: str, document_type: str
+    upload: SpooledUpload, document_type: str
 ) -> AsyncIterator[dict]:
     """Streaming variant of call_ocr_service — only ocr-service's
     /extract/stream route (bead_specificity only, see its docstring)
@@ -41,23 +44,31 @@ async def call_ocr_service_stream(
     """
     settings = get_settings()
     timeout = httpx.Timeout(settings.ocr_service_timeout_seconds, connect=5.0)
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        async with client.stream(
-            "POST",
-            f"{settings.ocr_service_url}/extract/stream",
-            headers={"X-Internal-API-Key": settings.ocr_service_api_key},
-            data={"document_type": document_type},
-            files={"file": (filename, file_bytes, content_type)},
-        ) as response:
-            response.raise_for_status()
-            buffer = ""
-            async for text_chunk in response.aiter_text():
-                buffer += text_chunk
-                while "\n" in buffer:
-                    line, buffer = buffer.split("\n", 1)
-                    line = line.strip()
-                    if line:
-                        yield json.loads(line)
-            trailing = buffer.strip()
-            if trailing:
-                yield json.loads(trailing)
+    # The file handle has to stay open for the ENTIRE streamed response --
+    # the request body is consumed lazily, so this `with` wraps the whole
+    # `async with client.stream(...)` block below, not just the call that
+    # creates it. Closing it early gives a truncated or empty multipart
+    # body with no obvious error. (No retry exists on this path today; if
+    # one is ever added, re-open or seek(0) first -- retrying on an
+    # already-consumed handle silently uploads zero bytes.)
+    with upload.path.open("rb") as fh:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            async with client.stream(
+                "POST",
+                f"{settings.ocr_service_url}/extract/stream",
+                headers={"X-Internal-API-Key": settings.ocr_service_api_key},
+                data={"document_type": document_type},
+                files={"file": (upload.filename, fh, upload.content_type)},
+            ) as response:
+                response.raise_for_status()
+                buffer = ""
+                async for text_chunk in response.aiter_text():
+                    buffer += text_chunk
+                    while "\n" in buffer:
+                        line, buffer = buffer.split("\n", 1)
+                        line = line.strip()
+                        if line:
+                            yield json.loads(line)
+                trailing = buffer.strip()
+                if trailing:
+                    yield json.loads(trailing)

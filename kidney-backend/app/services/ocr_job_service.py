@@ -16,18 +16,23 @@ Reuses ocr_batch_service.stream_batch_extraction completely unchanged —
 same ProgressEvent/DocumentChunk generator the old NDJSON endpoint
 consumed. Only the sink changed, from an HTTP stream to this job row.
 """
+import asyncio
 import uuid
+from collections.abc import Sequence
 from dataclasses import asdict
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.db.session import async_session_maker
 from app.models.enums import OcrExtractionJobStatus
 from app.models.ocr_extraction_job import OcrExtractionJob
 from app.schemas.antibody_profile import AntibodyProfileEntry
 from app.services.antibody_profile_service import replace_patient_antibody_profiles
 from app.services.ocr_batch_service import DocumentChunk, ProgressEvent, stream_batch_extraction
+from app.services.ocr_spool_service import SpooledUpload, discard_spool
 
 _EMPTY_DOCUMENT_RESULT = {
     "patient_details": {},
@@ -39,18 +44,27 @@ _EMPTY_DOCUMENT_RESULT = {
     "errors": [],
 }
 
+# Bounds how many jobs run their actual extraction calls concurrently
+# (acquired around the extraction loop below, not the whole job) — shared
+# across every call to run_extraction_job in this process, so it has to be
+# a module-level singleton rather than something created per-call. See
+# Settings.ocr_max_concurrent_jobs's docstring for why this defaults to 1:
+# Ollama serializes inference regardless, so raising it doesn't add
+# throughput, it only multiplies concurrent PIL decodes in ocr-service.
+_extraction_semaphore = asyncio.Semaphore(get_settings().ocr_max_concurrent_jobs)
 
-def _initial_documents(slots: list[str]) -> dict:
+
+def _initial_documents(slot_names: Sequence[str]) -> dict:
     return {
         slot: {"status": "pending", "completed": 0, "total": 1, **_EMPTY_DOCUMENT_RESULT}
-        for slot in slots
+        for slot in slot_names
     }
 
 
 async def create_extraction_job(
     db: AsyncSession,
     doctor_id: uuid.UUID,
-    files: dict[str, tuple[bytes, str, str]],
+    slot_names: Sequence[str],
     patient_id: uuid.UUID | None = None,
 ) -> OcrExtractionJob:
     """Creates the job row up front (status=running, every requested slot
@@ -65,7 +79,7 @@ async def create_extraction_job(
         doctor_id=doctor_id,
         patient_id=patient_id,
         status=OcrExtractionJobStatus.RUNNING,
-        documents=_initial_documents(list(files.keys())),
+        documents=_initial_documents(slot_names),
     )
     db.add(job)
     await db.commit()
@@ -73,7 +87,9 @@ async def create_extraction_job(
     return job
 
 
-async def run_extraction_job(job_id: uuid.UUID, files: dict[str, tuple[bytes, str, str]]) -> None:
+async def run_extraction_job(
+    job_id: uuid.UUID, spool_dir: Path, files: dict[str, SpooledUpload]
+) -> None:
     """The background task itself — runs AFTER the request that kicked it
     off has already returned a response, so it owns its own DB session
     rather than reusing the request-scoped one (which is closed by then).
@@ -85,51 +101,64 @@ async def run_extraction_job(job_id: uuid.UUID, files: dict[str, tuple[bytes, st
     DB write failing) — without it, an unhandled exception in a FastAPI
     BackgroundTask is only logged, leaving the job stuck at "running"
     forever with no way for a polling client to ever learn it failed.
+
+    The outer try/finally discards the job's spool directory (see
+    app/services/ocr_spool_service.py) on every path out of this function
+    — success, a per-document failure, or this function's own last-resort
+    except below — so the uploaded images never outlive the job that
+    needed them. This is the normal cleanup path; sweep_stale_spools (run
+    at startup, see app/main.py) is only the backstop for a hard crash that
+    skips this entirely.
     """
-    async with async_session_maker() as db:
-        job = await db.get(OcrExtractionJob, job_id)
-        if job is None:
-            return  # job row gone (shouldn't happen outside manual DB surgery)
+    try:
+        async with async_session_maker() as db:
+            job = await db.get(OcrExtractionJob, job_id)
+            if job is None:
+                return  # job row gone (shouldn't happen outside manual DB surgery)
 
-        try:
-            async for event in stream_batch_extraction(files):
-                documents = dict(job.documents)
-                prior = documents.get(event.document_type, {})
+            try:
+                async with _extraction_semaphore:
+                    async for event in stream_batch_extraction(files):
+                        documents = dict(job.documents)
+                        prior = documents.get(event.document_type, {})
 
-                if isinstance(event, ProgressEvent):
-                    documents[event.document_type] = {
-                        **prior,
-                        "status": "in_progress",
-                        "completed": event.completed,
-                        "total": event.total,
-                    }
-                elif isinstance(event, DocumentChunk):
-                    total = prior.get("total", 1)
-                    chunk_data = asdict(event)
-                    chunk_data.pop("document_type")
-                    documents[event.document_type] = {
-                        "status": "done",
-                        "completed": total,
-                        "total": total,
-                        **chunk_data,
-                    }
+                        if isinstance(event, ProgressEvent):
+                            documents[event.document_type] = {
+                                **prior,
+                                "status": "in_progress",
+                                "completed": event.completed,
+                                "total": event.total,
+                            }
+                        elif isinstance(event, DocumentChunk):
+                            total = prior.get("total", 1)
+                            chunk_data = asdict(event)
+                            chunk_data.pop("document_type")
+                            documents[event.document_type] = {
+                                "status": "done",
+                                "completed": total,
+                                "total": total,
+                                **chunk_data,
+                            }
 
-                # Reassigning the whole dict (rather than mutating job.documents
-                # in place) is what makes SQLAlchemy notice the column changed —
-                # JSONB columns aren't change-tracked on in-place mutation.
-                job.documents = documents
+                        # Reassigning the whole dict (rather than mutating
+                        # job.documents in place) is what makes SQLAlchemy
+                        # notice the column changed — JSONB columns aren't
+                        # change-tracked on in-place mutation.
+                        job.documents = documents
+                        await db.commit()
+
+                if job.patient_id is not None:
+                    await _save_bead_specificity_if_present(db, job)
+
+                job.status = OcrExtractionJobStatus.DONE
                 await db.commit()
-
-            if job.patient_id is not None:
-                await _save_bead_specificity_if_present(db, job)
-
-            job.status = OcrExtractionJobStatus.DONE
-            await db.commit()
-        except Exception as exc:
-            await db.rollback()
-            job.status = OcrExtractionJobStatus.FAILED
-            job.error = str(exc)
-            await db.commit()
+            except Exception as exc:
+                await db.rollback()
+                job.status = OcrExtractionJobStatus.FAILED
+                job.error = str(exc)
+                await db.commit()
+    finally:
+        discard_spool(spool_dir)
 
 
 async def _save_bead_specificity_if_present(db: AsyncSession, job: OcrExtractionJob) -> None:
@@ -144,9 +173,9 @@ async def _save_bead_specificity_if_present(db: AsyncSession, job: OcrExtraction
     try/except, so a failure here correctly fails the whole job rather than
     reporting "done" with the save silently lost.
 
-    Simple concatenation of both pages, same merge run_batch_extraction
-    already does for the synchronous /extract-batch endpoint (see
-    ocr_batch_service.py's `result.bead_specificity.extend(...)`)."""
+    Simple concatenation of both pages, same merge ocr_batch_service.py's
+    run_batch_extraction already does (see its
+    `result.bead_specificity.extend(...)`)."""
     bead_rows = [
         *job.documents.get("bead_specificity_page_1", {}).get("bead_specificity", []),
         *job.documents.get("bead_specificity_page_2", {}).get("bead_specificity", []),

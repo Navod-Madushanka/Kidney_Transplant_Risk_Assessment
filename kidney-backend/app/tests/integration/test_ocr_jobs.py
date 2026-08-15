@@ -19,8 +19,10 @@ is the job row's persistence and doctor-scoping.
 import asyncio
 
 from httpx import AsyncClient
+from sqlalchemy import select
 
-from app.services import ocr_batch_service
+from app.models.ocr_extraction_job import OcrExtractionJob
+from app.services import ocr_batch_service, ocr_job_service
 from app.tests.conftest import create_patient
 
 HLA_TYPING_RESPONSE = {
@@ -35,7 +37,11 @@ FAKE_IMAGE = ("hla.jpg", b"fake-bytes", "image/jpeg")
 
 
 def _fake_call_ocr_service(responses_by_document_type):
-    async def _fake(file_bytes, filename, content_type, document_type):
+    # Part G bounded-memory pass: call_ocr_service/call_ocr_service_stream
+    # now take a SpooledUpload (the real code path spools every upload to
+    # local disk before this is ever called -- see
+    # app/services/ocr_spool_service.py), not raw bytes.
+    async def _fake(upload, document_type):
         return responses_by_document_type[document_type]
 
     return _fake
@@ -45,7 +51,7 @@ def _fake_call_ocr_service_stream(structured_by_document_type, total_tiles=3):
     # Mirrors ocr-service's real /extract/stream contract (see ocr-service's
     # extract_bead_specificity_stream): progress events completed=0..total,
     # then one final result event.
-    async def _fake(file_bytes, filename, content_type, document_type):
+    async def _fake(upload, document_type):
         for completed in range(total_tiles + 1):
             yield {"type": "progress", "completed": completed, "total": total_tiles}
         yield {
@@ -120,7 +126,7 @@ async def test_document_level_failure_does_not_fail_whole_job(monkeypatch, auth_
     # the job (and any other document in the same batch) reach "done" --
     # matching stream_batch_extraction's existing per-document error
     # tolerance, now carried through the job row instead of an NDJSON line.
-    async def _fake(file_bytes, filename, content_type, document_type):
+    async def _fake(upload, document_type):
         raise RuntimeError("Ollama unreachable")
 
     monkeypatch.setattr(ocr_batch_service, "call_ocr_service", _fake)
@@ -208,13 +214,16 @@ def _fake_call_ocr_service_stream_by_filename(structured_by_filename, total_tile
     # document_type can't return different rows per page. Keying by
     # filename instead lets these tests prove page 1's and page 2's rows
     # both land in the saved profile (concatenated), not just one of them.
-    async def _fake(file_bytes, filename, content_type, document_type):
+    # Note the filename here is upload.filename -- the SERVER-generated
+    # spool filename (slot name + extension), not whatever the client
+    # named the file in the multipart request; see ocr_spool_service.py.
+    async def _fake(upload, document_type):
         for completed in range(total_tiles + 1):
             yield {"type": "progress", "completed": completed, "total": total_tiles}
         yield {
             "type": "result",
             "document_type": document_type,
-            "structured": structured_by_filename[filename],
+            "structured": structured_by_filename[upload.filename],
         }
 
     return _fake
@@ -229,8 +238,12 @@ async def test_bead_specificity_job_with_patient_id_saves_unverified_profiles(
         "call_ocr_service_stream",
         _fake_call_ocr_service_stream_by_filename(
             {
-                "page1.jpg": {"bead_specificity": [{"antigen": "A1", "mfi": 1000}]},
-                "page2.jpg": {"bead_specificity": [{"antigen": "B7", "mfi": 2500}]},
+                "bead_specificity_page_1.jpg": {
+                    "bead_specificity": [{"antigen": "A1", "mfi": 1000}]
+                },
+                "bead_specificity_page_2.jpg": {
+                    "bead_specificity": [{"antigen": "B7", "mfi": 2500}]
+                },
             }
         ),
     )
@@ -308,3 +321,89 @@ async def test_get_job_without_auth_returns_401(client: AsyncClient):
         "/ocr/extract-batch/jobs/00000000-0000-0000-0000-000000000000"
     )
     assert response.status_code == 401
+
+
+# ---------------------------------------------------------------------
+# Spool lifecycle (Part G, bounded memory for the extraction upload path)
+# -- uploads are spooled to local disk before the job row is even
+# created, and app/services/ocr_job_service.py's run_extraction_job
+# discards the whole spool directory in a try/finally around the entire
+# job body, on every path out (done, per-document error, or a genuine
+# job-level exception). See app/services/ocr_spool_service.py.
+# ---------------------------------------------------------------------
+
+
+async def test_spool_directory_exists_during_job_and_is_removed_after(
+    monkeypatch, auth_client: AsyncClient
+):
+    captured_spool_dir = {}
+
+    async def _fake(upload, document_type):
+        # Captured from inside the extraction call itself -- Starlette's
+        # BackgroundTasks run to completion inline for an ASGITransport-
+        # driven test client, so this is the only window in which the
+        # spool directory is actually observable as still present.
+        captured_spool_dir["path"] = upload.path.parent
+        assert upload.path.exists()
+        assert upload.path.parent.exists()
+        return HLA_TYPING_RESPONSE
+
+    monkeypatch.setattr(ocr_batch_service, "call_ocr_service", _fake)
+
+    start = await auth_client.post(
+        "/ocr/extract-batch/jobs", files={"hla_typing_report": FAKE_IMAGE}
+    )
+    job_id = start.json()["job_id"]
+
+    body = await _await_job_done(auth_client, job_id)
+
+    assert body["status"] == "done"
+    assert "path" in captured_spool_dir
+    # Discarded once the job (and its try/finally) has finished.
+    assert not captured_spool_dir["path"].exists()
+
+
+async def test_job_level_failure_still_cleans_up_its_spool(monkeypatch, auth_client: AsyncClient):
+    # Per-document OCR failures are already caught inside
+    # stream_batch_extraction and don't fail the whole job (see
+    # test_document_level_failure_does_not_fail_whole_job above) -- to
+    # exercise run_extraction_job's own last-resort except (job.status =
+    # FAILED), this breaks stream_batch_extraction itself, one layer up
+    # from where that per-document tolerance lives.
+    captured_spool_dir = {}
+
+    async def _broken_stream(files):
+        captured_spool_dir["path"] = files["hla_typing_report"].path.parent
+        raise RuntimeError("boom")
+        yield  # pragma: no cover -- makes this an async generator
+
+    monkeypatch.setattr(ocr_job_service, "stream_batch_extraction", _broken_stream)
+
+    start = await auth_client.post(
+        "/ocr/extract-batch/jobs", files={"hla_typing_report": FAKE_IMAGE}
+    )
+    job_id = start.json()["job_id"]
+
+    body = await _await_job_done(auth_client, job_id)
+
+    assert body["status"] == "failed"
+    assert body["error"] == "boom"
+    assert "path" in captured_spool_dir
+    assert not captured_spool_dir["path"].exists()
+
+
+async def test_oversized_upload_returns_413_with_no_job_row_created(
+    auth_client: AsyncClient, db_session
+):
+    # OCR_UPLOAD_MAX_SIZE_MB is set to 1 in conftest for exactly this test.
+    oversized = b"x" * (2 * 1024 * 1024)
+
+    response = await auth_client.post(
+        "/ocr/extract-batch/jobs",
+        files={"hla_typing_report": ("big.jpg", oversized, "image/jpeg")},
+    )
+
+    assert response.status_code == 413
+
+    result = await db_session.execute(select(OcrExtractionJob))
+    assert result.scalars().all() == []
