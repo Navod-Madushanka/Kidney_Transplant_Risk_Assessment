@@ -47,18 +47,43 @@ describe("parseOcrMfi", () => {
 })
 
 describe("normalizeOcrBatchResponse bead specificity", () => {
-  it("keeps a zero-MFI row and drops a null-MFI row", () => {
+  it("keeps a zero-MFI row and a null-MFI row, but drops a row with no antigen at all", () => {
+    // Part I (I8): a null MFI is the model flagging a row as illegible, not
+    // the row being absent -- it must survive normalization so
+    // BeadSpecificityStep can render its "couldn't read this value" marker.
+    // Only a row with nothing to show (no antigen) is dropped here.
     const result = normalizeOcrBatchResponse({
       bead_specificity: [
         { antigen: "A23", mfi: 23706.91 },
         { antigen: "DQ4", mfi: 0 },
         { antigen: "DP1", mfi: null },
+        { antigen: "", mfi: 500 },
       ],
     })
 
     expect(result.beadSpecificity).toEqual([
-      { antigen: "A23", mfi: 23706.91 },
-      { antigen: "DQ4", mfi: 0 },
+      { antigen: "A23", mfi: 23706.91, bead: null, page: null, panel: null, conflict: null },
+      { antigen: "DQ4", mfi: 0, bead: null, page: null, panel: null, conflict: null },
+      { antigen: "DP1", mfi: null, bead: null, page: null, panel: null, conflict: null },
+    ])
+  })
+
+  it("carries bead, page, panel, and conflict through unchanged", () => {
+    const result = normalizeOcrBatchResponse({
+      bead_specificity: [
+        {
+          antigen: "A24",
+          mfi: 950,
+          bead: "011",
+          page: 1,
+          panel: "class_i",
+          conflict: [950, 1200],
+        },
+      ],
+    })
+
+    expect(result.beadSpecificity).toEqual([
+      { antigen: "A24", mfi: 950, bead: "011", page: 1, panel: "class_i", conflict: [950, 1200] },
     ])
   })
 })

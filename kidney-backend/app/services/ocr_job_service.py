@@ -31,7 +31,12 @@ from app.models.enums import OcrExtractionJobStatus
 from app.models.ocr_extraction_job import OcrExtractionJob
 from app.schemas.antibody_profile import AntibodyProfileEntry
 from app.services.antibody_profile_service import replace_patient_antibody_profiles
-from app.services.ocr_batch_service import DocumentChunk, ProgressEvent, stream_batch_extraction
+from app.services.ocr_batch_service import (
+    DocumentChunk,
+    ProgressEvent,
+    check_bead_id_uniqueness_across_pages,
+    stream_batch_extraction,
+)
 from app.services.ocr_spool_service import SpooledUpload, discard_spool
 
 _EMPTY_DOCUMENT_RESULT = {
@@ -269,7 +274,22 @@ async def _save_bead_specificity_if_present(db: AsyncSession, job: OcrExtraction
 
     Simple concatenation of both pages, same merge ocr_batch_service.py's
     run_batch_extraction already does (see its
-    `result.bead_specificity.extend(...)`)."""
+    `result.bead_specificity.extend(...)`) -- reconciliation already ran
+    PER PAGE inside ocr-service, where the tiles are; this must never
+    dedupe again, only concatenate and verify. See
+    ocr_batch_service.check_bead_id_uniqueness_across_pages's docstring
+    for why (page, bead), not bead alone, is the real cross-page identity.
+
+    Part I (null-MFI contract): AntibodyProfile.mfi is NOT NULL, so a row
+    the model flagged as illegible (mfi=None, preserved deliberately by
+    the prompt rather than dropped -- see ocr-service's
+    BEAD_SPECIFICITY_PROMPT) is filtered out here before building entries,
+    never allowed to raise a Pydantic/DB validation error that would fail
+    this whole job. The doctor already learned about it: ocr-service's own
+    "unreadable_mfi" structured warning (see llm_extract.py's
+    _build_bead_warnings) is already attached to the document's errors,
+    well before this function runs.
+    """
     bead_rows = [
         *job.documents.get("bead_specificity_page_1", {}).get("bead_specificity", []),
         *job.documents.get("bead_specificity_page_2", {}).get("bead_specificity", []),
@@ -277,7 +297,31 @@ async def _save_bead_specificity_if_present(db: AsyncSession, job: OcrExtraction
     if not bead_rows:
         return
 
-    entries = [AntibodyProfileEntry(antigen=row["antigen"], mfi=row["mfi"]) for row in bead_rows]
+    uniqueness_warnings = check_bead_id_uniqueness_across_pages(bead_rows)
+    if uniqueness_warnings:
+        documents = dict(job.documents)
+        for slot in ("bead_specificity_page_1", "bead_specificity_page_2"):
+            if slot not in documents:
+                continue
+            doc = dict(documents[slot])
+            doc["errors"] = [*doc.get("errors", []), *uniqueness_warnings]
+            documents[slot] = doc
+        job.documents = documents  # reassign whole dict -- see the JSONB comment above
+
+    readable_rows = [row for row in bead_rows if row.get("mfi") is not None]
+    if not readable_rows:
+        return
+
+    entries = [
+        AntibodyProfileEntry(
+            antigen=row["antigen"],
+            mfi=row["mfi"],
+            bead_id=row.get("bead"),
+            panel=row.get("panel"),
+            extraction_conflict=row.get("conflict"),
+        )
+        for row in readable_rows
+    ]
     await replace_patient_antibody_profiles(
         db, job.patient_id, entries, ocr_verified=False, doctor_id=job.doctor_id
     )

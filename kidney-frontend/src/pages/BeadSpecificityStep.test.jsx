@@ -236,6 +236,92 @@ describe("BeadSpecificityStep", () => {
     expect(await screen.findByText("Review Step")).toBeInTheDocument()
   })
 
+  it("renders an AI-flagged unreadable MFI value with its own marker instead of a blank row", () => {
+    const wizardValue = {
+      state: { bead_specificity: [{ antigen: "A24", mfi: null }] },
+      actions: { setBeadSpecificity: vi.fn(), unlockStep: vi.fn() },
+    }
+    renderStep(wizardValue)
+
+    expect(screen.getByPlaceholderText("Couldn't read this value")).toBeInTheDocument()
+    expect(
+      screen.getByText("AI couldn't read this value — enter it manually or remove the row")
+    ).toBeInTheDocument()
+  })
+
+  it("resolves the unreadable-MFI marker once the doctor types a value", async () => {
+    const user = userEvent.setup()
+    const wizardValue = {
+      state: { bead_specificity: [{ antigen: "A24", mfi: null }] },
+      actions: { setBeadSpecificity: vi.fn(), unlockStep: vi.fn() },
+    }
+    renderStep(wizardValue)
+
+    await user.type(screen.getByPlaceholderText("Couldn't read this value"), "1400")
+
+    expect(screen.queryByPlaceholderText("Couldn't read this value")).not.toBeInTheDocument()
+    expect(
+      screen.queryByText("AI couldn't read this value — enter it manually or remove the row")
+    ).not.toBeInTheDocument()
+  })
+
+  it("blocks Continue while an unreadable MFI value is unresolved, even with no OCR verification banner", async () => {
+    const user = userEvent.setup()
+    const wizardValue = {
+      state: { bead_specificity: [{ antigen: "A24", mfi: null }] },
+      actions: { setBeadSpecificity: vi.fn(), unlockStep: vi.fn() },
+    }
+    renderStep(wizardValue)
+
+    await user.click(screen.getByRole("button", { name: /continue/i }))
+
+    expect(wizardValue.actions.setBeadSpecificity).not.toHaveBeenCalled()
+  })
+
+  it("renders tile-disagreement candidates for a conflicted row", () => {
+    const wizardValue = makeWizardValue()
+    wizardValue.state.bead_specificity = [
+      { antigen: "A24", mfi: 1200, conflict: [950, 1200] },
+    ]
+    renderStep(wizardValue)
+
+    expect(
+      screen.getByText("Tiles disagreed on this value (950, 1200) — using the highest reading; verify against the source chart.")
+    ).toBeInTheDocument()
+  })
+
+  it("disables the review-confirmation toggle while any row has an unresolved unreadable MFI", () => {
+    const wizardValue = makeOcrExtractedWizardValue(false)
+    wizardValue.state.bead_specificity = [{ antigen: "A24", mfi: null }]
+    renderStep(wizardValue)
+
+    expect(
+      screen.getByRole("switch", {
+        name: /I have reviewed this bead specificity chart against the source document/,
+      })
+    ).toBeDisabled()
+    expect(
+      screen.getByText(
+        "Resolve every unreadable MFI value below (enter it manually or remove the row) before confirming."
+      )
+    ).toBeInTheDocument()
+  })
+
+  it("re-enables the review-confirmation toggle once the unreadable MFI value is resolved", async () => {
+    const user = userEvent.setup()
+    const wizardValue = makeOcrExtractedWizardValue(false)
+    wizardValue.state.bead_specificity = [{ antigen: "A24", mfi: null }]
+    renderStep(wizardValue)
+
+    await user.type(screen.getByPlaceholderText("Couldn't read this value"), "1400")
+
+    expect(
+      screen.getByRole("switch", {
+        name: /I have reviewed this bead specificity chart against the source document/,
+      })
+    ).toBeEnabled()
+  })
+
   it("navigates back to the sensitization step without validating", async () => {
     const user = userEvent.setup()
     const wizardValue = makeWizardValue()

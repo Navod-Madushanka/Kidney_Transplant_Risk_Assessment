@@ -2,6 +2,7 @@
 from dataclasses import dataclass, field
 from typing import AsyncIterator
 
+from app.reference_data.dsa_threshold import DSA_SEVERITY_BANDS
 from app.services.ocr_client import call_ocr_service, call_ocr_service_stream
 from app.services.ocr_spool_service import SpooledUpload
 
@@ -11,6 +12,26 @@ SLOT_DOCUMENT_TYPES = {
     "bead_specificity_page_2": "bead_specificity",
     "crossmatch_report": "crossmatch",
 }
+
+# Part I (bead-row identity / tile reconciliation): bead IDs repeat across
+# the two bead-specificity pages -- each panel is numbered from 001
+# independently (see ocr-service's bead_reconciliation.py docstring) -- so
+# (page, bead), not bead alone, is the real row identity once both pages
+# are merged. Derived from the SLOT, never from antigen content: a
+# misread "DQ4" as "B44" must never silently reclassify which panel a row
+# belongs to.
+SLOT_PAGE_PANEL = {
+    "bead_specificity_page_1": (1, "class_i"),
+    "bead_specificity_page_2": (2, "class_ii"),
+}
+
+# Sent to ocr-service on every bead-specificity call so its tile-
+# reconciliation conflict rule knows where the real DSA clinical-severity
+# thresholds fall (see ocr_client.call_ocr_service_stream's docstring and
+# ocr-service's bead_reconciliation._clinical_band). Computed once from
+# the single source of truth this backend already owns -- never
+# copy-pasted as a literal on the ocr-service side, so the two can't drift.
+_DSA_BAND_EDGES_PARAM = ",".join(str(band.min_mfi) for band in DSA_SEVERITY_BANDS)
 
 
 @dataclass
@@ -94,7 +115,9 @@ async def stream_batch_extraction(
         try:
             if document_type == "bead_specificity":
                 structured: dict = {}
-                async for event in call_ocr_service_stream(upload, document_type):
+                async for event in call_ocr_service_stream(
+                    upload, document_type, extra_data={"dsa_band_edges": _DSA_BAND_EDGES_PARAM}
+                ):
                     if event["type"] == "progress":
                         yield ProgressEvent(
                             document_type=slot,
@@ -112,8 +135,15 @@ async def stream_batch_extraction(
             yield chunk
             continue
 
+        # hla_typing_report/crossmatch still emit a single "warning" string;
+        # bead_specificity emits a structured "warnings" list instead (Part
+        # I -- see ocr-service's llm_extract._build_bead_warnings), since a
+        # blanket string can't carry which beads a gap/conflict actually
+        # affects. Both shapes fold into the same flat chunk.errors list.
         if structured.get("warning"):
             chunk.errors.append({"field": slot, "message": structured["warning"]})
+        for warning in structured.get("warnings", []):
+            chunk.errors.append({"field": slot, "message": warning.get("detail", "")})
 
         if document_type == "hla_typing_report":
             hla_typing_structured = structured
@@ -125,7 +155,15 @@ async def stream_batch_extraction(
             known_donor_fields.update({k: v for k, v in chunk.donor_details.items() if v})
 
         elif document_type == "bead_specificity":
-            chunk.bead_specificity = structured.get("bead_specificity", [])
+            # Stamped from the SLOT (see SLOT_PAGE_PANEL), never inferred
+            # from antigen content -- ocr-service reconciles per page and
+            # can't tell page 1 from page 2 on its own (both are sent as
+            # the same document_type="bead_specificity").
+            page, panel = SLOT_PAGE_PANEL.get(slot, (None, None))
+            chunk.bead_specificity = [
+                {**row, "page": page, "panel": panel}
+                for row in structured.get("bead_specificity", [])
+            ]
 
         elif document_type == "crossmatch":
             crossmatch_structured = structured
@@ -167,12 +205,54 @@ async def run_batch_extraction(files: dict[str, SpooledUpload]) -> BatchExtracti
             result.patient_hla = chunk.patient_hla
         if chunk.donor_hla:
             result.donor_hla = chunk.donor_hla
+        # Concatenates, never dedupes -- reconciliation already happened
+        # PER PAGE inside ocr-service (it has the tiles); this cross-page
+        # step's only job is to notice if the (page, bead) identity was
+        # somehow violated, not to merge further. See
+        # check_bead_id_uniqueness_across_pages.
         result.bead_specificity.extend(chunk.bead_specificity)
         if chunk.crossmatch:
             result.crossmatch = chunk.crossmatch
         result.errors.extend(chunk.errors)
 
+    result.errors.extend(check_bead_id_uniqueness_across_pages(result.bead_specificity))
     return result
+
+
+def check_bead_id_uniqueness_across_pages(rows: list[dict]) -> list[dict]:
+    """Asserts (page, bead) is unique across the merged bead_specificity
+    list, raising a WARNING (never dropping a row) if it isn't. This is
+    deliberately not a second dedupe pass -- reconciliation already ran
+    per page inside ocr-service, where the actual tiles are; concatenating
+    both pages' already-reconciled rows should always satisfy this by
+    construction. A violation here means that invariant broke somewhere
+    (e.g. a slot-mapping bug), which is worth surfacing to the doctor
+    rather than silently re-deduping and hiding it, same as I2's whole
+    point about not making a real problem invisible.
+
+    Public (not module-private) because ocr_job_service.py's
+    _save_bead_specificity_if_present is the OTHER cross-page merge point
+    (the registration-time auto-save path) and needs the identical check
+    -- both call this rather than each keeping their own copy."""
+    seen: dict[tuple, int] = {}
+    for row in rows:
+        bead = row.get("bead")
+        if bead is None:
+            continue
+        key = (row.get("page"), bead)
+        seen[key] = seen.get(key, 0) + 1
+
+    duplicate_keys = sorted(key for key, count in seen.items() if count > 1)
+    return [
+        {
+            "field": "bead_specificity",
+            "message": (
+                f"Bead {bead} on page {page} appears more than once after merging both "
+                "pages -- please verify the bead specificity rows manually."
+            ),
+        }
+        for page, bead in duplicate_keys
+    ]
 
 
 def _check_cross_document_identity(

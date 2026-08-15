@@ -175,24 +175,30 @@ Extract EVERY row on this page into this exact JSON shape:
 
 {
   "bead_specificity": [
-    {"antigen": "<value from the Sero column>", "mfi": <value from the MFI/Baseline column as a number>},
+    {"bead": "<the 3-digit Bead code>", "antigen": "<value from the Sero column>", "mfi": <value from the MFI/Baseline column as a number>},
     ...
   ]
 }
 
 Rules:
-- Use the "Sero" column value for "antigen" (not the Bead code, not the
-  Allele Equiv column — those are extra detail this system doesn't need
-  right now).
+- "bead" is the value from the "Bead" column (a 3-digit code, e.g. "011")
+  — this is the row's unique identity on this page, since the same Sero
+  value legitimately appears on several different beads (e.g. beads 011
+  and 012 can both read "A24" at different MFI values — they are two
+  distinct rows, not a duplicate).
+- Use the "Sero" column value for "antigen" (not the Allele Equiv column
+  — that's extra detail this system doesn't need right now).
 - "mfi" must be a plain number (no commas, no units) — e.g. "23,706.91"
   becomes 23706.91.
 - Include every row visible on this page, even ones with very small or
   zero MFI values near the bottom of the table.
-- If a row's MFI is genuinely illegible, still include the antigen with
-  "mfi": null rather than dropping the row entirely — a missing row is a
-  worse failure than an uncertain number, since a downstream reviewer can
-  spot-check a flagged null far more easily than notice something that was
-  silently never mentioned at all.
+- If a row's MFI is genuinely illegible, still include the bead/antigen
+  with "mfi": null rather than dropping the row entirely — a missing row
+  is a worse failure than an uncertain number, since a downstream
+  reviewer can spot-check a flagged null far more easily than notice
+  something that was silently never mentioned at all. The same applies to
+  "bead": if it's illegible, still report the row with "bead": null
+  rather than omitting it or guessing a number.
 
 Respond with ONLY the JSON object above — no markdown fences, no
 explanation, no extra text.

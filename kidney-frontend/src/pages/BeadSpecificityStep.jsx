@@ -9,10 +9,22 @@ import ToggleSwitch from "../components/ui/ToggleSwitch"
 
 let nextRowId = 1
 function makeRow(entry) {
+  // Part I (I8): a null MFI means the model flagged this row as illegible,
+  // not that a doctor just hasn't typed anything into a blank row yet --
+  // those are two different situations that need two different signals.
+  // unreadableMfi marks only the former, so the doctor is told to *resolve*
+  // (fill in or delete) an AI-flagged gap rather than just fill in a blank.
+  const unreadableMfi = entry != null && !!entry.antigen && (entry.mfi === null || entry.mfi === undefined)
   return {
     rowId: nextRowId++,
     antigen: entry?.antigen ?? "",
-    mfi: entry?.mfi !== undefined ? String(entry.mfi) : "",
+    mfi: entry?.mfi !== undefined && entry?.mfi !== null ? String(entry.mfi) : "",
+    unreadableMfi,
+    // Every candidate MFI reconciliation saw when tiles disagreed on this
+    // bead (see ocr-service's bead_reconciliation.ReconciledRow.conflict) --
+    // `mfi` above is already the highest candidate; this is only for
+    // showing the doctor what else was seen.
+    conflict: entry?.conflict ?? null,
   }
 }
 
@@ -58,6 +70,13 @@ export default function BeadSpecificityStep() {
     state.extraction?.documents?.["bead_specificity_page_2"]?.status === "done" ||
     state.subject?.patientRecord?.antibody_profile_verified === false
 
+  // Part I (I8): the doctor must supply or delete each AI-flagged
+  // unreadable value rather than being able to confirm a chart with holes
+  // in it -- gates the verification toggle below, separately from (and in
+  // addition to) the per-row "MFI is required" validation Continue already
+  // enforces.
+  const hasUnresolvedUnreadableRows = rows.some((row) => row.unreadableMfi)
+
   const visibleRows = useMemo(() => {
     if (!hasActiveFilter) return rows
     const antigenTerm = antigenFilter.trim().toLowerCase()
@@ -75,6 +94,11 @@ export default function BeadSpecificityStep() {
       if (index === -1) return prev
 
       const updated = { ...prev[index], [field]: value }
+      // The doctor typed a real value into a row the AI couldn't read --
+      // resolved, whatever they entered is now the value of record.
+      if (field === "mfi" && value.trim()) {
+        updated.unreadableMfi = false
+      }
       const isLastRow = index === prev.length - 1
       const next = [...prev]
       next[index] = updated
@@ -139,7 +163,8 @@ export default function BeadSpecificityStep() {
     })
 
     setRowErrors(nextRowErrors)
-    const needsVerification = wasOcrExtracted && !state.ocr_verified?.bead_specificity
+    const needsVerification =
+      (wasOcrExtracted && !state.ocr_verified?.bead_specificity) || hasUnresolvedUnreadableRows
     setVerificationError(needsVerification)
 
     if (Object.keys(nextRowErrors).length > 0) {
@@ -201,27 +226,40 @@ export default function BeadSpecificityStep() {
             </p>
           ) : (
             visibleRows.map((row) => (
-              <div key={row.rowId} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-start">
-                <InputField
-                  placeholder="Antigen (e.g. B*44:02)"
-                  value={row.antigen}
-                  onChange={(e) => updateRow(row.rowId, "antigen", e.target.value)}
-                  error={rowErrors[row.rowId]}
-                />
-                <InputField
-                  placeholder="MFI value"
-                  inputMode="decimal"
-                  value={row.mfi}
-                  onChange={(e) => updateRow(row.rowId, "mfi", e.target.value)}
-                />
-                <button
-                  type="button"
-                  onClick={() => removeRow(row.rowId)}
-                  aria-label="Remove row"
-                  className="h-11 w-11 flex items-center justify-center text-text-muted hover:text-high-risk"
-                >
-                  ✕
-                </button>
+              <div key={row.rowId} className="flex flex-col gap-1">
+                <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-start">
+                  <InputField
+                    placeholder="Antigen (e.g. B*44:02)"
+                    value={row.antigen}
+                    onChange={(e) => updateRow(row.rowId, "antigen", e.target.value)}
+                    error={rowErrors[row.rowId]}
+                  />
+                  <InputField
+                    placeholder={row.unreadableMfi ? "Couldn't read this value" : "MFI value"}
+                    inputMode="decimal"
+                    value={row.mfi}
+                    onChange={(e) => updateRow(row.rowId, "mfi", e.target.value)}
+                    error={
+                      row.unreadableMfi
+                        ? "AI couldn't read this value — enter it manually or remove the row"
+                        : undefined
+                    }
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeRow(row.rowId)}
+                    aria-label="Remove row"
+                    className="h-11 w-11 flex items-center justify-center text-text-muted hover:text-high-risk"
+                  >
+                    ✕
+                  </button>
+                </div>
+                {row.conflict && (
+                  <p className="text-[12px] text-moderate pl-1">
+                    Tiles disagreed on this value ({row.conflict.map((c) => (c === null ? "unreadable" : c)).join(", ")}) —
+                    using the highest reading; verify against the source chart.
+                  </p>
+                )}
               </div>
             ))
           )}
@@ -237,8 +275,13 @@ export default function BeadSpecificityStep() {
         >
           <ToggleSwitch
             label="I have reviewed this bead specificity chart against the source document"
-            helperText="MFI values here were extracted by AI — confirm they're accurate before continuing. A misread value can flow straight into a DSA reject."
+            helperText={
+              hasUnresolvedUnreadableRows
+                ? "Resolve every unreadable MFI value below (enter it manually or remove the row) before confirming."
+                : "MFI values here were extracted by AI — confirm they're accurate before continuing. A misread value can flow straight into a DSA reject."
+            }
             checked={!!state.ocr_verified?.bead_specificity}
+            disabled={hasUnresolvedUnreadableRows}
             onChange={(checked) => {
               actions.setOcrVerified("bead_specificity", checked)
               if (checked) setVerificationError(false)
@@ -246,8 +289,9 @@ export default function BeadSpecificityStep() {
           />
           {verificationError && (
             <p className="text-[13px] text-high-risk font-medium mt-2">
-              Confirm this before continuing — the compatibility check refuses to run on
-              unverified OCR data.
+              {hasUnresolvedUnreadableRows
+                ? "Resolve every unreadable MFI value above before continuing."
+                : "Confirm this before continuing — the compatibility check refuses to run on unverified OCR data."}
             </p>
           )}
         </div>

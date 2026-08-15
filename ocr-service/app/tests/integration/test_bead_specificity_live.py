@@ -30,6 +30,25 @@ from app.tests.integration._scoring import score_anchors
 
 pytestmark = pytest.mark.integration
 
+# Part I: bead_specificity_anchor.json deliberately does NOT carry bead IDs
+# for its existing antigen/MFI anchors. Real attempts at reading them off
+# the source images for this fixture found the Bead column's small print
+# genuinely unreliable to transcribe with confidence (ambiguous digits at
+# this resolution/blur) -- and a WRONG fabricated "ground truth" bead ID
+# baked into a test fixture is worse than not having one, since it would
+# look authoritative while actively misleading future debugging. The
+# anchor-based scoring below is therefore still the pre-Part-I fuzzy
+# antigen/MFI match (see _scoring.py) and stays structurally blind to
+# duplicate-row creation on its own, same as before.
+#
+# What DOES directly test the Part I finding without needing fabricated
+# ground truth: reconciliation's own bead-ID uniqueness invariant. Once
+# reconcile_bead_rows groups by bead ID, no bead ID can legitimately
+# appear twice in its output BY CONSTRUCTION -- so if it ever does, that's
+# a real bug in the reconciliation/grouping logic itself, not a scoring
+# nuance, and doesn't need anchor ground truth to catch. See
+# test_bead_specificity_page1_repeated_runs/page2 below.
+
 # Per claude/ocr-to-local-llm-migration-plan.md's Phase 3 Post-Deployment
 # Debugging: real production runs against sample_mfi_page1.jpg swung
 # 10/13 -> 1/13 -> 2/13 -> 2/13 across four separate attempts (including
@@ -51,12 +70,31 @@ pytestmark = pytest.mark.integration
 RUNS = 3
 
 
+def _assert_no_duplicate_or_out_of_range_bead_ids(rows: list[dict]) -> None:
+    """The structural check Part I actually needs: reconcile_bead_rows
+    groups by bead ID, so a bead ID appearing twice in its OUTPUT is a
+    reconciliation bug (grouping failed), not scoring noise -- catchable
+    without any anchor ground truth. Also sanity-checks every present ID
+    falls inside the panel range coerce_bead_id enforces (1..120); a
+    result outside that range would mean coerce_bead_id was bypassed
+    somehow."""
+    bead_ids = [row["bead"] for row in rows if row.get("bead") is not None]
+    assert len(bead_ids) == len(set(bead_ids)), (
+        f"duplicate bead ID(s) in reconciled output: "
+        f"{[b for b in bead_ids if bead_ids.count(b) > 1]}"
+    )
+    for bead_id in bead_ids:
+        assert 1 <= int(bead_id) <= 120, f"bead ID {bead_id} outside the valid panel range"
+
+
 async def test_bead_specificity_page1_repeated_runs(bead_specificity_page1_bytes, bead_specificity_anchors):
     anchors = bead_specificity_anchors["page1_anchors"]
     scores = []
     for i in range(RUNS):
         structured = await extract_bead_specificity(bead_specificity_page1_bytes)
-        assert BEAD_SPECIFICITY_ALWAYS_VERIFY_WARNING in structured["warning"]
+        warning_details = [w["detail"] for w in structured["warnings"]]
+        assert any(BEAD_SPECIFICITY_ALWAYS_VERIFY_WARNING in detail for detail in warning_details)
+        _assert_no_duplicate_or_out_of_range_bead_ids(structured["bead_specificity"])
         matched, total = score_anchors(structured["bead_specificity"], anchors)
         scores.append(matched)
         print(f"page1 run {i + 1}/{RUNS}: {matched}/{total} anchors matched")
@@ -76,7 +114,9 @@ async def test_bead_specificity_page2_repeated_runs(bead_specificity_page2_bytes
     scores = []
     for i in range(RUNS):
         structured = await extract_bead_specificity(bead_specificity_page2_bytes)
-        assert BEAD_SPECIFICITY_ALWAYS_VERIFY_WARNING in structured["warning"]
+        warning_details = [w["detail"] for w in structured["warnings"]]
+        assert any(BEAD_SPECIFICITY_ALWAYS_VERIFY_WARNING in detail for detail in warning_details)
+        _assert_no_duplicate_or_out_of_range_bead_ids(structured["bead_specificity"])
         matched, total = score_anchors(structured["bead_specificity"], anchors)
         scores.append(matched)
         print(f"page2 run {i + 1}/{RUNS}: {matched}/{total} anchors matched")

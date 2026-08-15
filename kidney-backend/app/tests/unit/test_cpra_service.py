@@ -62,3 +62,25 @@ def test_reference_table_metadata_passes_through_unchanged():
     assert result.sample_size == REFERENCE_SAMPLE_SIZE
     assert result.reference_table_version == REFERENCE_VERSION
     assert result.source_citation == REFERENCE_CITATION
+
+
+def test_repeated_antigen_does_not_double_count():
+    # Part I (I9): a real Sero group legitimately spans several distinct
+    # beads (e.g. "A24" on beads 011/012 at different MFIs -- see
+    # ocr-service's bead_reconciliation.py), so a sensitized patient's
+    # antigen list can legitimately contain the same name twice. Before
+    # deduplication, combining "A24" into the union-probability formula
+    # twice computed `2f - f^2` instead of `f`, overstating cPRA for
+    # essentially every sensitized patient -- independent of any OCR
+    # error. ["A24", "A24", "A2"] must equal ["A24", "A2"].
+    with_repeat = _calculate(["A24", "A24", "A2"], {"A24": 0.15, "A2": 0.2})
+    without_repeat = _calculate(["A24", "A2"], {"A24": 0.15, "A2": 0.2})
+
+    assert with_repeat.cpra_percentage == without_repeat.cpra_percentage
+    assert with_repeat.message == without_repeat.message
+
+
+def test_repeated_antigen_message_reports_unique_count():
+    result = _calculate(["A24", "A24", "A2"], {"A24": 0.15, "A2": 0.2})
+
+    assert result.message == "2 of 2 sensitized antigens matched the reference frequency table"

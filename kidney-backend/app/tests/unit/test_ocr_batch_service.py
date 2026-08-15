@@ -10,6 +10,7 @@ from app.services import ocr_batch_service
 from app.services.ocr_batch_service import (
     DocumentChunk,
     ProgressEvent,
+    check_bead_id_uniqueness_across_pages,
     run_batch_extraction,
     stream_batch_extraction,
 )
@@ -48,7 +49,10 @@ def _fake_call_ocr_service_stream(structured_by_document_type, total_tiles=2):
     # extract_bead_specificity_stream): one {"type": "progress", ...} per
     # tile starting at completed=0 (before any tile has run) through
     # completed=total_tiles, then a single final {"type": "result", ...}.
-    async def _fake(upload, document_type):
+    # **kwargs absorbs extra_data (dsa_band_edges) -- this fake doesn't
+    # need to do anything with it, only accept the same call shape the
+    # real call_ocr_service_stream now has.
+    async def _fake(upload, document_type, **kwargs):
         for completed in range(total_tiles + 1):
             yield {"type": "progress", "completed": completed, "total": total_tiles}
         yield {
@@ -225,7 +229,11 @@ async def test_stream_yields_one_chunk_per_document_in_order(monkeypatch, fake_f
     ]
     assert chunks[0].patient_details["full_name"] == "Rev.A.Premarathna Thero"
     assert chunks[0].patient_hla == [{"locus": "A", "allele_1": "29", "allele_2": "33"}]
-    assert chunks[2].bead_specificity == [{"antigen": "A23", "mfi": 490.5}]
+    # page/panel are stamped from the slot (bead_specificity_page_1 ->
+    # page 1/class_i) -- see SLOT_PAGE_PANEL.
+    assert chunks[2].bead_specificity == [
+        {"antigen": "A23", "mfi": 490.5, "page": 1, "panel": "class_i"}
+    ]
 
 
 async def test_stream_emits_progress_events_before_each_document(monkeypatch, fake_file):
@@ -445,8 +453,59 @@ async def test_run_batch_extraction_matches_streamed_chunks_merged(monkeypatch, 
     assert result.patient_hla == [{"locus": "A", "allele_1": "29", "allele_2": "33"}]
     assert result.crossmatch == {"t_cell_result": "Compatible", "b_cell_result": "Compatible"}
     # Bead specificity is uploaded twice (page 1 + page 2) -- both pages'
-    # rows accumulate rather than overwrite.
+    # rows accumulate rather than overwrite, each stamped with its own
+    # page/panel (see SLOT_PAGE_PANEL). Neither row carries a bead ID here
+    # (the fake response doesn't set one), so the cross-page uniqueness
+    # check has nothing to flag -- see
+    # check_bead_id_uniqueness_across_pages, which only looks at rows
+    # that DO have a bead ID.
     assert result.bead_specificity == [
-        {"antigen": "A23", "mfi": 490.5},
-        {"antigen": "A23", "mfi": 490.5},
+        {"antigen": "A23", "mfi": 490.5, "page": 1, "panel": "class_i"},
+        {"antigen": "A23", "mfi": 490.5, "page": 2, "panel": "class_ii"},
     ]
+
+
+# ---------------------------------------------------------------------
+# check_bead_id_uniqueness_across_pages -- the cross-page merge step
+# (Part I, I7). Bead IDs repeat across the two panel pages by design (see
+# SLOT_PAGE_PANEL's own comment), so (page, bead) rather than bead alone
+# is the real identity once both pages are concatenated. This function
+# only ASSERTS that invariant holds -- it must never dedupe, only warn.
+# ---------------------------------------------------------------------
+
+
+def test_same_bead_id_on_different_pages_is_not_a_conflict():
+    # The real-chart case this whole mechanism exists for: bead 044 is a
+    # distinct, unrelated antibody on each page (Class I vs Class II).
+    rows = [
+        {"bead": "044", "antigen": "B76,Bw6", "page": 1, "panel": "class_i"},
+        {"bead": "044", "antigen": "DQ4", "page": 2, "panel": "class_ii"},
+    ]
+
+    assert check_bead_id_uniqueness_across_pages(rows) == []
+
+
+def test_same_bead_id_repeated_on_the_same_page_is_flagged():
+    # This should be structurally impossible (ocr-service's own
+    # reconcile_bead_rows groups by bead within one page), so seeing it
+    # here means that invariant broke somewhere -- worth surfacing, not
+    # silently re-deduping.
+    rows = [
+        {"bead": "011", "antigen": "A24", "page": 1, "panel": "class_i"},
+        {"bead": "011", "antigen": "A24", "page": 1, "panel": "class_i"},
+    ]
+
+    warnings = check_bead_id_uniqueness_across_pages(rows)
+
+    assert len(warnings) == 1
+    assert "011" in warnings[0]["message"]
+    assert "page 1" in warnings[0]["message"]
+
+
+def test_rows_without_a_bead_id_are_ignored():
+    rows = [
+        {"bead": None, "antigen": "A1", "page": 1, "panel": "class_i"},
+        {"bead": None, "antigen": "A1", "page": 1, "panel": "class_i"},
+    ]
+
+    assert check_bead_id_uniqueness_across_pages(rows) == []

@@ -51,7 +51,9 @@ def _fake_call_ocr_service_stream(structured_by_document_type, total_tiles=3):
     # Mirrors ocr-service's real /extract/stream contract (see ocr-service's
     # extract_bead_specificity_stream): progress events completed=0..total,
     # then one final result event.
-    async def _fake(upload, document_type):
+    # **kwargs absorbs extra_data (dsa_band_edges) -- see the real
+    # call_ocr_service_stream's signature; this fake doesn't need it.
+    async def _fake(upload, document_type, **kwargs):
         for completed in range(total_tiles + 1):
             yield {"type": "progress", "completed": completed, "total": total_tiles}
         yield {
@@ -178,7 +180,19 @@ async def test_bead_specificity_progress_reaches_total_on_completion(
     assert doc["status"] == "done"
     assert doc["total"] == 3
     assert doc["completed"] == 3
-    assert doc["bead_specificity"] == [{"antigen": "A23", "mfi": 490.5}]
+    # page/panel stamped from the slot (bead_specificity_page_1 -> page
+    # 1/class_i, see SLOT_PAGE_PANEL); bead/conflict are None since the
+    # fake response doesn't set a bead ID.
+    assert doc["bead_specificity"] == [
+        {
+            "bead": None,
+            "antigen": "A23",
+            "mfi": 490.5,
+            "page": 1,
+            "panel": "class_i",
+            "conflict": None,
+        }
+    ]
 
 
 async def test_job_not_visible_to_a_different_doctor(
@@ -219,7 +233,8 @@ def _fake_call_ocr_service_stream_by_filename(structured_by_filename, total_tile
     # Note the filename here is upload.filename -- the SERVER-generated
     # spool filename (slot name + extension), not whatever the client
     # named the file in the multipart request; see ocr_spool_service.py.
-    async def _fake(upload, document_type):
+    # **kwargs absorbs extra_data (dsa_band_edges).
+    async def _fake(upload, document_type, **kwargs):
         for completed in range(total_tiles + 1):
             yield {"type": "progress", "completed": completed, "total": total_tiles}
         yield {
@@ -270,6 +285,98 @@ async def test_bead_specificity_job_with_patient_id_saves_unverified_profiles(
 
     patient_response = await auth_client.get(f"/patients/{patient['id']}")
     assert patient_response.json()["antibody_profile_verified"] is False
+
+
+async def test_cross_page_bead_id_collision_survives_as_distinct_rows(
+    monkeypatch, auth_client: AsyncClient
+):
+    # Real-chart case (Part I, I7): bead 044 is B76,Bw6 on page 1 (Class
+    # I) and DQ4 on page 2 (Class II) -- each page's panel is numbered
+    # from 001 independently, so (page, bead), not bead alone, is the
+    # real identity once both pages are merged. Cross-page merging must
+    # NOT collapse these into one row.
+    patient = await create_patient(auth_client)
+    monkeypatch.setattr(
+        ocr_batch_service,
+        "call_ocr_service_stream",
+        _fake_call_ocr_service_stream_by_filename(
+            {
+                "bead_specificity_page_1.jpg": {
+                    "bead_specificity": [{"bead": "044", "antigen": "B76,Bw6", "mfi": 22362.49}]
+                },
+                "bead_specificity_page_2.jpg": {
+                    "bead_specificity": [{"bead": "044", "antigen": "DQ4", "mfi": 179.54}]
+                },
+            }
+        ),
+    )
+
+    start = await auth_client.post(
+        "/ocr/extract-batch/jobs",
+        files={
+            "bead_specificity_page_1": FAKE_IMAGE,
+            "bead_specificity_page_2": FAKE_IMAGE,
+        },
+        data={"patient_id": patient["id"]},
+    )
+    assert start.status_code == 202
+    job_id = start.json()["job_id"]
+
+    body = await _await_job_done(auth_client, job_id)
+    assert body["status"] == "done"
+
+    profiles_response = await auth_client.get(f"/patients/{patient['id']}/antibody-profiles")
+    profiles = profiles_response.json()
+    assert len(profiles) == 2
+
+    by_panel = {p["panel"]: p for p in profiles}
+    assert by_panel["class_i"]["bead_id"] == "044"
+    assert by_panel["class_i"]["antigen"] == "B76,Bw6"
+    assert by_panel["class_ii"]["bead_id"] == "044"
+    assert by_panel["class_ii"]["antigen"] == "DQ4"
+
+
+async def test_null_mfi_row_is_filtered_from_auto_save_without_failing_the_job(
+    monkeypatch, auth_client: AsyncClient
+):
+    # Part I (I8): the prompt deliberately preserves an illegible row as
+    # mfi=None instead of dropping it (a doctor can spot-check a flagged
+    # null far more easily than notice a row that was silently never
+    # mentioned). AntibodyProfile.mfi is NOT NULL, so building an entry
+    # straight from that row used to raise a validation error that failed
+    # the WHOLE job -- taking every other successfully-extracted document
+    # down with it. This is the regression test for that crash.
+    patient = await create_patient(auth_client)
+    monkeypatch.setattr(
+        ocr_batch_service,
+        "call_ocr_service_stream",
+        _fake_call_ocr_service_stream(
+            {
+                "bead_specificity": {
+                    "bead_specificity": [
+                        {"bead": "010", "antigen": "A23", "mfi": 23706.91},
+                        {"bead": "011", "antigen": "A24", "mfi": None},
+                    ]
+                }
+            },
+        ),
+    )
+
+    start = await auth_client.post(
+        "/ocr/extract-batch/jobs",
+        files={"bead_specificity_page_1": FAKE_IMAGE},
+        data={"patient_id": patient["id"]},
+    )
+    job_id = start.json()["job_id"]
+
+    body = await _await_job_done(auth_client, job_id)
+
+    assert body["status"] == "done"  # NOT "failed"
+
+    profiles_response = await auth_client.get(f"/patients/{patient['id']}/antibody-profiles")
+    profiles = profiles_response.json()
+    assert len(profiles) == 1  # only the readable row was saved
+    assert profiles[0]["bead_id"] == "010"
 
 
 async def test_job_with_patient_id_from_another_doctor_returns_404(

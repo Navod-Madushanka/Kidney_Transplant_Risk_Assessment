@@ -1,20 +1,23 @@
 # app/tests/unit/test_row_validation.py
 #
-# Covers the pure post-processing helpers in app/extraction/llm_extract.py
-# that sit between "whatever JSON the model returned" and the frozen
-# external `structured` contract: _validate_hla_rows (locus allowlist),
-# _dedupe_rows / _coerce_mfi (bead specificity tile merge). No network.
+# Covers _validate_hla_rows (locus allowlist) in
+# app/extraction/llm_extract.py -- the pure post-processing helper that
+# sits between "whatever JSON the model returned" and the frozen external
+# `structured` contract for HLA typing. No network.
 #
-# NOTE: a _parse_csv_rows helper briefly lived here (Phase 1 speed pass,
+# NOTE: the bead-specificity coercion/reconciliation tests that used to
+# live here (_coerce_mfi, _dedupe_rows) moved to
+# app/tests/unit/test_bead_reconciliation.py when _dedupe_rows was
+# replaced by reconcile_bead_rows (Part I -- see
+# app/extraction/bead_reconciliation.py's module docstring for why the old
+# exact-match dedupe was wrong).
+#
+# A _parse_csv_rows helper also briefly lived here (Phase 1 speed pass,
 # 2026-08-04) for a CSV-envelope bead-specificity response format that was
-# tried and reverted after a real live test showed it triggering a worse
-# repetition-loop hallucination than the JSON-array format it replaced —
-# see BEAD_SPECIFICITY_PROMPT's own "TRIED AND REVERTED" comment in
-# app/llm/prompts.py for the full story. Removed along with the function.
-from app.extraction.llm_extract import _coerce_mfi, _dedupe_rows, _validate_hla_rows
+# tried and reverted -- see BEAD_SPECIFICITY_PROMPT's own "TRIED AND
+# REVERTED" comment in app/llm/prompts.py for the full story.
+from app.extraction.llm_extract import _validate_hla_rows
 
-
-# --- _validate_hla_rows ---
 
 def test_valid_canonical_loci_pass_through():
     rows = [
@@ -62,85 +65,3 @@ def test_alleles_coerced_to_strings():
     valid, _ = _validate_hla_rows(rows)
     assert valid[0]["allele_1"] == "29"
     assert valid[0]["allele_2"] == "33"
-
-
-# --- _coerce_mfi ---
-
-def test_coerce_mfi_plain_number():
-    assert _coerce_mfi(23706.91) == 23706.91
-
-
-def test_coerce_mfi_string_with_comma():
-    assert _coerce_mfi("23,706.91") == 23706.91
-
-
-def test_coerce_mfi_none_stays_none():
-    assert _coerce_mfi(None) is None
-
-
-def test_coerce_mfi_unparseable_string_returns_none():
-    assert _coerce_mfi("illegible") is None
-
-
-def test_coerce_mfi_int():
-    assert _coerce_mfi(490) == 490.0
-
-
-# --- _dedupe_rows ---
-
-def test_dedupe_exact_duplicate_from_tile_overlap():
-    # Row-band tiles overlap 12% (app/extraction/tiling.py) specifically so
-    # a row near a tile boundary can get read by two adjacent tiles -- this
-    # is the intended, expected duplicate case.
-    rows = [
-        {"antigen": "A23", "mfi": 490.5},
-        {"antigen": "A23", "mfi": 490.5},
-    ]
-    merged = _dedupe_rows(rows)
-    assert merged == [{"antigen": "A23", "mfi": 490.5}]
-
-
-def test_dedupe_is_case_and_whitespace_insensitive_on_antigen():
-    rows = [
-        {"antigen": "A23", "mfi": 490.5},
-        {"antigen": " a23 ", "mfi": 490.5},
-    ]
-    merged = _dedupe_rows(rows)
-    assert len(merged) == 1
-
-
-def test_dedupe_keeps_same_antigen_different_mfi():
-    # Real, legitimate case: the same antigen name can appear on multiple
-    # distinct rows of the chart with genuinely different MFI values (see
-    # the bead_specificity_anchor.json fixture -- "A24" appears twice with
-    # different values). Must not be collapsed.
-    rows = [
-        {"antigen": "A24", "mfi": 23582.09},
-        {"antigen": "A24", "mfi": 23590.10},
-    ]
-    merged = _dedupe_rows(rows)
-    assert len(merged) == 2
-
-
-def test_dedupe_drops_rows_with_empty_antigen():
-    rows = [{"antigen": "", "mfi": 100.0}, {"antigen": "A23", "mfi": 490.5}]
-    merged = _dedupe_rows(rows)
-    assert merged == [{"antigen": "A23", "mfi": 490.5}]
-
-
-def test_dedupe_skips_non_dict_entries_without_crashing():
-    rows = ["not a row", {"antigen": "A23", "mfi": 490.5}]
-    merged = _dedupe_rows(rows)
-    assert merged == [{"antigen": "A23", "mfi": 490.5}]
-
-
-def test_dedupe_coerces_mfi_formatting_before_keying():
-    # "23,706.91" and 23706.91 must hash to the same dedupe key even though
-    # one arrived as a formatted string.
-    rows = [
-        {"antigen": "A23", "mfi": "23,706.91"},
-        {"antigen": "A23", "mfi": 23706.91},
-    ]
-    merged = _dedupe_rows(rows)
-    assert len(merged) == 1
-    assert merged[0]["mfi"] == 23706.91

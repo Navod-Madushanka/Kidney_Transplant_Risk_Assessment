@@ -82,9 +82,24 @@ export function normalizeOcrBatchResponse(response) {
     rh_factor: parseOcrRhFactor(response.donor_details?.blood_type),
   }
 
+  // Part I (I8): a null MFI means the model flagged this row as illegible,
+  // not that it doesn't exist -- the prompt deliberately keeps the row
+  // rather than dropping it (a doctor can spot-check a flagged null far
+  // more easily than notice a row that was silently never mentioned).
+  // Filtering it out here undid that on arrival; only a genuinely empty
+  // antigen (nothing to show at all) is dropped now. bead/page/panel/
+  // conflict are carried through so BeadSpecificityStep can render the
+  // unreadable-value marker and any tile-disagreement candidates.
   const beadSpecificity = (response.bead_specificity || [])
-    .map((entry) => ({ antigen: entry.antigen, mfi: parseOcrMfi(entry.mfi) }))
-    .filter((entry) => entry.antigen && entry.mfi !== null)
+    .map((entry) => ({
+      bead: entry.bead ?? null,
+      antigen: entry.antigen,
+      mfi: parseOcrMfi(entry.mfi),
+      page: entry.page ?? null,
+      panel: entry.panel ?? null,
+      conflict: entry.conflict ?? null,
+    }))
+    .filter((entry) => entry.antigen)
 
   return {
     patientDetails,

@@ -99,6 +99,17 @@ class OcrExtractionJobStatus(str, enum.Enum):
     FAILED = "failed"
 
 
+class AntibodyPanel(str, enum.Enum):
+    # Which of the two bead-specificity chart pages an antibody_profiles
+    # row came from -- set by the backend from the upload slot (page 1 ->
+    # CLASS_I, page 2 -> CLASS_II), never inferred from antigen content.
+    # See ocr_batch_service.py's SLOT_PAGE_PANEL: bead IDs repeat across
+    # the two pages (each panel is numbered from 001), so this is what
+    # makes (panel, bead_id) — not bead_id alone — the real row identity.
+    CLASS_I = "class_i"
+    CLASS_II = "class_ii"
+
+
 class HLALocusEnum(str, enum.Enum):
     DRB1 = "DRB1"
     B = "B"

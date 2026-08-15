@@ -20,10 +20,18 @@ fields.
 """
 import asyncio
 import base64
-import re
+from dataclasses import replace
 from typing import AsyncIterator
 
 from app.core.config import settings
+from app.extraction.bead_reconciliation import (
+    BeadObservation,
+    BeadReconciliationReport,
+    coerce_bead_id,
+    coerce_mfi,
+    detect_degenerate_tiles,
+    reconcile_bead_rows,
+)
 from app.extraction.preprocessing import orient_image
 from app.extraction.tiling import make_row_band_tiles
 from app.llm.client import LLMExtractionError, chat_json
@@ -158,7 +166,9 @@ BEAD_SPECIFICITY_ALWAYS_VERIFY_WARNING = "ai_extracted_verify_against_source_ima
 CONCURRENT_TILE_LIMIT = 1
 
 
-async def extract_bead_specificity_stream(image_bytes: bytes) -> AsyncIterator[dict]:
+async def extract_bead_specificity_stream(
+    image_bytes: bytes, band_edges: list[float] | None = None
+) -> AsyncIterator[dict]:
     """Same extraction as extract_bead_specificity, but yields progress as
     each of the 8 row-band tiles finishes instead of only returning once
     the whole page is done. This is the one document type slow enough
@@ -176,6 +186,13 @@ async def extract_bead_specificity_stream(image_bytes: bytes) -> AsyncIterator[d
     as before (see that constant's comment for why it's 1 today) — this
     only adds a queue so completions can be observed and yielded as they
     happen rather than all at once via asyncio.gather.
+
+    band_edges -- the DSA clinical-severity band boundaries (see
+    bead_reconciliation._clinical_band's docstring for why this is a
+    parameter rather than a hardcoded constant here), forwarded to
+    reconcile_bead_rows so a near-threshold tile disagreement is never
+    waved off as noise. Optional: None degrades reconciliation to plain
+    relative tolerance, no threshold-crossing rule.
     """
     # Orient (EXIF rotation only) BEFORE tiling — make_row_band_tiles crops
     # by raw pixel coordinates assuming the page is already upright. No
@@ -222,56 +239,123 @@ async def extract_bead_specificity_stream(image_bytes: bytes) -> AsyncIterator[d
     await asyncio.gather(*tasks)  # already finished (each puts before returning); surfaces any stray exception
 
     failed_tiles = sum(1 for r in tile_results if r is None)
-    all_rows = [row for rows in tile_results if rows for row in rows]
-    merged = _dedupe_rows(all_rows)
 
-    warning = BEAD_SPECIFICITY_ALWAYS_VERIFY_WARNING
-    if failed_tiles:
-        warning = f"{failed_tiles}_of_{len(tiles)}_tiles_failed_{warning}"
+    observations: list[BeadObservation] = []
+    for tile_index, rows in enumerate(tile_results):
+        if not rows:
+            continue
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            antigen = str(row.get("antigen", "")).strip()
+            if not antigen:
+                continue
+            observations.append(
+                BeadObservation(
+                    bead=coerce_bead_id(row.get("bead")),
+                    antigen=antigen,
+                    mfi=coerce_mfi(row.get("mfi")),
+                    tile_index=tile_index,
+                )
+            )
 
-    yield {"type": "result", "structured": {"bead_specificity": merged, "warning": warning}}
+    reconciled, report = reconcile_bead_rows(observations, num_tiles=total, band_edges=band_edges)
+    report = replace(report, degenerate_tiles=detect_degenerate_tiles(tile_results))
+
+    yield {
+        "type": "result",
+        "structured": {
+            "bead_specificity": [
+                {
+                    "bead": row.bead,
+                    "antigen": row.antigen,
+                    "mfi": row.mfi,
+                    "conflict": list(row.conflict) if row.conflict is not None else None,
+                }
+                for row in reconciled
+            ],
+            "warnings": _build_bead_warnings(report, failed_tiles, total),
+        },
+    }
 
 
-async def extract_bead_specificity(image_bytes: bytes) -> dict:
-    """Non-streaming callers (the /extract-batch batch endpoint): drains
-    extract_bead_specificity_stream and returns just the final structured
-    result, discarding the intermediate progress events."""
+async def extract_bead_specificity(image_bytes: bytes, band_edges: list[float] | None = None) -> dict:
+    """Non-streaming callers (e.g. /extract for document_type=bead_specificity):
+    drains extract_bead_specificity_stream and returns just the final
+    structured result, discarding the intermediate progress events."""
     structured: dict = {}
-    async for event in extract_bead_specificity_stream(image_bytes):
+    async for event in extract_bead_specificity_stream(image_bytes, band_edges=band_edges):
         if event["type"] == "result":
             structured = event["structured"]
     return structured
 
 
-def _dedupe_rows(rows: list[dict]) -> list[dict]:
-    """Drops exact-duplicate (antigen, mfi) pairs from tile overlap. Also
-    coerces mfi to a plain float (stripping commas/units) or None, since
-    the model isn't always perfectly consistent about number formatting
-    despite the prompt's instruction."""
-    seen = set()
-    out = []
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        antigen = str(row.get("antigen", "")).strip()
-        if not antigen:
-            continue
-        mfi = _coerce_mfi(row.get("mfi"))
-        key = (antigen.lower(), mfi)
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append({"antigen": antigen, "mfi": mfi})
-    return out
+def _build_bead_warnings(
+    report: BeadReconciliationReport, failed_tiles: int, total_tiles: int
+) -> list[dict]:
+    """Turns a BeadReconciliationReport into the structured warning list a
+    caller renders. Per the migration plan's Phase 1 decision (accuracy on
+    this document type never cleared the bar HLA typing/crossmatch did),
+    the blanket "AI-extracted, verify" note always fires first — but it's
+    one entry among several specific ones now, not the whole message. A
+    warning that fires on every single extraction is, behaviourally, no
+    warning at all; a specific "beads 044 and 051 disagreed" entry directs
+    a doctor's attention to the ~3 rows that actually need a second look
+    instead of asking for the whole ~100-row page to be re-read."""
+    warnings = [
+        {"code": "verify_against_source", "detail": BEAD_SPECIFICITY_ALWAYS_VERIFY_WARNING, "bead_ids": []}
+    ]
 
+    if failed_tiles:
+        warnings.append(
+            {
+                "code": "tiles_failed",
+                "detail": f"{failed_tiles} of {total_tiles} tiles failed to extract",
+                "bead_ids": [],
+            }
+        )
 
-def _coerce_mfi(value) -> float | None:
-    if value is None:
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    cleaned = re.sub(r"[^\d.]", "", str(value))
-    try:
-        return float(cleaned) if cleaned else None
-    except ValueError:
-        return None
+    for tile_index in report.degenerate_tiles:
+        warnings.append(
+            {
+                "code": "degenerate_tile",
+                "detail": (
+                    f"Tile {tile_index + 1} of {total_tiles} looks degenerate "
+                    "(repeated or excessive rows) -- its data may be unreliable"
+                ),
+                "bead_ids": [],
+            }
+        )
+
+    for conflict in report.conflicts:
+        candidates = ", ".join("null" if c is None else str(c) for c in conflict.candidates)
+        warnings.append(
+            {
+                "code": "conflict",
+                "detail": (
+                    f"Bead {conflict.key} had disagreeing MFI readings across tiles "
+                    f"({candidates}) -- using the highest value, please verify"
+                ),
+                "bead_ids": [conflict.key],
+            }
+        )
+
+    if report.gaps:
+        warnings.append(
+            {
+                "code": "gap",
+                "detail": f"Beads {', '.join(report.gaps)} appear missing from the observed range",
+                "bead_ids": list(report.gaps),
+            }
+        )
+
+    if report.unreadable_mfi:
+        warnings.append(
+            {
+                "code": "unreadable_mfi",
+                "detail": f"{len(report.unreadable_mfi)} row(s) had an illegible MFI value",
+                "bead_ids": list(report.unreadable_mfi),
+            }
+        )
+
+    return warnings

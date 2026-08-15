@@ -46,6 +46,9 @@ async def replace_patient_antibody_profiles(
             patient_id=patient_id,
             antigen=entry.antigen,
             mfi=entry.mfi,
+            bead_id=entry.bead_id,
+            panel=entry.panel,
+            extraction_conflict=entry.extraction_conflict,
         )
         db.add(profile_row)
 

@@ -34,11 +34,29 @@ _CHUNK_SIZE = 1024 * 1024  # 1 MiB
 _extraction_semaphore = asyncio.Semaphore(1)
 
 
-async def _run_extraction(document_type: str, image_bytes: bytes) -> dict:
+def _parse_band_edges(value: str | None) -> list[float] | None:
+    """Parses `dsa_band_edges`'s wire form: a comma-separated ascending
+    list of MFI thresholds, e.g. "1000.0,2000.0,5000.0" for kidney-
+    backend's weak/moderate/strong DSA bands. See
+    bead_reconciliation._clinical_band's docstring for why this is passed
+    per-request rather than hardcoded here. Malformed input degrades to
+    None (no threshold-crossing rule) rather than raising -- a caller that
+    gets this wrong shouldn't lose the rest of the extraction over it."""
+    if not value:
+        return None
+    try:
+        return [float(part) for part in value.split(",")]
+    except ValueError:
+        return None
+
+
+async def _run_extraction(
+    document_type: str, image_bytes: bytes, band_edges: list[float] | None = None
+) -> dict:
     if document_type == "hla_typing_report":
         return await extract_hla_typing(image_bytes)
     if document_type == "bead_specificity":
-        return await extract_bead_specificity(image_bytes)
+        return await extract_bead_specificity(image_bytes, band_edges=band_edges)
     if document_type == "crossmatch":
         return await extract_crossmatch(image_bytes)
     raise ValueError(f"Unhandled document_type: {document_type}")
@@ -106,6 +124,7 @@ async def extract_report(
     file: UploadFile = File(...),
     document_type: str = Form(...),
     x_internal_api_key: str = Header(...),
+    dsa_band_edges: str | None = Form(None),
 ) -> dict:
     contents = await _authorize_and_read(file, document_type, x_internal_api_key)
 
@@ -115,7 +134,9 @@ async def extract_report(
     # straight simplification, not a functional change.
     try:
         async with _extraction_semaphore:
-            structured = await _run_extraction(document_type, contents)
+            structured = await _run_extraction(
+                document_type, contents, band_edges=_parse_band_edges(dsa_band_edges)
+            )
     except LLMExtractionError as exc:
         # Hard failure (Ollama unreachable, model missing, or never returned
         # valid JSON even after a retry) — this is the same failure class
@@ -142,6 +163,7 @@ async def extract_report_stream(
     file: UploadFile = File(...),
     document_type: str = Form(...),
     x_internal_api_key: str = Header(...),
+    dsa_band_edges: str | None = Form(None),
 ):
     """Streaming variant of /extract, for bead_specificity only — the one
     document type slow enough (8 sequential vision-model calls, 1.5-3 min
@@ -176,8 +198,9 @@ async def extract_report_stream(
         # stream_batch_extraction already wraps its whole call to
         # call_ocr_service_stream in a try/except and turns that into a
         # per-document error chunk instead of failing the whole batch.
+        band_edges = _parse_band_edges(dsa_band_edges)
         async with _extraction_semaphore:
-            async for event in extract_bead_specificity_stream(contents):
+            async for event in extract_bead_specificity_stream(contents, band_edges=band_edges):
                 if event["type"] == "progress":
                     yield json.dumps(
                         {"type": "progress", "completed": event["completed"], "total": event["total"]}
