@@ -128,6 +128,13 @@ export default function PhotoUploadsStep() {
           </p>
         )}
 
+        {isExtracting && state.extraction.pollingStalled && (
+          <p className="text-[13px] text-moderate font-medium mt-3">
+            Lost contact with the server — still trying. The extraction is very likely still
+            running; no need to re-upload.
+          </p>
+        )}
+
         {warnings.length > 0 && (
           <div className="rounded-md bg-moderate-subtle border border-moderate/30 p-3 mt-3">
             <p className="text-[13px] font-semibold text-text">Some fields need a second look</p>

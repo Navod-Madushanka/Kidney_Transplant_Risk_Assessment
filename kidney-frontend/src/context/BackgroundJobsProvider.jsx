@@ -50,12 +50,21 @@ export function BackgroundJobsProvider({ children }) {
   }, [])
 
   const startJob = useCallback(({ jobId, label, documentSlots }) => {
-    const id = nextJobId++
-    setJobs((prev) => [
-      ...prev,
-      { id, jobId, label, documentSlots, status: "running", documents: {}, error: null },
-    ])
-    return id
+    // Guards against the same server-side job getting tracked (and polled)
+    // twice -- e.g. a doctor double-clicking Register before the first
+    // click's request resolves would otherwise register the same jobId
+    // twice, each with its own JobPoller polling it independently at 2x
+    // the intended rate. See useExtractionJobPolling.js's docstring on why
+    // hammering a possibly-struggling backend is exactly the wrong
+    // response to that backend struggling.
+    setJobs((prev) => {
+      if (prev.some((job) => job.jobId === jobId)) return prev
+      const id = nextJobId++
+      return [
+        ...prev,
+        { id, jobId, label, documentSlots, status: "running", documents: {}, error: null },
+      ]
+    })
   }, [])
 
   const updateJob = useCallback((id, patch) => {

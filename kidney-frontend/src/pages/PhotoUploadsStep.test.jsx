@@ -1,5 +1,5 @@
 // src/pages/PhotoUploadsStep.test.jsx
-import { render, screen } from "@testing-library/react"
+import { act, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { describe, expect, it, vi } from "vitest"
@@ -204,5 +204,54 @@ describe("PhotoUploadsStep", () => {
     // The other three slots weren't included in prefillPhotos, so they stay
     // empty upload pickers rather than erroring out on the missing keys.
     expect(screen.getByLabelText("Crossmatch Report")).toBeInTheDocument()
+  })
+
+  // Part H fix: a poll request failing repeatedly used to retry silently
+  // forever with no signal to the doctor -- this proves the "lost
+  // contact" message this step renders after repeated failures (see
+  // useExtractionJobPolling.js's STALLED_AFTER_FAILURES), and that the
+  // job is never marked failed client-side just because polling can't
+  // currently reach the server.
+  it("shows a 'lost contact' message after repeated poll failures, without marking the job failed", async () => {
+    // fireEvent instead of userEvent here -- userEvent's own internal
+    // pointer/keyboard simulation uses setTimeout-based delays that need
+    // careful fake-timer wiring to avoid deadlocking against the
+    // advanceTimersByTimeAsync calls below; fireEvent dispatches DOM
+    // events synchronously with no timer involvement, sidestepping that
+    // entirely.
+    vi.useFakeTimers()
+    try {
+      startExtractionJob.mockResolvedValue({ job_id: "job-1" })
+      getExtractionJob.mockRejectedValue(new Error("network down"))
+
+      renderStep()
+      const file = new File(["x"], "hla.jpg", { type: "image/jpeg" })
+      fireEvent.change(screen.getByLabelText("HLA Typing Report"), { target: { files: [file] } })
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /extract from documents/i }))
+        await vi.advanceTimersByTimeAsync(0) // let startExtractionJob's promise resolve
+      })
+
+      // Mount-time poll is failure #1; +5s/+10s/+20s make failures #2/#3/#4
+      // -- #4 crosses STALLED_AFTER_FAILURES.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000)
+      })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10000)
+      })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(20000)
+      })
+
+      expect(screen.getByText(/lost contact with the server/i)).toBeInTheDocument()
+      // Still "running" from the doctor's perspective -- the extract
+      // button reads as in-progress, not as a failure with a retry
+      // prompt.
+      expect(screen.getByRole("button", { name: /reading documents/i })).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

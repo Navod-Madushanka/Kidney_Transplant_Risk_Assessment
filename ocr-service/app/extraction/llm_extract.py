@@ -38,7 +38,7 @@ def _b64(image_bytes: bytes) -> str:
 
 
 async def extract_hla_typing(image_bytes: bytes) -> dict:
-    image_bytes = orient_image(image_bytes)
+    image_bytes = await asyncio.to_thread(orient_image, image_bytes)
     result = await chat_json(
         settings.ollama_model, settings.ollama_base_url, HLA_TYPING_PROMPT, _b64(image_bytes),
         label="hla_typing_report",
@@ -81,7 +81,7 @@ def _validate_hla_rows(rows) -> tuple[list[dict], str | None]:
 
 
 async def extract_crossmatch(image_bytes: bytes) -> dict:
-    image_bytes = orient_image(image_bytes)
+    image_bytes = await asyncio.to_thread(orient_image, image_bytes)
     result = await chat_json(
         settings.ollama_model, settings.ollama_base_url, CROSSMATCH_PROMPT, _b64(image_bytes),
         label="crossmatch",
@@ -182,8 +182,15 @@ async def extract_bead_specificity_stream(image_bytes: bytes) -> AsyncIterator[d
     # pixel-count cap here (see preprocessing.py's module docstring — that
     # part of the Phase 1 speed pass was reverted after it caused a real,
     # reproducible clinical-data misread in testing).
-    image_bytes = orient_image(image_bytes)
-    tiles = make_row_band_tiles(image_bytes)
+    #
+    # Part H fix: both calls are synchronous PIL work (decode, EXIF
+    # transpose, 8 crops + 8 PNG encodes) with no internal await, so called
+    # directly inside this async def they'd block the whole event loop for
+    # their duration -- during a decode this service couldn't accept a new
+    # request or even answer /health. asyncio.to_thread hands them to a
+    # worker thread so the loop stays responsive.
+    image_bytes = await asyncio.to_thread(orient_image, image_bytes)
+    tiles = await asyncio.to_thread(make_row_band_tiles, image_bytes)
     total = len(tiles)
     semaphore = asyncio.Semaphore(CONCURRENT_TILE_LIMIT)
     completions: asyncio.Queue = asyncio.Queue()

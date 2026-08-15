@@ -147,6 +147,13 @@ export function buildInitialWizardState() {
       status: "idle", // idle | running | done | failed
       documents: {}, // { [document_type]: { status, completed, total, errors, ... } } -- last poll snapshot
       error: null,
+      // True once useExtractionJobPolling has seen several consecutive
+      // failed polls (see its STALLED_AFTER_FAILURES) -- NOT the same as
+      // the job itself failing: the job very likely keeps running
+      // server-side, polling has just lost contact with the backend. Lets
+      // PhotoUploadsStep say so instead of leaving a frozen progress bar
+      // with no explanation. Part H fix.
+      pollingStalled: false,
     },
   };
 }
@@ -171,6 +178,7 @@ export const WIZARD_ACTIONS = {
   START_EXTRACTION_JOB: "START_EXTRACTION_JOB",
   SET_EXTRACTION_JOB_STATUS: "SET_EXTRACTION_JOB_STATUS",
   SET_EXTRACTION_JOB_ERROR: "SET_EXTRACTION_JOB_ERROR",
+  SET_EXTRACTION_POLLING_STALLED: "SET_EXTRACTION_POLLING_STALLED",
 };
 
 function updateHlaRow(rows, locus, patch) {
@@ -312,7 +320,13 @@ export function wizardReducer(state, action) {
       }
       return {
         ...state,
-        extraction: { jobId: action.jobId, status: "running", documents, error: null },
+        extraction: {
+          jobId: action.jobId,
+          status: "running",
+          documents,
+          error: null,
+          pollingStalled: false,
+        },
       };
     }
 
@@ -338,6 +352,15 @@ export function wizardReducer(state, action) {
       return {
         ...state,
         extraction: { ...state.extraction, status: "failed", error: action.error },
+      };
+
+    // Polling losing contact with the backend, distinct from the job
+    // itself failing -- see useExtractionJobPolling's onPollingStalled and
+    // extraction.pollingStalled's own comment above. Never touches status.
+    case WIZARD_ACTIONS.SET_EXTRACTION_POLLING_STALLED:
+      return {
+        ...state,
+        extraction: { ...state.extraction, pollingStalled: action.isStalled },
       };
 
     default:

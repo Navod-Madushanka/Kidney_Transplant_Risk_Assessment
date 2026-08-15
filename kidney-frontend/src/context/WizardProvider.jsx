@@ -85,6 +85,8 @@ export function WizardProvider({ children }) {
       dispatch({ type: WIZARD_ACTIONS.HYDRATE_FROM_OCR, payload }),
     onStatusChange: (status, documents) =>
       dispatch({ type: WIZARD_ACTIONS.SET_EXTRACTION_JOB_STATUS, status, documents }),
+    onPollingStalled: (isStalled) =>
+      dispatch({ type: WIZARD_ACTIONS.SET_EXTRACTION_POLLING_STALLED, isStalled }),
   });
 
   const actions = useMemo(

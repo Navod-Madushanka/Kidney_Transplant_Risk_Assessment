@@ -101,7 +101,12 @@ export default function NewPairPage() {
     beadSpecificityPage2: null,
   })
   const [extractError, setExtractError] = useState("")
-  const [extraction, setExtraction] = useState({ jobId: null, status: "idle", documents: {} })
+  const [extraction, setExtraction] = useState({
+    jobId: null,
+    status: "idle",
+    documents: {},
+    pollingStalled: false,
+  })
   const [extractionRan, setExtractionRan] = useState(false)
 
   const [ocrPatientDetails, setOcrPatientDetails] = useState({})
@@ -160,6 +165,9 @@ export default function NewPairPage() {
     onStatusChange: (status, documents) => {
       setExtraction((prev) => ({ ...prev, status, documents }))
     },
+    onPollingStalled: (isStalled) => {
+      setExtraction((prev) => ({ ...prev, pollingStalled: isStalled }))
+    },
   })
 
   const isExtracting = extraction.status === "running"
@@ -176,7 +184,7 @@ export default function NewPairPage() {
         crossmatchReport: files.crossmatchReport,
       })
       setExtractionRan(true)
-      setExtraction({ jobId: job_id, status: "running", documents: {} })
+      setExtraction({ jobId: job_id, status: "running", documents: {}, pollingStalled: false })
     } catch (err) {
       setExtractError(err.message || "Couldn't start extraction. Please try again.")
     }
@@ -313,6 +321,13 @@ export default function NewPairPage() {
         )}
 
         {extractError && <p className="text-[13px] text-high-risk font-medium mt-3">{extractError}</p>}
+
+        {isExtracting && extraction.pollingStalled && (
+          <p className="text-[13px] text-moderate font-medium mt-3">
+            Lost contact with the server — still trying. The extraction is very likely still
+            running; no need to re-upload.
+          </p>
+        )}
       </Card>
 
       <div>

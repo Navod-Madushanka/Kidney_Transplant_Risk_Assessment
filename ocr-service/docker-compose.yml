@@ -8,12 +8,22 @@ services:
       - OCR_SERVICE_API_KEY=${OCR_SERVICE_API_KEY}
       - OLLAMA_BASE_URL=http://ollama:11434
       - OLLAMA_MODEL=qwen3-vl:4b-nothink
-    volumes:
-      - ./app:/app/app
     depends_on:
       ollama:
         condition: service_healthy
     restart: unless-stopped
+    # Part H fix: peak memory in this service lives in PIL decodes (a 12MP
+    # phone photo is ~36MB resident as a decoded bitmap, plus base64 copies
+    # and, for bead specificity, 8 tiles on top -- see the Part G bounded-
+    # memory notes) -- bounding it here means a runaway OOMs this
+    # container instead of the host. 1g leaves real headroom above the
+    # worst legitimate peak (well under 512MB with the module-level
+    # extraction semaphore now capping concurrency to 1 -- see
+    # app/api/routes.py) while still catching a genuine leak.
+    mem_limit: 1g
+    # Dev-only --reload + the live-editing bind mount that makes it useful
+    # live in docker-compose.override.yml instead -- see this file's
+    # Dockerfile comment on CMD for why they can't live here.
 
   ollama:
     image: ollama/ollama:latest
@@ -49,6 +59,18 @@ services:
       - OLLAMA_KEEP_ALIVE=-1
       - OLLAMA_NUM_PARALLEL=1
       - OLLAMA_MAX_LOADED_MODELS=1
+      # Part H fix: unset, this defaults to 512 -- an overflow request
+      # doesn't fail fast, it queues, and each queued tile burns its own
+      # REQUEST_TIMEOUT_SECONDS (ocr-service's app/llm/client.py) *while
+      # waiting*, producing cascading timeouts that look like model
+      # failures rather than a queue backing up. With ocr-service's own
+      # module-level extraction semaphore in place (app/api/routes.py),
+      # Ollama should never see more than 1 request at a time -- this is
+      # the backstop for if that semaphore is ever removed, sized to
+      # roughly one page's worth of tiles (see tiling.py::DEFAULT_NUM_TILES)
+      # rather than left at the 512 default, which would just delay the
+      # same cascading-timeout failure instead of preventing it.
+      - OLLAMA_MAX_QUEUE=8
     volumes:
       - ollama-models:/root/.ollama
       - ./docker/ollama-entrypoint.sh:/ollama-entrypoint.sh:ro

@@ -1,4 +1,5 @@
 # app/api/routes.py
+import asyncio
 import json
 
 from fastapi import APIRouter, UploadFile, File, Form, Header, HTTPException
@@ -19,6 +20,18 @@ ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png"}
 VALID_DOCUMENT_TYPES = {"hla_typing_report", "bead_specificity", "crossmatch"}
 
 _CHUNK_SIZE = 1024 * 1024  # 1 MiB
+
+# Part H fix: this is the AUTHORITATIVE concurrency bound for actual
+# extraction work (PIL decode + Ollama call), because it sits closest to
+# the resource it protects. kidney-backend's own ocr_max_concurrent_jobs
+# semaphore (see its ocr_job_service.py) stays in place too -- defence in
+# depth on the resource that actually OOMs/blocks is worth two cheap
+# semaphores, and this service can in principle be called by more than
+# just kidney-backend. Module-level (not per-request, unlike the tile
+# semaphore inside extract_bead_specificity_stream) so N concurrent
+# requests share ONE slot instead of each getting their own -- a
+# per-request semaphore of 1 still lets N requests' tiles interleave.
+_extraction_semaphore = asyncio.Semaphore(1)
 
 
 async def _run_extraction(document_type: str, image_bytes: bytes) -> dict:
@@ -101,7 +114,8 @@ async def extract_report(
     # in-memory bytes (base64-encoded for the Ollama request), so this is a
     # straight simplification, not a functional change.
     try:
-        structured = await _run_extraction(document_type, contents)
+        async with _extraction_semaphore:
+            structured = await _run_extraction(document_type, contents)
     except LLMExtractionError as exc:
         # Hard failure (Ollama unreachable, model missing, or never returned
         # valid JSON even after a retry) — this is the same failure class
@@ -162,20 +176,21 @@ async def extract_report_stream(
         # stream_batch_extraction already wraps its whole call to
         # call_ocr_service_stream in a try/except and turns that into a
         # per-document error chunk instead of failing the whole batch.
-        async for event in extract_bead_specificity_stream(contents):
-            if event["type"] == "progress":
-                yield json.dumps(
-                    {"type": "progress", "completed": event["completed"], "total": event["total"]}
-                ) + "\n"
-            else:
-                yield json.dumps(
-                    {
-                        "type": "result",
-                        "document_type": document_type,
-                        "structured": event["structured"],
-                        "raw": {"model": settings.ollama_model},
-                    }
-                ) + "\n"
+        async with _extraction_semaphore:
+            async for event in extract_bead_specificity_stream(contents):
+                if event["type"] == "progress":
+                    yield json.dumps(
+                        {"type": "progress", "completed": event["completed"], "total": event["total"]}
+                    ) + "\n"
+                else:
+                    yield json.dumps(
+                        {
+                            "type": "result",
+                            "document_type": document_type,
+                            "structured": event["structured"],
+                            "raw": {"model": settings.ollama_model},
+                        }
+                    ) + "\n"
 
     return StreamingResponse(
         _generate(),

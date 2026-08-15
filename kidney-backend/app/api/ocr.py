@@ -5,7 +5,6 @@ from pathlib import Path
 import httpx
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     File,
     Form,
@@ -24,7 +23,11 @@ from app.schemas.ocr import (
     OcrJobStatusResponse,
 )
 from app.services.ocr_client import call_ocr_service
-from app.services.ocr_job_service import create_extraction_job, get_extraction_job, run_extraction_job
+from app.services.ocr_job_service import (
+    create_extraction_job,
+    get_extraction_job,
+    schedule_extraction_job,
+)
 from app.services.ocr_spool_service import SpooledUpload, discard_spool, spool_uploads
 from app.services.patient_service import get_patient_by_id_for_doctor
 
@@ -83,7 +86,6 @@ async def _build_files_payload(
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def start_extract_batch_job(
-    background_tasks: BackgroundTasks,
     hla_typing_report: UploadFile | None = File(None),
     bead_specificity_page_1: UploadFile | None = File(None),
     bead_specificity_page_2: UploadFile | None = File(None),
@@ -99,6 +101,13 @@ async def start_extract_batch_job(
     navigating away mid-extraction didn't stop the work, but it did kill
     every visible sign of it, since progress lived only in the page
     component that made the request. See ocr_job_service.py.
+
+    Scheduled via asyncio.create_task (ocr_job_service.schedule_extraction_job),
+    not FastAPI's BackgroundTasks -- see that function's docstring for why
+    that distinction actually matters here (it's not a style choice): with
+    BackgroundTasks, this request's own `db` session stayed checked out
+    for the job's entire multi-minute duration, regardless of anything
+    run_extraction_job did internally.
 
     Returns a job_id immediately (202, before any extraction has actually
     happened) — poll GET /ocr/extract-batch/jobs/{job_id} for progress and
@@ -133,7 +142,7 @@ async def start_extract_batch_job(
     except Exception:
         discard_spool(spool_dir)
         raise
-    background_tasks.add_task(run_extraction_job, job.id, spool_dir, files)
+    schedule_extraction_job(job.id, spool_dir, files)
 
     return OcrJobCreateResponse(job_id=job.id)
 

@@ -16,4 +16,11 @@ COPY app/ ./app/
 
 EXPOSE 8001
 
-CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001", "--reload"]
+# Part H fix: --reload was shipping in the production image. Combined with
+# docker-compose.yml's ./app bind mount, touching ANY file under ./app on
+# the host restarted the worker and destroyed every in-flight multi-minute
+# extraction. kidney-backend's own Dockerfile never had this -- it was an
+# oversight in this one image, not a deliberate convention. --reload (and
+# the bind mount that makes it useful for local dev) now lives ONLY in
+# docker-compose.override.yml, alongside the other dev-only settings.
+CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001"]

@@ -13,6 +13,15 @@ class Settings(BaseSettings):
     secret_key: str
     environment: str = "local"
 
+    # SQLAlchemy engine `echo` -- logs every statement AND its bound
+    # parameters. Was hardcoded True in app/db/session.py; flip to True
+    # locally when you actually need to see the SQL, never leave it on.
+    # Part H fix: with it on, every OcrExtractionJob write logs the full
+    # `documents` JSONB blob (which only grows as bead rows accumulate) on
+    # each of 16+ commits per extraction job -- disk and latency cost for
+    # no benefit once you're not actively debugging.
+    sql_echo: bool = False
+
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
 

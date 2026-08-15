@@ -4,6 +4,28 @@ import { getExtractionJob } from "../api/ocr"
 import { normalizeOcrBatchResponse } from "../utils/ocrNormalize"
 
 const POLL_INTERVAL_MS = 2500
+// Part H fix: a failed poll used to retry on the same fixed 2.5s cadence
+// forever, with no backoff and no signal to the doctor. Under real load
+// (e.g. kidney-backend's connection pool exhausted -- see
+// ocr_job_service.run_extraction_job's docstring) every client polling a
+// dying backend at a fixed interval amplifies the pressure instead of
+// relieving it, turning a transient squeeze into a stampede. Backing off
+// gives the backend room to recover instead of being hammered by every
+// open tab at once.
+const MAX_BACKOFF_MS = 30000
+// After this many consecutive failed polls, tell the caller polling looks
+// stalled (see onPollingStalled below) rather than leaving the doctor
+// staring at a frozen progress bar with no explanation. The job is very
+// likely still running server-side -- BackgroundTasks/the job row don't
+// stop just because polling can't currently reach them -- so this must
+// never mark the job itself failed; that would push the doctor toward
+// re-uploading and starting a second five-minute job for no reason.
+const STALLED_AFTER_FAILURES = 4
+
+function backoffDelayMs(consecutiveFailures) {
+  if (consecutiveFailures <= 0) return POLL_INTERVAL_MS
+  return Math.min(POLL_INTERVAL_MS * 2 ** consecutiveFailures, MAX_BACKOFF_MS)
+}
 
 // Drives an in-progress extraction job to completion independent of
 // whichever component mounted it -- e.g. WizardProvider keeps this running
@@ -24,7 +46,19 @@ const POLL_INTERVAL_MS = 2500
 // so a document is only reported once, not on every subsequent poll tick,
 // since each poll response is a full snapshot rather than a delta. Stops
 // polling once the job reaches a terminal status (done/failed).
-export function useExtractionJobPolling({ jobId, status, onDocumentDone, onStatusChange }) {
+//
+// onPollingStalled(isStalled) -- optional. Fires (only on a transition, not
+// every tick) once STALLED_AFTER_FAILURES consecutive polls have failed,
+// and again with `false` the moment a poll succeeds. Distinct from the
+// job's own status: this is about polling losing contact with the server,
+// not the job failing.
+export function useExtractionJobPolling({
+  jobId,
+  status,
+  onDocumentDone,
+  onStatusChange,
+  onPollingStalled,
+}) {
   const hydratedDocTypesRef = useRef(new Set())
 
   // Callbacks are read via a ref, not the effect's dependency array: both
@@ -32,8 +66,8 @@ export function useExtractionJobPolling({ jobId, status, onDocumentDone, onStatu
   // render, and depending on them directly would tear down and restart the
   // poll loop (and its setTimeout chain) on every render instead of only
   // when jobId/status actually change.
-  const callbacksRef = useRef({ onDocumentDone, onStatusChange })
-  callbacksRef.current = { onDocumentDone, onStatusChange }
+  const callbacksRef = useRef({ onDocumentDone, onStatusChange, onPollingStalled })
+  callbacksRef.current = { onDocumentDone, onStatusChange, onPollingStalled }
 
   useEffect(() => {
     hydratedDocTypesRef.current = new Set()
@@ -44,20 +78,38 @@ export function useExtractionJobPolling({ jobId, status, onDocumentDone, onStatu
 
     let cancelled = false
     let timeoutId
+    let consecutiveFailures = 0
+    let isStalled = false
 
     async function poll() {
       let job
       try {
         job = await getExtractionJob(jobId)
       } catch {
-        // Transient network hiccup while polling -- retry on the next
-        // tick rather than treating one failed poll as the job failing;
-        // the job keeps running server-side regardless of whether polling
+        // Transient network hiccup while polling -- retry (with backoff)
+        // rather than treating one failed poll as the job failing; the job
+        // keeps running server-side regardless of whether polling
         // succeeds.
-        if (!cancelled) timeoutId = setTimeout(poll, POLL_INTERVAL_MS)
+        consecutiveFailures += 1
+        const nowStalled = consecutiveFailures >= STALLED_AFTER_FAILURES
+        if (nowStalled !== isStalled) {
+          isStalled = nowStalled
+          callbacksRef.current.onPollingStalled?.(isStalled)
+        }
+        if (!cancelled) {
+          timeoutId = setTimeout(poll, backoffDelayMs(consecutiveFailures))
+        }
         return
       }
       if (cancelled) return
+
+      if (consecutiveFailures > 0) {
+        consecutiveFailures = 0
+        if (isStalled) {
+          isStalled = false
+          callbacksRef.current.onPollingStalled?.(false)
+        }
+      }
 
       for (const [documentType, doc] of Object.entries(job.documents || {})) {
         if (doc.status === "done" && !hydratedDocTypesRef.current.has(documentType)) {

@@ -17,7 +17,7 @@ from app.api.pairs import router as pairs_router
 from app.api.patients import router as patients_router
 from app.core.config import get_settings
 from app.core.dependencies import get_current_user
-from app.db.session import async_session_maker, get_db
+from app.db.session import async_session_maker, engine, get_db
 from app.models.doctor import Doctor
 from app.models.enums import OcrExtractionJobStatus
 from app.models.ocr_extraction_job import OcrExtractionJob
@@ -61,6 +61,12 @@ async def lifespan(app: FastAPI):
         await db.commit()
 
     yield
+
+    # Part H: cleanly closes every pooled connection on shutdown rather than
+    # letting them die with the process -- mostly relevant for a graceful
+    # restart/deploy, where an orderly dispose avoids leaving connections
+    # for Postgres to notice and reap on its own.
+    await engine.dispose()
 
 
 app = FastAPI(title="Kidney Transplant Compatibility System", lifespan=lifespan)

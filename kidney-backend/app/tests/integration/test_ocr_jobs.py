@@ -64,11 +64,13 @@ def _fake_call_ocr_service_stream(structured_by_document_type, total_tiles=3):
 
 
 async def _await_job_done(auth_client: AsyncClient, job_id: str, attempts: int = 20, delay: float = 0.05) -> dict:
-    # Starlette's BackgroundTasks actually run to completion inside the
-    # same await as the triggering request when driven through an
-    # ASGITransport-based test client (no real network hop to defer past),
-    # so in practice the very first poll already sees a terminal status --
-    # this loop is just a safety net against relying on that timing detail.
+    # The job is scheduled via asyncio.create_task, not FastAPI's
+    # BackgroundTasks (see ocr_job_service.schedule_extraction_job's
+    # docstring for why) -- so unlike a BackgroundTasks-driven job, the
+    # POST that starts it returns before the job coroutine has necessarily
+    # run at all, let alone finished. This loop is load-bearing, not a
+    # safety net: with the fakes below resolving near-instantly, the job
+    # is normally done within the first couple of polls.
     body = {}
     for _ in range(attempts):
         response = await auth_client.get(f"/ocr/extract-batch/jobs/{job_id}")
@@ -339,13 +341,18 @@ async def test_spool_directory_exists_during_job_and_is_removed_after(
     captured_spool_dir = {}
 
     async def _fake(upload, document_type):
-        # Captured from inside the extraction call itself -- Starlette's
-        # BackgroundTasks run to completion inline for an ASGITransport-
-        # driven test client, so this is the only window in which the
-        # spool directory is actually observable as still present.
+        # Captured from inside the extraction call itself -- this is the
+        # only window in which the spool directory is actually observable
+        # as still present. A plain `assert` in here would be swallowed by
+        # stream_batch_extraction's own per-document try/except (it treats
+        # any exception from call_ocr_service as a per-document error, not
+        # something that propagates) rather than failing the test, so the
+        # existence check is recorded here and asserted below instead,
+        # where a failure actually fails the test.
         captured_spool_dir["path"] = upload.path.parent
-        assert upload.path.exists()
-        assert upload.path.parent.exists()
+        captured_spool_dir["existed_during_call"] = (
+            upload.path.exists() and upload.path.parent.exists()
+        )
         return HLA_TYPING_RESPONSE
 
     monkeypatch.setattr(ocr_batch_service, "call_ocr_service", _fake)
@@ -358,7 +365,7 @@ async def test_spool_directory_exists_during_job_and_is_removed_after(
     body = await _await_job_done(auth_client, job_id)
 
     assert body["status"] == "done"
-    assert "path" in captured_spool_dir
+    assert captured_spool_dir.get("existed_during_call") is True
     # Discarded once the job (and its try/finally) has finished.
     assert not captured_spool_dir["path"].exists()
 

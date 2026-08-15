@@ -246,6 +246,7 @@ describe("buildInitialWizardState extraction", () => {
       status: "idle",
       documents: {},
       error: null,
+      pollingStalled: false,
     })
   })
 })
@@ -331,6 +332,31 @@ describe("SET_EXTRACTION_JOB_ERROR", () => {
 
     expect(next.extraction.status).toBe("failed")
     expect(next.extraction.error).toBe("Couldn't reach the server")
+  })
+})
+
+describe("SET_EXTRACTION_POLLING_STALLED", () => {
+  it("flips pollingStalled without touching status", () => {
+    const started = wizardReducer(buildInitialWizardState(), {
+      type: WIZARD_ACTIONS.START_EXTRACTION_JOB,
+      jobId: "job-1",
+      documentTypes: ["hla_typing_report"],
+    })
+
+    const stalled = wizardReducer(started, {
+      type: WIZARD_ACTIONS.SET_EXTRACTION_POLLING_STALLED,
+      isStalled: true,
+    })
+
+    expect(stalled.extraction.pollingStalled).toBe(true)
+    expect(stalled.extraction.status).toBe("running") // not "failed" -- polling losing contact isn't the job failing
+
+    const recovered = wizardReducer(stalled, {
+      type: WIZARD_ACTIONS.SET_EXTRACTION_POLLING_STALLED,
+      isStalled: false,
+    })
+
+    expect(recovered.extraction.pollingStalled).toBe(false)
   })
 })
 

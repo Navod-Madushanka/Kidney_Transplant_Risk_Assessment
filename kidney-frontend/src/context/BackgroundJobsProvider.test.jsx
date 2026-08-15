@@ -1,5 +1,5 @@
 // src/context/BackgroundJobsProvider.test.jsx
-import { render, screen } from "@testing-library/react"
+import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 import { getExtractionJob } from "../api/ocr"
@@ -87,5 +87,37 @@ describe("BackgroundJobsProvider", () => {
   it("renders nothing when there are no active jobs", () => {
     renderProvider()
     expect(screen.queryByRole("status")).not.toBeInTheDocument()
+  })
+
+  // Part H fix: a doctor double-clicking Register (or anything else that
+  // calls startJob twice) before the first click's request resolves used
+  // to register the same jobId twice, giving it two independent
+  // JobPollers each polling at the intended cadence -- 2x the intended
+  // request rate, worse under exactly the backend load this Part fixes.
+  it("does not register a second poller when startJob is called twice with the same jobId", async () => {
+    const user = userEvent.setup()
+    // This file's other tests share the same module-level getExtractionJob
+    // mock and don't reset its call history -- harmless for them (none
+    // assert an exact count), but this test does, so it needs a clean
+    // slate.
+    getExtractionJob.mockClear()
+    getExtractionJob.mockResolvedValue({
+      job_id: "job-1",
+      status: "running",
+      documents: {},
+      error: null,
+    })
+
+    renderProvider()
+    await user.click(screen.getByRole("button", { name: "Start job" }))
+    await user.click(screen.getByRole("button", { name: "Start job" }))
+
+    expect(await screen.findByText(LABEL)).toBeInTheDocument()
+    // One toast entry, not two, despite two startJob calls.
+    expect(screen.getAllByText(LABEL)).toHaveLength(1)
+
+    // One poller means one call to getExtractionJob per tick -- two would
+    // mean two independent JobPoller instances both hit it.
+    await waitFor(() => expect(getExtractionJob).toHaveBeenCalledTimes(1))
   })
 })
