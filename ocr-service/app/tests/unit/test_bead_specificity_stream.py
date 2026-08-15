@@ -165,6 +165,31 @@ async def test_stream_reconciles_a_mixed_page_with_conflict_gap_and_degenerate_t
 
 
 @respx.mock
+async def test_schema_valid_repeated_rows_are_still_caught_by_degenerate_tile_detection():
+    # Part J (J10): constrained decoding (extract_bead_specificity_stream
+    # now passes BEAD_SPECIFICITY_SCHEMA into every chat_json call, see
+    # llm_extract.py) is not a fix for the repetition-loop hallucination --
+    # an array containing the same row forty times is perfectly schema-
+    # valid, and this test proves that explicitly rather than leaving it
+    # implicit: even with every tile call now schema-constrained, a
+    # degenerate tile is caught the same way it was before (bead-ID
+    # coverage / degenerate-tile heuristics downstream of the decoder, not
+    # anything the schema itself can express or prevent).
+    degenerate_body = json.dumps(
+        {"bead_specificity": [{"bead": "011", "antigen": "A23", "mfi": 490.5} for _ in range(40)]}
+    )
+    bodies = [degenerate_body] + [
+        '{"bead_specificity": []}' for _ in range(DEFAULT_NUM_TILES - 1)
+    ]
+    respx.post(CHAT_URL).mock(side_effect=_sequential_side_effect(bodies))
+
+    events = [event async for event in extract_bead_specificity_stream(_synthetic_page_bytes())]
+    warnings = events[-1]["structured"]["warnings"]
+
+    assert any(w["code"] == "degenerate_tile" for w in warnings)
+
+
+@respx.mock
 async def test_non_streaming_wrapper_still_returns_final_structured_only():
     # extract_bead_specificity (used by direct /extract callers) must keep
     # returning exactly the structured dict extract_bead_specificity_stream's

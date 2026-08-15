@@ -67,11 +67,28 @@ async def chat_json(
     label: str = "",
     num_ctx: int = 8192,
     num_predict: int = 2048,
+    schema: dict | None = None,
 ) -> dict:
-    """Calls Ollama's chat API with format='json', parses the response,
-    retries once with a stricter follow-up instruction if the first
-    response doesn't parse as JSON. Raises LLMExtractionError on hard
-    failure.
+    """Calls Ollama's chat API, parses the response, retries once with a
+    stricter follow-up instruction if the first response doesn't parse as
+    JSON. Raises LLMExtractionError on hard failure.
+
+    schema -- a JSON Schema object (see app/llm/schemas.py), passed
+    straight through as Ollama's `format` field. Since Ollama v0.5, `format`
+    accepts a real JSON Schema and constrains decoding via grammar, not just
+    the string "json" (legacy free-form JSON mode, still the default here
+    when no schema is given -- e.g. a future caller that hasn't been given
+    one yet). Part J: this is NOT a fix for the bead-specificity repetition-
+    loop hallucination (see BEAD_SPECIFICITY_PROMPT's "TRIED AND REVERTED"
+    history in prompts.py) -- an array containing the same row forty times
+    is perfectly schema-valid. That failure mode is caught downstream by
+    app/extraction/bead_reconciliation.py's degenerate-tile detection, not
+    by anything here. Grammar constraints can also measurably degrade
+    output quality on a small model like qwen3-vl:4b-nothink by forcing
+    token selection away from what the model would otherwise have produced
+    -- this hasn't been A/B'd yet against the live scoring harness
+    (test_bead_specificity_live.py), so treat it as implemented, not yet
+    validated as quality-neutral-or-better on real charts.
 
     num_ctx/num_predict defaults lowered 2026-08-01 after a real run on the
     dev RTX 2060 (6GB VRAM, inside Docker) showed 16384 context forced
@@ -89,7 +106,7 @@ async def chat_json(
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": prompt + NO_THINK_SUFFIX, "images": [image_b64]}],
-        "format": "json",
+        "format": schema if schema is not None else "json",
         "stream": False,
         "think": False,
         "keep_alive": -1,  # never unload between calls — matches OLLAMA_KEEP_ALIVE=-1

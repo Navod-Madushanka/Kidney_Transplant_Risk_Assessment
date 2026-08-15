@@ -26,7 +26,15 @@ services:
     # Dockerfile comment on CMD for why they can't live here.
 
   ollama:
-    image: ollama/ollama:latest
+    # Part J (J10): pinned, not :latest -- this is a system producing
+    # clinical output, and `docker compose pull` against :latest can
+    # silently change model-serving/decoding behavior between two runs
+    # with no code change and no record of what changed. 0.12.7 is the
+    # version llm-migration-spike/README.md already documents as the
+    # confirmed-working minimum (needed for the `format` JSON Schema
+    # support constrained decoding relies on, see app/llm/client.py's
+    # chat_json). Bump deliberately, not by drifting with a re-pull.
+    image: ollama/ollama:0.12.7
     container_name: ollama
     environment:
       # Confirmed 2026-08-02 via Ollama's own load logs: on the dev RTX 2060,

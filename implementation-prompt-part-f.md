@@ -201,6 +201,15 @@ in shape to `_ensure_patient_exists`.
 
 ## F5. OCR — reuse, do not rebuild
 
+> **Note (Part J, J11):** F5.1's "no change to `ocr_batch_service.py`, `ocr_job_service.py`, the
+> prompts, or the ocr-service at all" was scoped to keeping *this part's* feature work from turning
+> into an OCR rewrite. Parts G, H, I and J all subsequently change exactly those files — bounded
+> memory (G), the DB connection-pool bug (H), bead-row identity/tile reconciliation (I), and deleting
+> the unattended antibody-profile write (J). That's not a contradiction: G–J are defect fixes with
+> their own justification, landed after this part, not a violation of the freeze stated below. F5.2's
+> `hydratedDocTypesRef` dedup and network-blip retry are called load-bearing there too, and did
+> survive H's polling-backoff changes intact.
+
 ### F5.1 No new extraction code
 
 `POST /ocr/extract-batch/jobs` already accepts each of its four slots independently
@@ -450,6 +459,9 @@ an empty table.
   storage on top; it does not replace that relationship. See F2.2.
 - **Do not extract the bead chart during registration.** It is minutes per page, the values are not
   needed to create a record, and the patient's antibody screen is re-done between assessments anyway.
+  (This was violated for a time by a registration-time background extraction job added 2026-08-14,
+  whose result auto-saved unattended to `antibody_profiles` — see `implementation-prompt-part-j.md`
+  J0–J3. Part J removed both the auto-save and the job it fed; this bullet is now actually enforced.)
 - **Do not let OCR set `crossmatch_is_positive`.** There is no such column, and there should not be.
 - **Do not add a third hand-written copy of the report-file CRUD.** Extract the shared body first
   (F3.1) — that refactor is a precondition, not a nice-to-have.

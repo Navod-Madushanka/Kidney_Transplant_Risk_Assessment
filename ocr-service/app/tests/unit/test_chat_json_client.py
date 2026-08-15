@@ -6,6 +6,8 @@
 # -- hard failures must raise LLMExtractionError with a clear, specific
 # message, never fall back to a silent/partial result. See client.py's
 # module docstring for why that matters here (clinical lab data).
+import json
+
 import httpx
 import pytest
 import respx
@@ -115,6 +117,33 @@ async def test_chat_json_raises_on_connection_error():
     respx.post(CHAT_URL).mock(side_effect=httpx.ConnectError("connection refused"))
     with pytest.raises(LLMExtractionError, match="Couldn't reach Ollama"):
         await chat_json("fake-model", BASE_URL, "prompt", "base64img", label="test")
+
+
+@respx.mock
+async def test_chat_json_defaults_to_legacy_json_mode_when_no_schema_given():
+    route = respx.post(CHAT_URL).mock(
+        return_value=httpx.Response(200, json=_ollama_response('{"a": 1}'))
+    )
+    await chat_json("fake-model", BASE_URL, "prompt", "base64img", label="test")
+
+    sent_payload = json.loads(route.calls[0].request.content)
+    assert sent_payload["format"] == "json"
+
+
+@respx.mock
+async def test_chat_json_passes_a_real_schema_through_to_ollamas_format_field():
+    # Part J (J10): since Ollama v0.5, `format` accepts a JSON Schema
+    # object and constrains decoding via grammar, not just the legacy
+    # "json" free-form mode -- see app/llm/schemas.py.
+    route = respx.post(CHAT_URL).mock(
+        return_value=httpx.Response(200, json=_ollama_response('{"a": 1}'))
+    )
+    schema = {"type": "object", "properties": {"a": {"type": "number"}}, "required": ["a"]}
+
+    await chat_json("fake-model", BASE_URL, "prompt", "base64img", label="test", schema=schema)
+
+    sent_payload = json.loads(route.calls[0].request.content)
+    assert sent_payload["format"] == schema
 
 
 @respx.mock

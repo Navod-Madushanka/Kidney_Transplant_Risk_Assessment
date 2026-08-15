@@ -36,6 +36,7 @@ from app.extraction.preprocessing import orient_image
 from app.extraction.tiling import make_row_band_tiles
 from app.llm.client import LLMExtractionError, chat_json
 from app.llm.prompts import BEAD_SPECIFICITY_PROMPT, CROSSMATCH_PROMPT, HLA_TYPING_PROMPT
+from app.llm.schemas import BEAD_SPECIFICITY_SCHEMA, CROSSMATCH_SCHEMA, HLA_TYPING_SCHEMA
 from app.reference_data.hla_loci import HLA_LOCI
 
 EMPTY_DETAILS = {"full_name": "", "nic_number": "", "date_of_birth": "", "blood_type": "", "hla_ref_no": ""}
@@ -49,7 +50,7 @@ async def extract_hla_typing(image_bytes: bytes) -> dict:
     image_bytes = await asyncio.to_thread(orient_image, image_bytes)
     result = await chat_json(
         settings.ollama_model, settings.ollama_base_url, HLA_TYPING_PROMPT, _b64(image_bytes),
-        label="hla_typing_report",
+        label="hla_typing_report", schema=HLA_TYPING_SCHEMA,
     )
     patient_details = {**EMPTY_DETAILS, **result.get("patient_details", {})}
     donor_details = {**EMPTY_DETAILS, **result.get("donor_details", {})}
@@ -92,7 +93,7 @@ async def extract_crossmatch(image_bytes: bytes) -> dict:
     image_bytes = await asyncio.to_thread(orient_image, image_bytes)
     result = await chat_json(
         settings.ollama_model, settings.ollama_base_url, CROSSMATCH_PROMPT, _b64(image_bytes),
-        label="crossmatch",
+        label="crossmatch", schema=CROSSMATCH_SCHEMA,
     )
     patient_details = {**EMPTY_DETAILS, **result.get("patient_details", {})}
     donor_details = {**EMPTY_DETAILS, **result.get("donor_details", {})}
@@ -218,7 +219,7 @@ async def extract_bead_specificity_stream(
                 result = await chat_json(
                     settings.ollama_model, settings.ollama_base_url, BEAD_SPECIFICITY_PROMPT, _b64(tile_bytes),
                     label=f"bead_specificity tile {index + 1}/{total}",
-                    num_ctx=8192, num_predict=1536,
+                    num_ctx=8192, num_predict=1536, schema=BEAD_SPECIFICITY_SCHEMA,
                 )
                 rows = result.get("bead_specificity", [])
                 rows = rows if isinstance(rows, list) else []

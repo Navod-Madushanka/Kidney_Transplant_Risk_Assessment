@@ -86,11 +86,14 @@ async def stream_batch_extraction(
     local disk by app/services/ocr_spool_service.py before this runs; see
     ocr_client.py for how it's streamed from there to ocr-service.
 
-    Calls the OCR service ONCE PER FILE, awaited sequentially — this is
-    the queue: the extraction backend can only process one image at a
-    time, so we never fire concurrent requests at it. A failure on one
-    image is recorded in that document's chunk.errors and the rest of the
-    batch still completes.
+    Calls the OCR service ONCE PER FILE, awaited sequentially — not a
+    PaddleOCR limitation (that engine was removed 2026-08-01, see
+    claude/ocr-to-local-llm-migration-plan.md), but because ocr-service
+    runs Ollama with OLLAMA_NUM_PARALLEL=1 and serialises every request
+    behind its own semaphore (see ocr-service's app/api/routes.py) —
+    firing these concurrently from here would only queue up behind that,
+    not add throughput. A failure on one image is recorded in that
+    document's chunk.errors and the rest of the batch still completes.
 
     Yields a ProgressEvent for a document before its DocumentChunk (see
     ProgressEvent's docstring), then the DocumentChunk once that document
@@ -230,10 +233,11 @@ def check_bead_id_uniqueness_across_pages(rows: list[dict]) -> list[dict]:
     rather than silently re-deduping and hiding it, same as I2's whole
     point about not making a real problem invisible.
 
-    Public (not module-private) because ocr_job_service.py's
-    _save_bead_specificity_if_present is the OTHER cross-page merge point
-    (the registration-time auto-save path) and needs the identical check
-    -- both call this rather than each keeping their own copy."""
+    Public (not module-private) because app/tests/unit/test_ocr_batch_
+    service.py exercises it directly rather than only through
+    run_batch_extraction -- this used to also be called from
+    ocr_job_service.py's registration-time auto-save path (deleted, see
+    implementation-prompt-part-j.md J3); nothing else calls it today."""
     seen: dict[tuple, int] = {}
     for row in rows:
         bead = row.get("bead")

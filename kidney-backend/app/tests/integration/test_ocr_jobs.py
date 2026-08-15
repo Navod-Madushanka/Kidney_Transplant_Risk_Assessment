@@ -246,9 +246,20 @@ def _fake_call_ocr_service_stream_by_filename(structured_by_filename, total_tile
     return _fake
 
 
-async def test_bead_specificity_job_with_patient_id_saves_unverified_profiles(
+async def test_bead_specificity_job_with_patient_id_writes_nothing_to_antibody_profiles(
     monkeypatch, auth_client: AsyncClient
 ):
+    # Part J (J0-J3): a completed job used to auto-save its bead-
+    # specificity rows straight to antibody_profiles, unattended and
+    # unverified, the moment it reached "done" -- with no guard against
+    # overwriting a profile the patient already had, and no way to
+    # recover what it deleted. That write is gone; job.documents (already
+    # polled by the frontend, see OcrJobDocumentStatus) is the only place
+    # results land now, and it's a JSON column on the job row, not a
+    # write to a core clinical table. This is the regression test for the
+    # whole part: patient_id still scopes/tags the job (ownership is
+    # still checked -- see test_job_with_patient_id_from_another_doctor_
+    # returns_404 below), but no longer authorises any write.
     patient = await create_patient(auth_client)
     monkeypatch.setattr(
         ocr_batch_service,
@@ -279,22 +290,72 @@ async def test_bead_specificity_job_with_patient_id_saves_unverified_profiles(
     body = await _await_job_done(auth_client, job_id)
     assert body["status"] == "done"
 
+    # Nothing written to the core table...
+    profiles_response = await auth_client.get(f"/patients/{patient['id']}/antibody-profiles")
+    assert profiles_response.json() == []
+    patient_response = await auth_client.get(f"/patients/{patient['id']}")
+    # Untouched, never flipped False -- there's no write left to flip it.
+    assert patient_response.json()["antibody_profile_verified"] is True
+
+    # ...but the rows are readable from the job itself, exactly as a doctor
+    # actually reviewing the extraction (e.g. the compatibility wizard's
+    # Photos step) would see them.
+    page_1_rows = body["documents"]["bead_specificity_page_1"]["bead_specificity"]
+    page_2_rows = body["documents"]["bead_specificity_page_2"]["bead_specificity"]
+    assert [r["antigen"] for r in page_1_rows] == ["A1"]
+    assert [r["antigen"] for r in page_2_rows] == ["B7"]
+
+
+async def test_existing_verified_profile_is_untouched_by_a_completed_extraction_job(
+    monkeypatch, auth_client: AsyncClient
+):
+    # The scenario J1 names as the actual severity, not "dirty data drives
+    # a decision": a doctor with an already-verified, hand-checked profile
+    # runs a bead-specificity extraction job scoped to that same patient.
+    # Before Part J this would have hard-deleted the verified rows the
+    # moment the job finished and flipped antibody_profile_verified back
+    # to False, silently ejecting the patient from the exchange pool.
+    patient = await create_patient(auth_client)
+    await auth_client.put(
+        f"/patients/{patient['id']}/antibody-profiles?ocr_verified=true",
+        json=[{"antigen": "A2", "mfi": 3500}],
+    )
+
+    monkeypatch.setattr(
+        ocr_batch_service,
+        "call_ocr_service_stream",
+        _fake_call_ocr_service_stream(
+            {"bead_specificity": {"bead_specificity": [{"antigen": "B7", "mfi": 2500}]}},
+        ),
+    )
+    start = await auth_client.post(
+        "/ocr/extract-batch/jobs",
+        files={"bead_specificity_page_1": FAKE_IMAGE},
+        data={"patient_id": patient["id"]},
+    )
+    job_id = start.json()["job_id"]
+    body = await _await_job_done(auth_client, job_id)
+    assert body["status"] == "done"
+
     profiles_response = await auth_client.get(f"/patients/{patient['id']}/antibody-profiles")
     profiles = {(p["antigen"], float(p["mfi"])) for p in profiles_response.json()}
-    assert profiles == {("A1", 1000.0), ("B7", 2500.0)}
+    assert profiles == {("A2", 3500.0)}  # the verified row survives, untouched
 
     patient_response = await auth_client.get(f"/patients/{patient['id']}")
-    assert patient_response.json()["antibody_profile_verified"] is False
+    assert patient_response.json()["antibody_profile_verified"] is True  # still verified
 
 
-async def test_cross_page_bead_id_collision_survives_as_distinct_rows(
+async def test_cross_page_bead_id_collision_survives_as_distinct_rows_in_job_documents(
     monkeypatch, auth_client: AsyncClient
 ):
     # Real-chart case (Part I, I7): bead 044 is B76,Bw6 on page 1 (Class
     # I) and DQ4 on page 2 (Class II) -- each page's panel is numbered
     # from 001 independently, so (page, bead), not bead alone, is the
     # real identity once both pages are merged. Cross-page merging must
-    # NOT collapse these into one row.
+    # NOT collapse these into one row. Checked via job.documents (Part J
+    # deleted the antibody_profiles auto-save this used to be checked
+    # through) -- SLOT_PAGE_PANEL stamping happens in ocr_batch_service.py
+    # regardless of whether patient_id is even present.
     patient = await create_patient(auth_client)
     monkeypatch.setattr(
         ocr_batch_service,
@@ -325,58 +386,14 @@ async def test_cross_page_bead_id_collision_survives_as_distinct_rows(
     body = await _await_job_done(auth_client, job_id)
     assert body["status"] == "done"
 
-    profiles_response = await auth_client.get(f"/patients/{patient['id']}/antibody-profiles")
-    profiles = profiles_response.json()
-    assert len(profiles) == 2
-
-    by_panel = {p["panel"]: p for p in profiles}
-    assert by_panel["class_i"]["bead_id"] == "044"
-    assert by_panel["class_i"]["antigen"] == "B76,Bw6"
-    assert by_panel["class_ii"]["bead_id"] == "044"
-    assert by_panel["class_ii"]["antigen"] == "DQ4"
-
-
-async def test_null_mfi_row_is_filtered_from_auto_save_without_failing_the_job(
-    monkeypatch, auth_client: AsyncClient
-):
-    # Part I (I8): the prompt deliberately preserves an illegible row as
-    # mfi=None instead of dropping it (a doctor can spot-check a flagged
-    # null far more easily than notice a row that was silently never
-    # mentioned). AntibodyProfile.mfi is NOT NULL, so building an entry
-    # straight from that row used to raise a validation error that failed
-    # the WHOLE job -- taking every other successfully-extracted document
-    # down with it. This is the regression test for that crash.
-    patient = await create_patient(auth_client)
-    monkeypatch.setattr(
-        ocr_batch_service,
-        "call_ocr_service_stream",
-        _fake_call_ocr_service_stream(
-            {
-                "bead_specificity": {
-                    "bead_specificity": [
-                        {"bead": "010", "antigen": "A23", "mfi": 23706.91},
-                        {"bead": "011", "antigen": "A24", "mfi": None},
-                    ]
-                }
-            },
-        ),
-    )
-
-    start = await auth_client.post(
-        "/ocr/extract-batch/jobs",
-        files={"bead_specificity_page_1": FAKE_IMAGE},
-        data={"patient_id": patient["id"]},
-    )
-    job_id = start.json()["job_id"]
-
-    body = await _await_job_done(auth_client, job_id)
-
-    assert body["status"] == "done"  # NOT "failed"
-
-    profiles_response = await auth_client.get(f"/patients/{patient['id']}/antibody-profiles")
-    profiles = profiles_response.json()
-    assert len(profiles) == 1  # only the readable row was saved
-    assert profiles[0]["bead_id"] == "010"
+    page_1_row = body["documents"]["bead_specificity_page_1"]["bead_specificity"][0]
+    page_2_row = body["documents"]["bead_specificity_page_2"]["bead_specificity"][0]
+    assert page_1_row["bead"] == "044"
+    assert page_1_row["antigen"] == "B76,Bw6"
+    assert page_1_row["panel"] == "class_i"
+    assert page_2_row["bead"] == "044"
+    assert page_2_row["antigen"] == "DQ4"
+    assert page_2_row["panel"] == "class_ii"
 
 
 async def test_job_with_patient_id_from_another_doctor_returns_404(

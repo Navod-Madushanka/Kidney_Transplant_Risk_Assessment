@@ -3,8 +3,9 @@
 FastAPI service handling auth, patient/donor records, and the kidney
 compatibility check pipeline (ABO → sensitization → DSA → HLA risk scoring →
 cPRA). This is one of three services in the project — the other two are
-`kidney-frontend` (React/Vite) and `ocr-service` (a separate FastAPI +
-PaddleOCR microservice this backend calls out to for document extraction).
+`kidney-frontend` (React/Vite) and `ocr-service` (a separate FastAPI service
+this backend calls out to for document extraction, backed by a local
+vision-LLM via Ollama — not PaddleOCR, which it migrated off of 2026-08-01).
 
 ## What's here
 

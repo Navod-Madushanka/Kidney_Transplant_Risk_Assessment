@@ -114,13 +114,13 @@ async def start_extract_batch_job(
     results, from anywhere, at any pace. The job keeps running server-side
     regardless of whether anything is polling it.
 
-    patient_id -- only NewPairPage.jsx's registration-time bead-specificity
-    extraction passes this (the compatibility-check wizard's own Photos-step
-    jobs start before a patient is even selected). When present, ties the
-    job to that patient so run_extraction_job can auto-save its results
-    unattended -- see OcrExtractionJob.patient_id's docstring. Ownership is
-    checked here, before the job row is even created, same as the other
-    upfront validation below.
+    patient_id -- optional; scopes the job to a patient for audit purposes
+    only (see OcrExtractionJob.patient_id's docstring -- Part J removed the
+    unattended auto-save this used to authorise). Nothing in the current
+    frontend sends it. Ownership is still checked here, before the job row
+    is even created, same as the other upfront validation below -- a job
+    tagged to a patient the requesting doctor doesn't own is refused
+    regardless of what (if anything) it's ever used for.
 
     All upfront validation (at-least-one-file, content-type, patient
     ownership, and now the per-file size cap enforced while spooling to
