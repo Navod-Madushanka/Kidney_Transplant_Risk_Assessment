@@ -164,27 +164,53 @@ def reconcile_bead_rows(
     observations: list[BeadObservation],
     num_tiles: int,
     band_edges: list[float] | None = None,
+    degenerate_tiles: list[int] | None = None,
 ) -> tuple[list[ReconciledRow], BeadReconciliationReport]:
     """Groups observations by bead ID where present, falling back to
     (antigen, mfi) where the model couldn't attach a bead ID — see
     coerce_bead_id. Within a group: one observation is taken as-is;
     several that agree (see _agree) merge to one row; several that
-    disagree keep ONE row using the HIGHEST candidate MFI, with every
-    candidate preserved in `conflict` and the bead added to the report's
-    conflict list. A disagreement is never silently resolved.
+    disagree keep ONE row using the HIGHEST candidate MFI among the
+    TRUSTED (non-degenerate-tile) candidates, with every observed
+    candidate — degenerate-sourced ones included — still preserved in
+    `conflict` and the bead added to the report's conflict list. A
+    disagreement is never silently resolved.
+
+    degenerate_tiles (Part J, live-tested 2026-08-15) — tile indices
+    detect_degenerate_tiles flagged as likely hallucinating (see that
+    function's docstring). Before this parameter existed, a degenerate
+    tile's repeated fabricated value could still WIN the highest-value
+    tie-break against every genuinely-read tile for the same bead, since
+    detection and conflict resolution were two disconnected steps —
+    confirmed on a real page where one degenerate tile's repeated
+    23706.91 (the page's true single highest reading, repeated onto beads
+    that don't actually carry it) silently overwrote dozens of unrelated
+    beads' correct lower readings, each already flagged as a conflict but
+    each also handed the wrong "chosen" value. A bead observed ONLY by
+    degenerate tile(s) still falls back to using them — there is no
+    better data to prefer, and dropping the row instead would violate the
+    same "never silently drop" contract this whole module exists to
+    enforce (see the module docstring's third bullet). That residual gap
+    (a bead with exactly one observation, from a degenerate tile, never
+    even reaches the conflict branch below since there's nothing to
+    disagree with) is real but distinct from what this parameter closes,
+    and isn't addressed here.
 
     Why the highest value on conflict: the row is flagged for mandatory
     doctor review either way, so the chosen value is a placeholder pending
     confirmation, not a claimed answer. If review is ever skipped anyway,
     over-flagging (a value that reads slightly more severe than reality)
     costs a clinician a second look; under-flagging risks missing a real
-    DSA. Erring high puts the residual risk on the recoverable side.
+    DSA. Erring high puts the residual risk on the recoverable side. That
+    same reasoning is why a degenerate tile's candidate is deprioritised,
+    not deleted: it still participates when it's the only source.
 
     `num_tiles` is accepted for symmetry with the report shape and
     possible future use (e.g. an expected-coverage check); today's gap
     detection works off the observed bead-ID range directly and doesn't
     need it.
     """
+    degenerate_set = set(degenerate_tiles or [])
     groups: dict[tuple, list[BeadObservation]] = {}
     for obs in observations:
         key = ("bead", obs.bead) if obs.bead is not None else ("fallback", obs.antigen.lower(), obs.mfi)
@@ -214,7 +240,15 @@ def reconcile_bead_rows(
             conflict = None
         else:
             candidates_with_value = [m for m in mfis if m is not None]
-            chosen = max(candidates_with_value) if candidates_with_value else None
+            trusted_candidates = [
+                o.mfi for o in group if o.tile_index not in degenerate_set and o.mfi is not None
+            ]
+            # Prefer trusted (non-degenerate-tile) candidates; only fall
+            # back to the full pool -- degenerate tiles included -- when
+            # every observation of this bead came from a degenerate tile,
+            # since there's nothing better to choose from.
+            chosen_pool = trusted_candidates if trusted_candidates else candidates_with_value
+            chosen = max(chosen_pool) if chosen_pool else None
             conflict = tuple(mfis)
             conflicts.append(BeadConflict(key=report_key, candidates=tuple(mfis)))
 
@@ -241,6 +275,7 @@ def reconcile_bead_rows(
         conflicts=conflicts,
         unreadable_mfi=unreadable_mfi,
         no_bead_id=no_bead_id,
+        degenerate_tiles=sorted(degenerate_set),
     )
     return rows, report
 

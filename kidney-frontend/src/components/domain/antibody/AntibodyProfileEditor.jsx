@@ -1,5 +1,5 @@
 // src/components/domain/antibody/AntibodyProfileEditor.jsx
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import InputField from "../../ui/InputField"
 import Button from "../../ui/Button"
 import Card from "../../ui/Card"
@@ -23,6 +23,17 @@ export default function AntibodyProfileEditor({ loadState, initialEntries = [], 
   const [rows, setRows] = useState(() =>
     initialEntries.length > 0 ? initialEntries.map(makeRow) : [makeRow()]
   )
+
+  // See HlaTypingEditor's matching effect -- initialEntries arrives after
+  // this component has already mounted (while the parent is still
+  // "loading"), so the useState initializer above misses it. Re-sync once
+  // real data lands; initialEntries' reference stays stable across
+  // unrelated re-renders so this won't stomp on in-progress edits.
+  useEffect(() => {
+    if (loadState !== "loaded") return
+    setRows(initialEntries.length > 0 ? initialEntries.map(makeRow) : [makeRow()])
+  }, [loadState, initialEntries])
+
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState("")
   const [savedAt, setSavedAt] = useState(null)

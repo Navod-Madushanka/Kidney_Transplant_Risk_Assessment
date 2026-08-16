@@ -6,6 +6,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest"
 import { startExtractionJob, getExtractionJob } from "../api/ocr"
 import { createPair } from "../api/pairs"
 import { uploadPairReportFile, uploadPatientReportFile } from "../api/reportFiles"
+import { BackgroundJobsProvider } from "../context/BackgroundJobsProvider"
 import NewPairPage from "./NewPairPage"
 
 vi.mock("../api/ocr", () => ({
@@ -25,12 +26,14 @@ vi.mock("../api/patients", () => ({ listPatients: vi.fn().mockResolvedValue([]) 
 
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={["/pairs/new"]}>
-      <Routes>
-        <Route path="/pairs/new" element={<NewPairPage />} />
-        <Route path="/patients/:patientId" element={<div>Patient Detail</div>} />
-      </Routes>
-    </MemoryRouter>
+    <BackgroundJobsProvider>
+      <MemoryRouter initialEntries={["/pairs/new"]}>
+        <Routes>
+          <Route path="/pairs/new" element={<NewPairPage />} />
+          <Route path="/patients/:patientId" element={<div>Patient Detail</div>} />
+        </Routes>
+      </MemoryRouter>
+    </BackgroundJobsProvider>
   )
 }
 
@@ -147,17 +150,16 @@ describe("NewPairPage", () => {
     expect(uploadPairReportFile).toHaveBeenCalledTimes(2)
   })
 
-  it("never starts an extraction job for the bead-specificity pages at registration (Part J / F12)", async () => {
-    // Regression guard for the deleted registration-time auto-extraction:
-    // it used to fire startExtractionJob(..., patientId) after Register,
-    // whose result auto-saved straight to antibody_profiles unattended
-    // and unverified -- see implementation-prompt-part-j.md J0-J3. The
-    // bead pages are stored-but-unread at registration; extraction now
-    // only ever happens where a doctor is present to review it (the
-    // compatibility check wizard's own Photos step).
+  it("kicks off a background bead-specificity extraction job after registering, without blocking navigation", async () => {
+    // Restored after being deleted entirely (implementation-prompt-part-
+    // j.md J0-J3) and then reinstated with a backend-side guard against
+    // overwriting an existing profile (see ocr_job_service.py's
+    // _save_bead_specificity_if_present) -- this test only covers the
+    // frontend's half: the job still gets started and tracked.
     const user = userEvent.setup()
     createPair.mockResolvedValue({ id: "pair-1", patient_id: "patient-1", donor_id: "donor-1" })
     uploadPatientReportFile.mockResolvedValue({ id: "file-1" })
+    startExtractionJob.mockResolvedValue({ job_id: "bead-job-1" })
 
     renderPage()
     await user.upload(
@@ -169,6 +171,27 @@ describe("NewPairPage", () => {
     await user.click(screen.getByRole("button", { name: /register patient/i }))
 
     await waitFor(() => expect(screen.getByText("Patient Detail")).toBeInTheDocument())
-    expect(startExtractionJob).not.toHaveBeenCalled()
+    expect(startExtractionJob).toHaveBeenCalledWith(
+      expect.objectContaining({ beadSpecificityPage1: expect.any(File) }),
+      "patient-1"
+    )
+  })
+
+  it("still navigates to the patient page if starting the background bead-specificity job fails", async () => {
+    const user = userEvent.setup()
+    createPair.mockResolvedValue({ id: "pair-1", patient_id: "patient-1", donor_id: "donor-1" })
+    uploadPatientReportFile.mockResolvedValue({ id: "file-1" })
+    startExtractionJob.mockRejectedValue(new Error("network down"))
+
+    renderPage()
+    await user.upload(
+      screen.getByLabelText("Bead Specificity Chart — Page 1"),
+      new File(["x"], "bead1.pdf", { type: "application/pdf" })
+    )
+    await fillAndSaveBothForms(user)
+
+    await user.click(screen.getByRole("button", { name: /register patient/i }))
+
+    await waitFor(() => expect(screen.getByText("Patient Detail")).toBeInTheDocument())
   })
 })

@@ -457,11 +457,14 @@ an empty table.
 
 - **Do not remove `Donor.intended_recipient_id`.** The matching engine reads it. The pair record adds
   storage on top; it does not replace that relationship. See F2.2.
-- **Do not extract the bead chart during registration.** It is minutes per page, the values are not
-  needed to create a record, and the patient's antibody screen is re-done between assessments anyway.
-  (This was violated for a time by a registration-time background extraction job added 2026-08-14,
-  whose result auto-saved unattended to `antibody_profiles` — see `implementation-prompt-part-j.md`
-  J0–J3. Part J removed both the auto-save and the job it fed; this bullet is now actually enforced.)
+- **Do not extract the bead chart during registration unguarded.** A registration-time background
+  extraction job (added 2026-08-14) auto-saved its result straight to `antibody_profiles` with no
+  guard, and could silently destroy an already-verified profile — see `implementation-prompt-part-j.md`
+  J0–J3, which deleted it entirely. It was deliberately restored afterward (explicit product decision,
+  not a reversal of the finding): the job and its global progress toast are back, but the auto-save
+  now refuses to write whenever the patient already has any antibody-profile rows, verified or not —
+  see `ocr_job_service.py`'s `_save_bead_specificity_if_present`. The bug was the missing guard, not
+  extracting-at-registration itself.
 - **Do not let OCR set `crossmatch_is_positive`.** There is no such column, and there should not be.
 - **Do not add a third hand-written copy of the report-file CRUD.** Extract the shared body first
   (F3.1) — that refactor is a precondition, not a nice-to-have.

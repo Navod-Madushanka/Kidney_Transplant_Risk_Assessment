@@ -103,6 +103,36 @@ async def test_unverified_patient_details_is_blocking(auth_client: AsyncClient):
     assert "patient_details_unverified" in _gap_codes(body["blocking"])
 
 
+async def test_unverified_antibody_profile_is_not_blocking(auth_client: AsyncClient):
+    # BeadSpecificityStep.jsx has its own dedicated wizard step that
+    # re-confirms this exact data (reading patientRecord.
+    # antibody_profile_verified the same way this flag does), regardless
+    # of whether this session is what extracted it -- blocking Continue
+    # here would only dead-end the doctor into a detour to the patient's
+    # profile page for something the wizard already asks them to review a
+    # few steps later. POST /compatibility/check's own hard block (see
+    # test_compatibility.py's test_unverified_antibody_profile_blocks_
+    # the_check) is unaffected by this -- it still refuses to run.
+    patient = await create_patient(auth_client, blood_type="AB")
+    donor = await create_donor(auth_client, blood_type="O")
+    await auth_client.put(f"/patients/{patient['id']}/hla-typings", json=COMPATIBLE_PATIENT_HLA)
+    await auth_client.put(f"/donors/{donor['id']}/hla-typings", json=COMPATIBLE_DONOR_HLA)
+    await auth_client.put(
+        f"/patients/{patient['id']}/antibody-profiles",
+        json=[{"antigen": "B7", "mfi": 500}],
+        params={"ocr_verified": "false"},
+    )
+
+    response = await auth_client.get(
+        f"/compatibility/readiness?patient_id={patient['id']}&donor_id={donor['id']}"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "patient_antibody_profile_unverified" not in _gap_codes(body["blocking"])
+    assert body["can_run"] is True
+
+
 async def test_readiness_404s_for_nonexistent_patient_same_as_check(auth_client: AsyncClient):
     donor = await create_donor(auth_client, blood_type="O")
 

@@ -165,6 +165,80 @@ async def test_stream_reconciles_a_mixed_page_with_conflict_gap_and_degenerate_t
 
 
 @respx.mock
+async def test_many_conflicts_and_degenerate_tiles_collapse_to_one_warning_each():
+    # Regression test: a real page with 30+ conflicting beads produced a
+    # warnings list with one line PER BEAD, long enough to bury the
+    # "AI-extracted, verify" note that actually mattered. conflict and
+    # degenerate_tile must summarize to exactly one entry each regardless
+    # of how many beads/tiles are affected -- same pattern gap and
+    # unreadable_mfi already used. Two conflicting beads (002, 003) and
+    # two degenerate tiles (4, 5) here; the assertion is on COUNT, so this
+    # would just as validly prove it for thirty.
+    degenerate_body_a = json.dumps(
+        {"bead_specificity": [{"bead": None, "antigen": "ZZ", "mfi": 999.0} for _ in range(40)]}
+    )
+    degenerate_body_b = json.dumps(
+        {"bead_specificity": [{"bead": None, "antigen": "YY", "mfi": 888.0} for _ in range(40)]}
+    )
+    bodies = [
+        '{"bead_specificity": [{"bead": "001", "antigen": "A1", "mfi": 100.0}]}',
+        '{"bead_specificity": [{"bead": "002", "antigen": "A2", "mfi": 200.0}]}',
+        '{"bead_specificity": [{"bead": "002", "antigen": "A2", "mfi": 400.0}, {"bead": "003", "antigen": "A3", "mfi": 300.0}]}',
+        '{"bead_specificity": [{"bead": "003", "antigen": "A3", "mfi": 500.0}]}',
+        degenerate_body_a,
+        degenerate_body_b,
+        '{"bead_specificity": [{"bead": "007", "antigen": "A7", "mfi": 70.0}]}',
+        '{"bead_specificity": [{"bead": "008", "antigen": "A8", "mfi": 71.0}]}',
+    ]
+    assert len(bodies) == DEFAULT_NUM_TILES
+    respx.post(CHAT_URL).mock(side_effect=_sequential_side_effect(bodies))
+
+    events = [event async for event in extract_bead_specificity_stream(_synthetic_page_bytes())]
+    warnings = events[-1]["structured"]["warnings"]
+
+    conflict_warnings = [w for w in warnings if w["code"] == "conflict"]
+    degenerate_warnings = [w for w in warnings if w["code"] == "degenerate_tile"]
+
+    assert len(conflict_warnings) == 1  # not one per bead
+    assert len(degenerate_warnings) == 1  # not one per tile
+    assert set(conflict_warnings[0]["bead_ids"]) == {"002", "003"}  # both still identifiable
+    assert "2 bead(s)" in conflict_warnings[0]["detail"]
+    assert "2 of 8 tiles" in degenerate_warnings[0]["detail"]
+
+
+@respx.mock
+async def test_degenerate_tiles_fabricated_value_does_not_overwrite_a_healthy_tiles_reading():
+    # Part J, found on a real page: a degenerate tile's repeated
+    # fabricated value used to be able to WIN a highest-value tie-break
+    # against a genuinely-read tile for the same bead, since degenerate
+    # detection and conflict resolution ran independently. Tile 1 here
+    # degenerates into repeating 23706.91 forty times (including once for
+    # bead 011, the same bead tile 0 genuinely read at 495.87) -- the
+    # reconciled row for bead 011 must end up with tile 0's trusted value,
+    # not tile 1's fabricated one, even though 23706.91 is numerically
+    # higher.
+    degenerate_rows = [
+        {"bead": f"{i:03d}", "antigen": "ZZ", "mfi": 23706.91} for i in range(12, 52)
+    ]
+    degenerate_rows[0] = {"bead": "011", "antigen": "A23", "mfi": 23706.91}
+    bodies = [
+        json.dumps({"bead_specificity": [{"bead": "011", "antigen": "A23", "mfi": 495.87}]}),
+        json.dumps({"bead_specificity": degenerate_rows}),
+    ] + ['{"bead_specificity": []}' for _ in range(DEFAULT_NUM_TILES - 2)]
+    respx.post(CHAT_URL).mock(side_effect=_sequential_side_effect(bodies))
+
+    events = [event async for event in extract_bead_specificity_stream(_synthetic_page_bytes())]
+    structured = events[-1]["structured"]
+
+    row_011 = next(row for row in structured["bead_specificity"] if row["bead"] == "011")
+    assert row_011["mfi"] == 495.87  # the healthy tile's reading wins, not the hallucinated one
+    assert row_011["conflict"] == [495.87, 23706.91]  # both candidates still visible for review
+
+    warning_codes = {w["code"] for w in structured["warnings"]}
+    assert "degenerate_tile" in warning_codes
+
+
+@respx.mock
 async def test_schema_valid_repeated_rows_are_still_caught_by_degenerate_tile_detection():
     # Part J (J10): constrained decoding (extract_bead_specificity_stream
     # now passes BEAD_SPECIFICITY_SCHEMA into every chat_json call, see

@@ -141,6 +141,58 @@ def test_disagreeing_readings_keep_one_row_with_the_highest_value_flagged():
     assert report.conflicts[0].candidates == (950.0, 1200.0)
 
 
+def test_degenerate_tile_candidate_never_wins_the_conflict_tie_break():
+    # Part J, found on a real page: tile 1 degenerated into repeating the
+    # page's true single highest reading (23706.91) onto beads that don't
+    # actually carry it. Before degenerate_tiles was wired into
+    # reconciliation, "highest wins" picked that fabricated value over
+    # tile 2's genuine, lower, correct reading for the same bead. Once
+    # tile 1 is known-degenerate, its candidate must lose the tie-break to
+    # the non-degenerate one -- even though it's numerically higher.
+    observations = [_obs("011", "A23", 23706.91, tile=1), _obs("011", "A23", 495.87, tile=2)]
+
+    rows, report = reconcile_bead_rows(
+        observations, num_tiles=8, band_edges=DSA_BAND_EDGES, degenerate_tiles=[1]
+    )
+
+    assert rows[0].mfi == 495.87  # the trusted (non-degenerate) reading wins
+    # Both candidates are still surfaced -- a doctor reviewing this row
+    # sees the full disagreement, not just the value that was chosen.
+    assert rows[0].conflict == (23706.91, 495.87)
+    assert report.conflicts[0].candidates == (23706.91, 495.87)
+    assert report.degenerate_tiles == [1]
+
+
+def test_degenerate_candidate_still_used_when_it_is_the_only_source():
+    # A bead observed ONLY by degenerate tile(s) still gets a value --
+    # there's no better data available, and dropping the row instead would
+    # violate the module's "never silently drop" contract. Still flagged
+    # as a conflict so a doctor knows both readings came from a suspect
+    # tile.
+    observations = [_obs("099", "B7", 23706.91, tile=1), _obs("099", "B7", 500.0, tile=1)]
+
+    rows, report = reconcile_bead_rows(
+        observations, num_tiles=8, band_edges=DSA_BAND_EDGES, degenerate_tiles=[1]
+    )
+
+    assert rows[0].mfi == 23706.91  # falls back to the full (degenerate-only) pool
+    assert rows[0].conflict == (23706.91, 500.0)
+    assert report.conflicts[0].key == "099"
+
+
+def test_no_degenerate_tiles_argument_preserves_old_highest_wins_behavior():
+    # Backward compatibility: omitting degenerate_tiles (the old call
+    # shape, still used by any future caller that hasn't run degenerate
+    # detection) must behave exactly as it always did -- plain highest
+    # wins, no tile treated as suspect.
+    observations = [_obs("051", "A1", 950.0, tile=1), _obs("051", "A1", 1200.0, tile=2)]
+
+    rows, report = reconcile_bead_rows(observations, num_tiles=8, band_edges=DSA_BAND_EDGES)
+
+    assert rows[0].mfi == 1200.0
+    assert report.degenerate_tiles == []
+
+
 def test_threshold_crossing_dominates_relative_tolerance():
     # 990 vs 1010 is only 2% apart but crosses DSA_MFI_FLOOR (1000) --
     # clinically decisive (invisible-vs-flagged-as-a-DSA), so it must be

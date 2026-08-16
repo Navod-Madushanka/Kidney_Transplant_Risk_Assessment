@@ -1,13 +1,24 @@
 # app/services/compatibility_precondition_service.py
 """
 Shared "is this pairing ready to check" logic, used by two endpoints that
-must never disagree with each other:
+share their source of truth (unverified_data_gaps) but read it at
+different strictness:
 
 - POST /compatibility/check (app/api/compatibility.py) -- hard-blocks on
-  unverified OCR data before running the pipeline at all.
+  ANY unverified OCR data before running the pipeline at all. This is the
+  real safety net and checks every gap in _UNVERIFIED_CHECKS,
+  unfiltered -- see unverified_data_reasons.
 - GET /compatibility/readiness (this module's build_compatibility_readiness)
   -- a preview a doctor can look at BEFORE submitting, naming exactly what's
-  missing rather than making them find out via a failed submission.
+  missing rather than making them find out via a failed submission. Its
+  `blocking` list deliberately EXCLUDES a subset of unverified_data_gaps
+  (see _READINESS_NON_BLOCKING_CODES) -- gaps the wizard has its own later
+  step dedicated to resolving, where blocking Continue here would only
+  dead-end the doctor before they ever reach it. The wizard's submission
+  flow persists that step's confirmation before POST /compatibility/check
+  ever runs, so the hard block above is still satisfied for a doctor who
+  actually completes the wizard; it only fires for real when something
+  didn't get confirmed.
 
 Extracted 2026-08-10 (Part E) after the wizard stopped creating a fresh
 patient/donor on every check and started running checks against existing,
@@ -16,12 +27,17 @@ app/services/lkdpi_service.py for why an incomplete record used to be
 impossible (every check got a brand-new, identically-blank pair) and isn't
 anymore.
 
-Two categories of "not ready," never conflated:
+Three categories of "not ready," never conflated:
 
 1. `blocking` -- POST /compatibility/check would refuse to run at all
-   (unverified OCR data) or would almost certainly halt on worst-cased data
-   (missing A/B/DRB1 HLA typing). Continue should be disabled.
-2. Score gaps (`lkdpi_gaps`, `donor_risk_projection_gaps`,
+   (unverified OCR data the wizard has no later step to re-confirm) or
+   would almost certainly halt on worst-cased data (missing A/B/DRB1 HLA
+   typing). Continue should be disabled.
+2. Unverified-but-wizard-resolvable (_READINESS_NON_BLOCKING_CODES) --
+   POST /compatibility/check would still hard-block on these too, but the
+   readiness preview doesn't, because the wizard already has a dedicated
+   step that re-confirms this exact data before submission.
+3. Score gaps (`lkdpi_gaps`, `donor_risk_projection_gaps`,
    `donor_risk_contraindication_gaps`) -- the check itself runs fine; a
    downstream score is withheld. Informational only, Continue stays
    enabled. Missing LKDPI inputs are deliberately NOT blocking: a doctor
@@ -136,6 +152,28 @@ def unverified_data_gaps(patient: Patient, donor: Donor) -> list[ReadinessGap]:
     return gaps
 
 
+# Excluded from the READINESS PREVIEW's blocking list only -- POST
+# /compatibility/check's hard block (unverified_data_reasons, unfiltered)
+# still refuses to run against this regardless. BeadSpecificityStep.jsx
+# re-confirms bead/antibody data as its own dedicated wizard step
+# regardless of whether THIS session is what extracted it (it reads
+# patientRecord.antibody_profile_verified directly, same as this flag) --
+# so blocking Continue here, before the doctor ever reaches that step,
+# would dead-end them into an unnecessary detour to the patient's profile
+# page for something the wizard already asks them to review a few steps
+# later. Same reasoning NewPairPage/handleRegister already applies when
+# registering a brand-new pair (see this module's own docstring: "Showing
+# 'these must be resolved' for a gap the very next steps exist to fill
+# would just dead-end the doctor"). Safe to exclude here because the
+# wizard's submission flow (compatibilityWizard.js) persists
+# BeadSpecificityStep's confirmation via replacePatientAntibodyProfiles
+# BEFORE POST /compatibility/check ever runs -- a doctor who actually
+# completes the wizard satisfies the hard check naturally; it only fires
+# as a genuine last-resort safety net (e.g. a check submitted without
+# going through the wizard's own confirmation step).
+_READINESS_NON_BLOCKING_CODES = frozenset({"patient_antibody_profile_unverified"})
+
+
 def unverified_data_reasons(patient: Patient, donor: Donor) -> list[str]:
     """Sentence-fragment list for POST /compatibility/check's 422 detail
     message -- derived from unverified_data_gaps' labels, not a second
@@ -146,7 +184,11 @@ def unverified_data_reasons(patient: Patient, donor: Donor) -> list[str]:
 async def build_compatibility_readiness(
     db: AsyncSession, patient: Patient, donor: Donor
 ) -> CompatibilityReadiness:
-    blocking: list[ReadinessGap] = list(unverified_data_gaps(patient, donor))
+    blocking: list[ReadinessGap] = [
+        gap
+        for gap in unverified_data_gaps(patient, donor)
+        if gap.code not in _READINESS_NON_BLOCKING_CODES
+    ]
 
     patient_hla_entries = await get_patient_hla_typing_entries(db, patient.id)
     donor_hla_entries = await get_donor_hla_typing_entries(db, donor.id)

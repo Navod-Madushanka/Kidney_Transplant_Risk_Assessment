@@ -233,11 +233,11 @@ def check_bead_id_uniqueness_across_pages(rows: list[dict]) -> list[dict]:
     rather than silently re-deduping and hiding it, same as I2's whole
     point about not making a real problem invisible.
 
-    Public (not module-private) because app/tests/unit/test_ocr_batch_
-    service.py exercises it directly rather than only through
-    run_batch_extraction -- this used to also be called from
-    ocr_job_service.py's registration-time auto-save path (deleted, see
-    implementation-prompt-part-j.md J3); nothing else calls it today."""
+    Public (not module-private) because ocr_job_service.py's
+    _save_bead_specificity_if_present is the OTHER cross-page merge point
+    (the registration-time auto-save path, restored with a guard after
+    Part J -- see that function's docstring) and needs the identical
+    check -- both call this rather than each keeping their own copy."""
     seen: dict[tuple, int] = {}
     for row in rows:
         bead = row.get("bead")

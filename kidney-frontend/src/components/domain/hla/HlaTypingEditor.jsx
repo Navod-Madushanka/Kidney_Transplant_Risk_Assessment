@@ -1,5 +1,5 @@
 // src/components/domain/hla/HlaTypingEditor.jsx
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Select from "../../ui/Select"
 import InputField from "../../ui/InputField"
 import Button from "../../ui/Button"
@@ -30,6 +30,19 @@ export default function HlaTypingEditor({ loadState, initialEntries = [], onSave
   const [rows, setRows] = useState(() =>
     initialEntries.length > 0 ? initialEntries.map(makeRow) : [makeRow()]
   )
+
+  // initialEntries arrives asynchronously (loadState starts "loading" with
+  // initialEntries=[]), after the useState initializer above has already
+  // run -- React doesn't re-run it on later renders, so without this the
+  // editor stays stuck on the empty fallback row even once real data
+  // lands. initialEntries keeps a stable reference across unrelated
+  // parent re-renders (it only changes when the parent's fetch actually
+  // resolves again), so this won't clobber in-progress edits.
+  useEffect(() => {
+    if (loadState !== "loaded") return
+    setRows(initialEntries.length > 0 ? initialEntries.map(makeRow) : [makeRow()])
+  }, [loadState, initialEntries])
+
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState("")
   const [savedAt, setSavedAt] = useState(null)

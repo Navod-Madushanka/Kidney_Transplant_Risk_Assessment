@@ -20,7 +20,6 @@ fields.
 """
 import asyncio
 import base64
-from dataclasses import replace
 from typing import AsyncIterator
 
 from app.core.config import settings
@@ -260,8 +259,15 @@ async def extract_bead_specificity_stream(
                 )
             )
 
-    reconciled, report = reconcile_bead_rows(observations, num_tiles=total, band_edges=band_edges)
-    report = replace(report, degenerate_tiles=detect_degenerate_tiles(tile_results))
+    # Computed BEFORE reconciliation, not after -- reconcile_bead_rows needs
+    # to know which tiles are suspect so a degenerate tile's fabricated
+    # value can't win a highest-value tie-break against a genuinely-read
+    # tile for the same bead (Part J; see reconcile_bead_rows's docstring
+    # for the real page this was found on).
+    degenerate_tiles = detect_degenerate_tiles(tile_results)
+    reconciled, report = reconcile_bead_rows(
+        observations, num_tiles=total, band_edges=band_edges, degenerate_tiles=degenerate_tiles
+    )
 
     yield {
         "type": "result",
@@ -298,11 +304,20 @@ def _build_bead_warnings(
     caller renders. Per the migration plan's Phase 1 decision (accuracy on
     this document type never cleared the bar HLA typing/crossmatch did),
     the blanket "AI-extracted, verify" note always fires first — but it's
-    one entry among several specific ones now, not the whole message. A
-    warning that fires on every single extraction is, behaviourally, no
-    warning at all; a specific "beads 044 and 051 disagreed" entry directs
-    a doctor's attention to the ~3 rows that actually need a second look
-    instead of asking for the whole ~100-row page to be re-read."""
+    one entry among several specific ones now, not the whole message.
+
+    One entry PER CATEGORY, not per affected bead/tile (gaps and
+    unreadable_mfi already worked this way; conflict and degenerate_tile
+    were changed to match, 2026-08-15, after a real page with 30+
+    conflicting beads produced a warnings list so long it buried the
+    "AI-extracted, verify" note that mattered instead of drawing attention
+    to it — the opposite of this function's whole point). `bead_ids`
+    still carries every affected bead so a structured consumer can find
+    them; only the human-readable `detail` text is now a single summary
+    line. The per-row detail doctors actually need when reviewing --
+    which specific candidate values a bead's tiles disagreed on -- lives
+    on that row's own `conflict` field (see reconcile_bead_rows), not
+    here; this list is a heads-up, not the audit trail."""
     warnings = [
         {"code": "verify_against_source", "detail": BEAD_SPECIFICITY_ALWAYS_VERIFY_WARNING, "bead_ids": []}
     ]
@@ -316,28 +331,30 @@ def _build_bead_warnings(
             }
         )
 
-    for tile_index in report.degenerate_tiles:
+    if report.degenerate_tiles:
+        count = len(report.degenerate_tiles)
+        tile_numbers = ", ".join(str(i + 1) for i in report.degenerate_tiles)
         warnings.append(
             {
                 "code": "degenerate_tile",
                 "detail": (
-                    f"Tile {tile_index + 1} of {total_tiles} looks degenerate "
-                    "(repeated or excessive rows) -- its data may be unreliable"
+                    f"{count} of {total_tiles} tiles (tile {tile_numbers}) looked degenerate "
+                    "(repeated or excessive rows) -- that data may be unreliable"
                 ),
                 "bead_ids": [],
             }
         )
 
-    for conflict in report.conflicts:
-        candidates = ", ".join("null" if c is None else str(c) for c in conflict.candidates)
+    if report.conflicts:
         warnings.append(
             {
                 "code": "conflict",
                 "detail": (
-                    f"Bead {conflict.key} had disagreeing MFI readings across tiles "
-                    f"({candidates}) -- using the highest value, please verify"
+                    f"{len(report.conflicts)} bead(s) had disagreeing MFI readings across "
+                    "tiles -- the highest reading was kept for each; double-check the bead "
+                    "data against the source chart"
                 ),
-                "bead_ids": [conflict.key],
+                "bead_ids": [conflict.key for conflict in report.conflicts],
             }
         )
 

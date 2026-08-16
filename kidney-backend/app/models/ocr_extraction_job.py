@@ -25,18 +25,21 @@ class OcrExtractionJob(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     doctor_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("doctors.id"), nullable=False, index=True
     )
-    # Set when a job is started against a patient that already exists,
-    # scoping/tagging it for audit purposes only -- see
-    # implementation-prompt-part-j.md J0-J3. Previously also authorised
-    # run_extraction_job to auto-save extracted bead-specificity rows to
-    # antibody_profiles, unattended, once the job finished; that write was
-    # deleted (Part J) after review found it had no guard against
-    # overwriting a doctor's already-verified profile, and no way to
-    # recover what it deleted -- a background task must never be the thing
-    # that destroys clinical data a human entered or confirmed. Nothing in
-    # the current frontend passes this field; it stays available for a
-    # future caller that wants a job attributable to a patient without
-    # granting it any write of its own.
+    # Only set when a job is started against a patient that already exists
+    # (registration-time bead-specificity extraction -- see NewPairPage.jsx)
+    # as opposed to the compatibility-check wizard's own Photos-step jobs,
+    # which start before a patient is even selected (wizard route order is
+    # photos -> subject -> ...) and so never pass this. run_extraction_job
+    # uses it to auto-save extracted bead-specificity rows to
+    # antibody_profiles (unverified) once the job finishes, since nobody is
+    # necessarily still watching the wizard to do that save themselves --
+    # but only when the patient has no existing antibody-profile rows to
+    # protect (see ocr_job_service._save_bead_specificity_if_present's
+    # docstring). An earlier, unguarded version of this write was deleted
+    # entirely after review found it could silently destroy a doctor's
+    # already-verified profile with no way to recover it (see
+    # implementation-prompt-part-j.md J0-J3); this guard is what let it
+    # come back.
     patient_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("patients.id"), nullable=True, index=True
     )
