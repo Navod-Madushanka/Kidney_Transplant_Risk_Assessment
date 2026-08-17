@@ -22,7 +22,8 @@ database or transitions donor/patient status. Acting on a discovered cycle
 is a separate, not-yet-built step.
 """
 import uuid
-from dataclasses import dataclass
+from collections import defaultdict
+from dataclasses import dataclass, field
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -104,6 +105,15 @@ class ExchangeEdge:
 class ExchangeGraph:
     nodes: list[ExchangePairNode]
     edges: list[ExchangeEdge]  # only compatible edges -- see build_exchange_graph
+    # Aggregate rejection-reason counts for every ordered pair build_exchange_graph
+    # scored but did NOT turn into an edge, keyed by the donor's pair_id
+    # (outbound_blocked) or the recipient's pair_id (inbound_blocked). Exists
+    # so exchange_explanation_service.py can answer "why wasn't this pair
+    # matched" without persisting or returning the full O(n^2) result matrix
+    # (see that module's docstring) -- only these per-pair aggregate counts
+    # are ever exposed.
+    outbound_blocked: dict[uuid.UUID, dict[str, int]] = field(default_factory=dict)
+    inbound_blocked: dict[uuid.UUID, dict[str, int]] = field(default_factory=dict)
 
 
 @dataclass
@@ -149,6 +159,22 @@ def evaluate_pair_edge(
         mismatch_result=mismatch_result,
         dsa_result=dsa_result,
     )
+
+
+def _rejection_reason(result: PairEdgeResult) -> str:
+    """Classifies why an incompatible directed edge was rejected, for the K7
+    "why wasn't this pair matched" aggregate counts. A rejected edge can in
+    principle fail more than one gate at once (evaluate_pair_edge computes
+    all three unconditionally); this picks one reason per edge in a fixed
+    priority -- ABO first since it's the most structural, then the DSA halt,
+    then the mismatch halt -- so the aggregate counts stay a simple
+    dict[str, int] rather than double-counting one rejected edge under two
+    reasons."""
+    if not result.abo_result.is_compatible:
+        return "abo"
+    if result.dsa_result.is_halted:
+        return "dsa_strong"
+    return "mismatch"
 
 
 def _donor_hla_antigens(donor_typing_entries: list[DonorHLATyping]) -> list[str]:
@@ -198,6 +224,8 @@ def build_exchange_graph(
         }
 
     edges: list[ExchangeEdge] = []
+    outbound_blocked: dict[uuid.UUID, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    inbound_blocked: dict[uuid.UUID, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     for donor_node in nodes:
         donor_data = prepared[donor_node.pair_id]
         for recipient_node in nodes:
@@ -225,8 +253,22 @@ def build_exchange_graph(
                         result=result,
                     )
                 )
+            else:
+                # Aggregate-only (K7): this ordered pair never becomes an
+                # edge, and its full PairEdgeResult is discarded right here
+                # -- only the reason tally per pair_id survives, so this
+                # stays O(n^2) in time but O(n) in the memory it retains,
+                # same as the compatible-edge path already was.
+                reason = _rejection_reason(result)
+                outbound_blocked[donor_node.pair_id][reason] += 1
+                inbound_blocked[recipient_node.pair_id][reason] += 1
 
-    return ExchangeGraph(nodes=nodes, edges=edges)
+    return ExchangeGraph(
+        nodes=nodes,
+        edges=edges,
+        outbound_blocked={pid: dict(counts) for pid, counts in outbound_blocked.items()},
+        inbound_blocked={pid: dict(counts) for pid, counts in inbound_blocked.items()},
+    )
 
 
 async def load_exchange_pool(db: AsyncSession) -> ExchangePoolData:

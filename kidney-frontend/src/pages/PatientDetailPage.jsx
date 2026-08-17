@@ -150,6 +150,7 @@ export default function PatientDetailPage() {
             nicNumber: patient.nic_number || "",
             sex: enumToForm(patient.sex),
             weightKg: patient.weight_kg ?? "",
+            dialysisStartDate: patient.dialysis_start_date ?? "",
           }}
           onSubmit={handleEditSubmit}
         />

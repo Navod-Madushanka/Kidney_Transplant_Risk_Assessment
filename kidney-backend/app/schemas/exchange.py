@@ -29,6 +29,13 @@ class ExchangeNodeResponse(BaseModel):
     patient_hospital_name: str
     patient_doctor_full_name: str
     patient_doctor_email: str
+    # K9: "dialysis_start_date" when this patient's waiting-time credit
+    # (equity_weighted policy, tie-break) is backed by a real dialysis
+    # start date, "created_at_fallback" when it's the disclosed
+    # registration-date proxy -- see exchange_matching_service.
+    # uses_dialysis_start_date. Never let a coordinator mistake the proxy
+    # for a fact.
+    patient_wait_source: str
 
 
 class ExchangeEdgeResponse(BaseModel):
@@ -52,8 +59,61 @@ class ExchangeCycleResponse(BaseModel):
     weight: float
 
 
+class PairMatchExplanationResponse(BaseModel):
+    """K7: why a pool pair isn't in any selected cycle. Only present for
+    unmatched pairs -- see exchange_explanation_service.py. Aggregate counts
+    only (never the underlying pairwise results) so the response stays O(n)
+    in pool size regardless of how many ordered pairs were actually scored."""
+
+    pair_id: uuid.UUID
+    outbound_blocked: dict[str, int]
+    inbound_blocked: dict[str, int]
+    outbound_edges: int
+    inbound_edges: int
+    candidate_cycles: int
+    verdict: str
+
+
 class ExchangeMatchResponse(BaseModel):
     policy: str
     nodes: list[ExchangeNodeResponse]
     edges: list[ExchangeEdgeResponse]
     selected_cycles: list[ExchangeCycleResponse]
+    explanations: list[PairMatchExplanationResponse]
+
+
+class PolicyComparisonCycleResponse(BaseModel):
+    """One candidate cycle that at least one policy selected. K8: instead of
+    asking a coordinator to pick an optimization policy, show what all of
+    them agree on -- a cycle every policy selects is robust, one only a
+    single policy picks is a policy artefact."""
+
+    pair_ids: list[uuid.UUID]
+    weight_by_policy: dict[str, float]
+    selected_by: list[str]
+
+
+class ExchangeCompareResponse(BaseModel):
+    policies: list[str]
+    nodes: list[ExchangeNodeResponse]
+    edges: list[ExchangeEdgeResponse]
+    cycles: list[PolicyComparisonCycleResponse]
+
+
+class HardToMatchPairResponse(BaseModel):
+    """K9: one pool pair no policy selects under any weighting -- the
+    desensitization/national-referral worklist. Reuses K7's verdict/blocked
+    -reason counts and K8's cross-policy union rather than introducing a
+    separate notion of "unmatched"."""
+
+    node: ExchangeNodeResponse
+    cpra_percentage: float | None
+    wait_days: int
+    verdict: str
+    outbound_blocked: dict[str, int]
+    inbound_blocked: dict[str, int]
+    candidate_cycles: int
+
+
+class HardToMatchResponse(BaseModel):
+    pairs: list[HardToMatchPairResponse]

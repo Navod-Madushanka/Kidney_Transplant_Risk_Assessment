@@ -7,7 +7,7 @@ test_exchange_graph_service.py for coverage of the edge-scoring itself.
 """
 import itertools
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pulp
 import pytest
@@ -27,12 +27,16 @@ from unittest.mock import patch
 
 import app.services.exchange_matching_service as exchange_matching_service
 from app.services.exchange_matching_service import (
+    WEIGHT_POLICIES,
     _canonicalize,
     _wait_fraction,
     build_graph_index,
     cpra_fraction,
     enumerate_cycles,
     solve_exchange_matching,
+    solve_exchange_matching_all_policies,
+    uses_dialysis_start_date,
+    wait_days,
 )
 from app.services.hla_mismatch_service import MismatchResult
 
@@ -174,6 +178,25 @@ class TestWaitFraction:
 
         assert _wait_fraction(patient) == 0.0
 
+    def test_prefers_dialysis_start_date_over_created_at(self):
+        # K9: dialysis_start_date is real time on dialysis; created_at is
+        # only a disclosed proxy (registration date) -- when both are
+        # present, the real fact wins.
+        patient = _patient()
+        patient.dialysis_start_date = date.today() - timedelta(days=100)
+        patient.created_at = datetime.now(timezone.utc) - timedelta(days=5)
+
+        assert uses_dialysis_start_date(patient) is True
+        assert wait_days(patient) in (99, 100)
+
+    def test_falls_back_to_created_at_and_flags_the_fallback_when_dialysis_start_date_is_unset(self):
+        patient = _patient()
+        patient.dialysis_start_date = None
+        patient.created_at = datetime.now(timezone.utc) - timedelta(days=30)
+
+        assert uses_dialysis_start_date(patient) is False
+        assert wait_days(patient) in (29, 30)
+
 
 class TestCpraFractionMemoization:
     def test_repeated_calls_for_the_same_patient_hit_calculate_cpra_once(self):
@@ -295,3 +318,68 @@ class TestSolveExchangeMatching:
         result = solve_exchange_matching(graph, "max_transplants")
 
         assert result.selected_cycles == []
+
+
+class TestDeterministicTieBreak:
+    def test_prefers_the_longer_waiting_cycle_deterministically_across_100_runs(self):
+        # K9: under max_transplants, both candidate 2-cycles here score
+        # exactly 2 -- an unbroken tie that used to resolve to "whichever
+        # CBC reaches first". `shared` is common to both, so the tie-break
+        # (total waiting fraction across the cycle) comes down to
+        # long_wait_node's patient vs short_wait_node's patient; the
+        # longer-waiting one must win every time, not just on average.
+        shared = _node()
+        long_wait_patient = _patient()
+        long_wait_patient.created_at = datetime.now(timezone.utc) - timedelta(days=1000)
+        short_wait_patient = _patient()
+        short_wait_patient.created_at = datetime.now(timezone.utc) - timedelta(days=10)
+        long_wait_node = _node(long_wait_patient)
+        short_wait_node = _node(short_wait_patient)
+
+        edges = [
+            _edge(shared, long_wait_node),
+            _edge(long_wait_node, shared),
+            _edge(shared, short_wait_node),
+            _edge(short_wait_node, shared),
+        ]
+        graph = ExchangeGraph(
+            nodes=[shared, long_wait_node, short_wait_node], edges=edges
+        )
+
+        for _ in range(100):
+            result = solve_exchange_matching(graph, "max_transplants")
+            assert len(result.selected_cycles) == 1
+            selected_pairs = set(result.selected_cycles[0].pair_ids)
+            assert selected_pairs == {shared.pair_id, long_wait_node.pair_id}
+            # The unscaled, human-recognizable weight is still reported --
+            # the scaling is solve-internal only.
+            assert result.selected_cycles[0].weight == 2.0
+
+
+class TestSolveExchangeMatchingAllPolicies:
+    def test_enumerates_cycles_only_once_across_every_policy(self):
+        # K8: cycle enumeration is part of the expensive, policy-independent
+        # fixed cost of a solve -- solving all four registered policies
+        # should enumerate cycles once, not once per policy.
+        a, b = _node(), _node()
+        graph = ExchangeGraph(nodes=[a, b], edges=[_edge(a, b), _edge(b, a)])
+
+        with patch(
+            "app.services.exchange_matching_service.enumerate_cycles",
+            wraps=exchange_matching_service.enumerate_cycles,
+        ) as mock_enumerate_cycles:
+            results = solve_exchange_matching_all_policies(graph)
+
+        assert mock_enumerate_cycles.call_count == 1
+        assert set(results) == set(WEIGHT_POLICIES)
+        for policy_name, result in results.items():
+            assert result.policy == policy_name
+            # max_lkdpi_quality is excluded from the selection assertion:
+            # these hand-built _edge() fixtures carry no lkdpi_result, so
+            # that policy scores the only candidate cycle 0 and legitimately
+            # ties with selecting nothing (see weight_max_lkdpi_quality's
+            # docstring) -- this test is about enumeration happening once,
+            # not about pinning that particular tie.
+            if policy_name != "max_lkdpi_quality":
+                assert len(result.selected_cycles) == 1
+                assert set(result.selected_cycles[0].pair_ids) == {a.pair_id, b.pair_id}

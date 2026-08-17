@@ -46,6 +46,7 @@ describe("PatientForm", () => {
       rh_factor: "+",
       sex: null,
       weight_kg: null,
+      dialysis_start_date: null,
     })
   })
 
@@ -79,6 +80,7 @@ describe("PatientForm", () => {
       nic_number: "198506150000",
       sex: null,
       weight_kg: null,
+      dialysis_start_date: null,
     })
   })
 

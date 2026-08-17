@@ -12,6 +12,7 @@ from app.api.compatibility import router as compatibility_router
 from app.api.dashboard import router as dashboard_router
 from app.api.donors import router as donors_router
 from app.api.exchange import router as exchange_router
+from app.api.exchange_proposals import router as exchange_proposals_router
 from app.api.ocr import router as ocr_router
 from app.api.pairs import router as pairs_router
 from app.api.patients import router as patients_router
@@ -21,6 +22,7 @@ from app.db.session import async_session_maker, engine, get_db
 from app.models.doctor import Doctor
 from app.models.enums import OcrExtractionJobStatus
 from app.models.ocr_extraction_job import OcrExtractionJob
+from app.services.exchange_proposal_service import sweep_expired_proposals
 from app.services.ocr_spool_service import sweep_stale_spools
 
 _RESTART_ERROR_MESSAGE = "Server restarted during extraction. Please re-upload and try again."
@@ -38,6 +40,11 @@ async def lifespan(app: FastAPI):
        die with the process, so a job left RUNNING at boot is definitionally
        dead — without this it sits "running" forever while the frontend
        polls it every 2.5s indefinitely.
+    3. Sweeps expired exchange proposals (Part K, K6) — the belt half of
+       the belt-and-braces approach; GET /exchange/proposals[/{id}] also
+       expires lazily on read (see exchange_proposal_service.expire_if_due),
+       but a proposal nobody reads while the server is down would otherwise
+       sit PROPOSED past its expires_at indefinitely.
 
     Startup-only is sufficient: the try/finally handles the normal path and
     the process restarts on every deploy, so a periodic sweeper isn't worth
@@ -59,6 +66,9 @@ async def lifespan(app: FastAPI):
             .values(status=OcrExtractionJobStatus.FAILED, error=_RESTART_ERROR_MESSAGE)
         )
         await db.commit()
+
+    async with async_session_maker() as db:
+        await sweep_expired_proposals(db)
 
     yield
 
@@ -88,6 +98,7 @@ app.include_router(dashboard_router)
 app.include_router(ocr_router)
 app.include_router(audit_logs_router)
 app.include_router(exchange_router)
+app.include_router(exchange_proposals_router)
 
 @app.get("/")
 def read_root():

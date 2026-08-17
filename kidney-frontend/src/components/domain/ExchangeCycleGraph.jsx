@@ -1,5 +1,6 @@
 // src/components/domain/ExchangeCycleGraph.jsx
 import { useMemo, useState } from "react"
+import EmptyState from "../ui/EmptyState"
 
 // Reuses this app's existing design tokens rather than a new categorical
 // palette (see index.css's comment: the clinical clear/moderate/high-risk
@@ -115,13 +116,7 @@ export default function ExchangeCycleGraph({ nodes, edges, selectedCycles }) {
   const activeNode = positioned.find((node) => node.pair_id === activePairId) ?? null
 
   if (nodes.length === 0) {
-    return (
-      <div className="border border-border rounded-lg p-8 text-center bg-surface">
-        <p className="text-[15px] text-text-muted">
-          No incompatible pairs in the exchange pool right now.
-        </p>
-      </div>
-    )
+    return <EmptyState message="No incompatible pairs in the exchange pool right now." />
   }
 
   return (

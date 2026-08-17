@@ -30,4 +30,20 @@ describe("TabBar — dead links (review #2 bug 22)", () => {
 
     expect(screen.getByRole("link", { name: /exchange/i })).toHaveAttribute("href", "/exchange")
   })
+
+  it("shows the pending-decisions count on the Exchange item, and hides it at zero", () => {
+    const { rerender } = render(
+      <MemoryRouter>
+        <TabBar pendingExchangeCount={0} />
+      </MemoryRouter>
+    )
+    expect(screen.queryByText("3")).not.toBeInTheDocument()
+
+    rerender(
+      <MemoryRouter>
+        <TabBar pendingExchangeCount={3} />
+      </MemoryRouter>
+    )
+    expect(screen.getByText("3")).toBeInTheDocument()
+  })
 })

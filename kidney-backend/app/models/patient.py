@@ -2,7 +2,7 @@
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Numeric, text
+from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Index, Numeric, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -120,3 +120,10 @@ class Patient(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         nullable=True,
     )
     weight_kg: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
+
+    # K9 (added 2026-08-16): time on dialysis, not time in this database --
+    # exchange_weight_policies.py's waiting-time credit previously had only
+    # `created_at` as a proxy. Nullable: exchange_matching_service._wait_
+    # fraction prefers this and falls back to created_at (with the fallback
+    # disclosed) so existing records keep working.
+    dialysis_start_date: Mapped[date | None] = mapped_column(Date, nullable=True)

@@ -22,6 +22,11 @@ export const EXCHANGE_POLICY_OPTIONS = [
     label: "Equity-weighted",
     description: "Adds a bonus for highly sensitized and longer-waiting patients.",
   },
+  {
+    value: "max_lkdpi_quality",
+    label: "Max donor quality (LKDPI)",
+    description: "Prefers cycles with lower Living Kidney Donor Profile Index scores.",
+  },
 ]
 
 export const DEFAULT_EXCHANGE_POLICY = "max_transplants"

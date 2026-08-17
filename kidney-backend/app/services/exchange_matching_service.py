@@ -50,6 +50,19 @@ from app.services.exchange_graph_service import ExchangeEdge, ExchangeGraph, Exc
 
 Cycle = tuple[uuid.UUID, ...]  # ordered pair_ids: cycle[i]'s donor gives to cycle[i+1]'s recipient
 
+# K9: under weight_max_transplants (weight = len(cycle)), a large fraction of
+# candidate packings score identically, and CBC returns whichever it reaches
+# first -- which patients get transplanted among equal-scoring solutions was
+# arbitrary. TIE_BREAK_PRIMARY_SCALE inflates every policy's real weight far
+# above the tie-break term (see _solve_with_shared_cycles), so the tie-break
+# -- total waiting fraction across the cycle, 0..3 pairs -> 0..300 once
+# scaled -- only ever decides between cycles whose primary weights differ by
+# less than 0.0003, a numerically meaningless difference for any policy
+# here. Integer coefficients (both terms are rounded before summing) also
+# keep CBC's solve exact rather than floating-point-approximate.
+TIE_BREAK_PRIMARY_SCALE = 1_000_000
+TIE_BREAK_WAIT_SCALE = 100
+
 
 def _canonicalize(cycle: Cycle) -> Cycle:
     """Rotates a cycle so it starts at its smallest pair_id -- so the same
@@ -202,19 +215,55 @@ def cpra_fraction(patient_id: uuid.UUID, index: GraphIndex) -> float:
     return fraction
 
 
-def _wait_fraction(patient: Patient) -> float:
-    """See exchange_weight_policies.py's module docstring: Patient.created_at
-    (registration date) is a disclosed proxy for actual waiting time.
-    created_at is a NOT NULL DB column, so this is unreachable through the
-    normal DB-backed code path -- the guard (review #2 bug 18) is for
-    synthetic/hand-built Patient objects (scripts, tests) that can leave it
-    unset, which is exactly how this was originally found."""
+def _wait_reference_datetime(patient: Patient) -> tuple[datetime | None, bool]:
+    """K9: prefers Patient.dialysis_start_date (real time on dialysis) over
+    created_at (registration date, a disclosed proxy -- see exchange_
+    weight_policies.py's module docstring). Returns (reference point, used_
+    dialysis_start_date) so callers can both compute a wait fraction and
+    disclose which source it came from (see uses_dialysis_start_date,
+    surfaced per-node in ExchangeNodeResponse.patient_wait_source).
+    dialysis_start_date is a plain date; combined with midnight UTC so it
+    compares against created_at's timezone-aware datetime on the same
+    footing.
+    """
+    if patient.dialysis_start_date is not None:
+        reference = datetime.combine(
+            patient.dialysis_start_date, datetime.min.time(), tzinfo=timezone.utc
+        )
+        return reference, True
+
+    # created_at is a NOT NULL DB column, so this is unreachable through the
+    # normal DB-backed code path -- the guard (review #2 bug 18) is for
+    # synthetic/hand-built Patient objects (scripts, tests) that can leave
+    # it unset, which is exactly how this was originally found.
     created_at = patient.created_at
     if created_at is None:
-        return 0.0
+        return None, False
     if created_at.tzinfo is None:
         created_at = created_at.replace(tzinfo=timezone.utc)
-    days_waiting = (datetime.now(timezone.utc) - created_at).days
+    return created_at, False
+
+
+def uses_dialysis_start_date(patient: Patient) -> bool:
+    """Whether this patient's waiting-time credit is backed by a real
+    dialysis_start_date rather than the created_at fallback -- so a
+    coordinator never mistakes the registration-date proxy for a fact."""
+    _, used_dialysis_start_date = _wait_reference_datetime(patient)
+    return used_dialysis_start_date
+
+
+def wait_days(patient: Patient) -> int:
+    """Raw days waiting (not normalized to 0..1 like _wait_fraction) -- the
+    K9 hard-to-match worklist reports this directly, since a coordinator
+    triaging that list wants a real day count, not a normalized score."""
+    reference, _ = _wait_reference_datetime(patient)
+    if reference is None:
+        return 0
+    return (datetime.now(timezone.utc) - reference).days
+
+
+def _wait_fraction(patient: Patient) -> float:
+    days_waiting = wait_days(patient)
     return max(0.0, min(days_waiting / WAIT_NORMALIZATION_DAYS, 1.0))
 
 
@@ -241,6 +290,23 @@ WEIGHT_POLICIES: dict[str, Callable[[Cycle, GraphIndex], float]] = {
 }
 
 
+def _wait_total(cycle: Cycle, index: GraphIndex) -> float:
+    """Sum of _wait_fraction across the cycle's distinct patients (0..1 per
+    patient, so 0..3 for the longest -- 3-pair -- cycle this engine ever
+    considers) -- K9's tie-break input. Deduped by patient_id the same way
+    the patient-level disjointness constraint is, in case a cycle somehow
+    touches one patient via two pair nodes."""
+    seen_patient_ids: set[uuid.UUID] = set()
+    total = 0.0
+    for pair_id in cycle:
+        patient = index.node_by_id[pair_id].patient
+        if patient.id in seen_patient_ids:
+            continue
+        seen_patient_ids.add(patient.id)
+        total += _wait_fraction(patient)
+    return total
+
+
 def score_cycle(cycle: Cycle, index: GraphIndex, policy_name: str) -> float:
     """Scores one cycle under a named policy's weight function, independent
     of which policy actually selected it -- lets a caller (e.g.
@@ -262,38 +328,54 @@ class ExchangeMatchResult:
     policy: str
     graph: ExchangeGraph
     selected_cycles: list[SelectedCycle]
+    # Every candidate 2-/3-cycle enumerate_cycles found, selected or not --
+    # carried on the result so a caller (K7's explanation step) can compute
+    # per-pair "candidate_cycles" counts without re-running enumerate_cycles
+    # a second time (see K8's module docstring: cycle enumeration is part of
+    # the expensive fixed cost, not something to pay twice per solve).
+    cycles: list[Cycle] = field(default_factory=list)
 
 
-def solve_exchange_matching(
+def _solve_with_shared_cycles(
     graph: ExchangeGraph,
     policy_name: str,
-    patient_antibodies_by_patient: dict[uuid.UUID, list[PatientAntibody]] | None = None,
+    cycles: list[Cycle],
+    index: GraphIndex,
 ) -> ExchangeMatchResult:
-    """Maximum-weight cycle packing via PuLP/CBC:
+    """The actual PuLP/CBC solve, factored out of solve_exchange_matching so
+    K8's cross-policy comparison can enumerate cycles and build the
+    GraphIndex (including its _cpra_fraction_cache) exactly ONCE and reuse
+    both across all four policies -- see
+    solve_exchange_matching_all_policies. Only the weight vector differs per
+    policy; everything in this function after `weights = ...` is identical
+    work regardless of which policy is being solved.
 
         maximise   sum_c w_c * x_c
         s.t.       sum_{c containing v} x_c <= 1   for every pool node v
-
-    `patient_antibodies_by_patient` is only consulted by the equity_weighted
-    policy (weight_max_transplants/weight_max_quality read solely from
-    `graph`) -- pass the same dict exchange_graph_service.load_exchange_pool
-    / build_exchange_graph already used, no separate fetch needed.
     """
     if policy_name not in WEIGHT_POLICIES:
         raise ValueError(f"Unknown exchange weight policy: {policy_name!r}")
 
     weight_fn = WEIGHT_POLICIES[policy_name]
-    index = build_graph_index(graph, patient_antibodies_by_patient)
 
-    cycles = enumerate_cycles(graph)
     if not cycles:
-        return ExchangeMatchResult(policy=policy_name, graph=graph, selected_cycles=[])
+        return ExchangeMatchResult(policy=policy_name, graph=graph, selected_cycles=[], cycles=[])
 
     weights = [weight_fn(cycle, index) for cycle in cycles]
+    # The LP objective's actual coefficients: primary policy weight (scaled
+    # and rounded to an integer) plus the K9 waiting-time tie-break (see
+    # TIE_BREAK_PRIMARY_SCALE's docstring). `weights` itself stays unscaled
+    # -- it's what SelectedCycle.weight/the API response report, since a
+    # human should keep seeing the number the policy actually means, not
+    # this solve-internal scaling.
+    tie_broken_weights = [
+        round(weight * TIE_BREAK_PRIMARY_SCALE) + round(_wait_total(cycle, index) * TIE_BREAK_WAIT_SCALE)
+        for weight, cycle in zip(weights, cycles)
+    ]
 
     problem = pulp.LpProblem("exchange_matching", pulp.LpMaximize)
     cycle_vars = [pulp.LpVariable(f"cycle_{idx}", cat="Binary") for idx in range(len(cycles))]
-    problem += pulp.lpSum(weight * var for weight, var in zip(weights, cycle_vars))
+    problem += pulp.lpSum(weight * var for weight, var in zip(tie_broken_weights, cycle_vars))
 
     for pair_id in index.node_by_id:
         involved_vars = [var for cycle, var in zip(cycles, cycle_vars) if pair_id in cycle]
@@ -341,4 +423,53 @@ def solve_exchange_matching(
         # 1 as selected is the correct comparison regardless.
         if var.value() is not None and var.value() > 0.5
     ]
-    return ExchangeMatchResult(policy=policy_name, graph=graph, selected_cycles=selected_cycles)
+    return ExchangeMatchResult(
+        policy=policy_name, graph=graph, selected_cycles=selected_cycles, cycles=cycles
+    )
+
+
+def solve_exchange_matching(
+    graph: ExchangeGraph,
+    policy_name: str,
+    patient_antibodies_by_patient: dict[uuid.UUID, list[PatientAntibody]] | None = None,
+) -> ExchangeMatchResult:
+    """Single-policy solve: builds its own GraphIndex and cycle enumeration,
+    then delegates to _solve_with_shared_cycles. `patient_antibodies_by_
+    patient` is only consulted by the equity_weighted policy (weight_max_
+    transplants/weight_max_quality read solely from `graph`) -- pass the
+    same dict exchange_graph_service.load_exchange_pool/build_exchange_graph
+    already used, no separate fetch needed.
+
+    Solving more than one policy against the same graph? Use
+    solve_exchange_matching_all_policies instead -- it enumerates cycles and
+    builds the index once and reuses both across every policy, rather than
+    paying that shared cost again per call the way looping this function
+    would.
+    """
+    if policy_name not in WEIGHT_POLICIES:
+        raise ValueError(f"Unknown exchange weight policy: {policy_name!r}")
+
+    index = build_graph_index(graph, patient_antibodies_by_patient)
+    cycles = enumerate_cycles(graph)
+    return _solve_with_shared_cycles(graph, policy_name, cycles, index)
+
+
+def solve_exchange_matching_all_policies(
+    graph: ExchangeGraph,
+    patient_antibodies_by_patient: dict[uuid.UUID, list[PatientAntibody]] | None = None,
+) -> dict[str, ExchangeMatchResult]:
+    """K8: solves every registered policy against ONE shared cycle
+    enumeration and GraphIndex (including its _cpra_fraction_cache, which
+    then serves all four solves' equity_weighted-style lookups instead of
+    recomputing per policy). Pool load, graph build, and cycle enumeration
+    are the expensive, policy-independent part of a solve (~5.6s measured at
+    a 300-pair pool, per research/exchange_policy_comparison.md) -- only the
+    weight vector and the CBC solve itself differ per policy, so four
+    policies costs roughly 1.3x one call to solve_exchange_matching, not 4x.
+    """
+    index = build_graph_index(graph, patient_antibodies_by_patient)
+    cycles = enumerate_cycles(graph)
+    return {
+        policy_name: _solve_with_shared_cycles(graph, policy_name, cycles, index)
+        for policy_name in WEIGHT_POLICIES
+    }

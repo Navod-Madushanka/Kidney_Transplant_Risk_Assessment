@@ -14,6 +14,8 @@ from app.models import (  # noqa: F401
     Doctor,
     Donor,
     DonorHLATyping,
+    ExchangeProposal,
+    ExchangeProposalPair,
     Hospital,
     MatchReport,
     OcrExtractionJob,

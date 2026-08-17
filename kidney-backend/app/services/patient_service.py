@@ -24,6 +24,7 @@ async def create_patient(
         nic_number=payload.nic_number,
         sex=payload.sex,
         weight_kg=payload.weight_kg,
+        dialysis_start_date=payload.dialysis_start_date,
         details_verified=True if payload.details_verified is None else payload.details_verified,
     )
     db.add(patient)
@@ -82,6 +83,7 @@ async def update_patient_details(
     patient.nic_number = payload.nic_number
     patient.sex = payload.sex
     patient.weight_kg = payload.weight_kg
+    patient.dialysis_start_date = payload.dialysis_start_date
     patient.details_verified = _resolve_verified(
         payload.details_verified, patient.details_verified
     )

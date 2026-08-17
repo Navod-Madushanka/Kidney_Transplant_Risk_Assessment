@@ -6,6 +6,8 @@ from app.models.donor import Donor
 from app.models.donor_hla_typing import DonorHLATyping
 from app.models.donor_patient_pair import DonorPatientPair
 from app.models.donor_report_file import DonorReportFile
+from app.models.exchange_proposal import ExchangeProposal
+from app.models.exchange_proposal_pair import ExchangeProposalPair
 from app.models.hospital import Hospital
 from app.models.match_report import MatchReport
 from app.models.ocr_extraction_job import OcrExtractionJob

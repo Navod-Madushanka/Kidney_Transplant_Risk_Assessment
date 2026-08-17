@@ -15,6 +15,8 @@ import NewPairPage from "./pages/NewPairPage"
 import DonorSafetyAssessmentPage from "./pages/DonorSafetyAssessmentPage"
 import DonorSearchPage from "./pages/DonorSearchPage"
 import ExchangePoolPage from "./pages/ExchangePoolPage"
+import ExchangeProposalsInboxPage from "./pages/ExchangeProposalsInboxPage"
+import ExchangeProposalDetailPage from "./pages/ExchangeProposalDetailPage"
 import ReportsListPage from "./pages/ReportsListPage"
 import NewCheckFromRecordsPage from "./pages/NewCheckFromRecordsPage"
 import AuditLogPage from "./pages/AuditLogPage"
@@ -70,6 +72,16 @@ function App() {
               path="/exchange"
               element={<ExchangePoolPage />}
               handle={{ title: "Paired exchange" }}
+            />
+            <Route
+              path="/exchange/proposals"
+              element={<ExchangeProposalsInboxPage />}
+              handle={{ title: "Exchange proposals" }}
+            />
+            <Route
+              path="/exchange/proposals/:proposalId"
+              element={<ExchangeProposalDetailPage />}
+              handle={{ title: "Exchange proposal" }}
             />
             <Route path="/reports" element={<ReportsListPage />} handle={{ title: "Reports" }} />
             <Route

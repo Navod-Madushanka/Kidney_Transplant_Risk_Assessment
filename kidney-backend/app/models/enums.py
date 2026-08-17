@@ -32,6 +32,29 @@ class DonorStatus(str, enum.Enum):
     DECEASED = "deceased"
 
 
+class ExchangeProposalStatus(str, enum.Enum):
+    # K2/K3: the proposal-level workflow state. See
+    # exchange_proposal_service.py's _ALLOWED_TRANSITIONS for the legal
+    # transition graph -- PROPOSED -> {ACCEPTED, DECLINED, EXPIRED,
+    # CANCELLED}, ACCEPTED -> {COMPLETED, CANCELLED}, everything else
+    # terminal. `is_open` on ExchangeProposalPair is True exactly while the
+    # parent is PROPOSED or ACCEPTED (see that model's docstring).
+    PROPOSED = "proposed"
+    ACCEPTED = "accepted"
+    DECLINED = "declined"
+    EXPIRED = "expired"
+    CANCELLED = "cancelled"
+    COMPLETED = "completed"
+
+
+class ExchangeProposalPairDecision(str, enum.Enum):
+    # Per-pair decision within a proposal -- only the pair's owning doctor
+    # (Donor.doctor_id, see K5) can move it off PENDING.
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    DECLINED = "declined"
+
+
 class Sex(str, enum.Enum):
     MALE = "male"
     FEMALE = "female"

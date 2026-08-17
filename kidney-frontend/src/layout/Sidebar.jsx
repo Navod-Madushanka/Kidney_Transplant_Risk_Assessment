@@ -1,33 +1,8 @@
 // src/layout/Sidebar.jsx
 import { NavLink } from "react-router-dom"
 import { useAuth } from "../hooks/useAuth"
-import {
-  HomeIcon,
-  PatientsIcon,
-  DonorIcon,
-  NewCheckIcon,
-  HistoryIcon,
-  ExchangeIcon,
-  AuditIcon,
-  LogoutIcon,
-  RegisterPairIcon,
-} from "../components/icons"
-
-const NAV_ITEMS = [
-  { to: "/", label: "Dashboard", icon: HomeIcon, end: true },
-  // Primary way to add people (see implementation-prompt-part-f.md F6/F7)
-  // -- the two lab documents most checks start from cover a patient and
-  // donor together, so registering them together here is the front door.
-  // /patients/new and /donors/new still exist for the unassigned-donor
-  // case (see PatientsListPage.jsx/DonorsListPage.jsx's demoted "Register
-  // individually" links).
-  { to: "/pairs/new", label: "Register Patient & Donor", icon: RegisterPairIcon },
-  { to: "/patients", label: "Patients", icon: PatientsIcon },
-  { to: "/donors", label: "Donors", icon: DonorIcon },
-  { to: "/checks/new", label: "New Check", icon: NewCheckIcon },
-  { to: "/exchange", label: "Paired Exchange", icon: ExchangeIcon },
-  { to: "/reports", label: "Reports", icon: HistoryIcon },
-]
+import { AuditIcon, LogoutIcon } from "../components/icons"
+import { NAV_ITEMS } from "./navItems"
 
 function navLinkClass({ isActive }) {
   return [
@@ -36,7 +11,7 @@ function navLinkClass({ isActive }) {
   ].join(" ")
 }
 
-export default function Sidebar() {
+export default function Sidebar({ pendingExchangeCount = 0 }) {
   const { user, logout } = useAuth()
   const isAdmin = user?.role === "admin"
 
@@ -51,7 +26,16 @@ export default function Sidebar() {
         {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
           <NavLink key={to} to={to} end={end} className={navLinkClass}>
             <Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
-            {label}
+            <span className="flex-1">{label}</span>
+            {/* K6: pending-decisions count -- a workflow badge, so accent,
+                never the clinical palette (see index.css's @theme comment:
+                clear/moderate/high-moderate/high-risk are reserved for
+                clinical status only). */}
+            {to === "/exchange" && pendingExchangeCount > 0 && (
+              <span className="min-w-5 h-5 px-1 rounded-full bg-accent text-white text-[11px] font-semibold flex items-center justify-center">
+                {pendingExchangeCount}
+              </span>
+            )}
           </NavLink>
         ))}
 

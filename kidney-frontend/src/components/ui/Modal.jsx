@@ -14,10 +14,28 @@ import { createPortal } from "react-dom"
  *     </div>
  *   </Modal>
  *
+ *   <Modal variant="sheet" open={isOpen} onClose={...} title="Exchange graph">
+ *     ...content...
+ *   </Modal>
+ *
  * Renders via a portal so it always sits above app layout regardless of where
  * it's mounted. Closes on Escape and on backdrop click; traps focus while open.
+ *
+ * variant="sheet": bottom-anchored, full-width below md (a mobile-native
+ * "sheet" rather than a centered dialog), centered max-w-md at md+ same as
+ * the default variant -- for content (e.g. the exchange graph) that's too
+ * wide/tall to reasonably center on a phone screen. Everything else about
+ * Modal (portal, Escape, backdrop click, focus trap) is identical between
+ * variants -- only the panel's position/sizing classes differ.
  */
-export default function Modal({ open, onClose, title, children, className = "" }) {
+export default function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  className = "",
+  variant = "dialog",
+}) {
   const dialogRef = useRef(null)
 
   useEffect(() => {
@@ -42,9 +60,14 @@ export default function Modal({ open, onClose, title, children, className = "" }
 
   if (!open) return null
 
+  const isSheet = variant === "sheet"
+
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      className={[
+        "fixed inset-0 z-50 flex justify-center bg-black/40",
+        isSheet ? "items-end md:items-center md:p-4" : "items-center p-4",
+      ].join(" ")}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose?.()
       }}
@@ -56,10 +79,11 @@ export default function Modal({ open, onClose, title, children, className = "" }
         aria-labelledby={title ? "modal-title" : undefined}
         tabIndex={-1}
         className={[
-          "w-full max-w-md bg-surface rounded-lg shadow-card-hover p-6",
-          "focus:outline-none",
+          "w-full bg-surface shadow-card-hover p-6 focus:outline-none",
+          isSheet ? "rounded-t-lg md:max-w-md md:rounded-lg" : "max-w-md rounded-lg",
           className,
         ].join(" ")}
+        style={isSheet ? { paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom))" } : undefined}
       >
         {title && (
           <h2 id="modal-title" className="text-[17px] font-semibold text-text mb-3">

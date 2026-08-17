@@ -13,6 +13,7 @@ const emptyForm = {
   nicNumber: "",
   sex: "unknown",
   weightKg: "",
+  dialysisStartDate: "",
 }
 
 /**
@@ -70,6 +71,7 @@ export default function PatientForm({
       nic_number: form.nicNumber.trim() || null,
       sex: formToEnum(form.sex),
       weight_kg: numberOrNull(form.weightKg),
+      dialysis_start_date: form.dialysisStartDate || null,
     }
     if (!isEdit) {
       payload.blood_type = form.bloodType
@@ -127,6 +129,13 @@ export default function PatientForm({
         helperText="Optional"
         value={form.nicNumber}
         onChange={updateField("nicNumber")}
+      />
+      <InputField
+        label="Dialysis start date"
+        type="date"
+        helperText="Optional — credits real waiting time in paired exchange matching. Falls back to registration date if left blank."
+        value={form.dialysisStartDate}
+        onChange={updateField("dialysisStartDate")}
       />
 
       <div className="pt-2 border-t border-border">
