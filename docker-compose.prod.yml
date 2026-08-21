@@ -1,0 +1,158 @@
+# docker-compose.prod.yml
+#
+# Single-host production deployment covering all five services: postgres,
+# ollama, ocr-service, kidney-backend, kidney-frontend. CPU-only by design
+# (no GPU passthrough block) -- matches ocr-service/docker-compose.yml's own
+# base file, which this reuses/extends for the ollama+ocr-service pair. GPU
+# passthrough is a *dev-machine* concern (see
+# ocr-service/docker-compose.override.yml) and has no place here.
+#
+# Usage (from the repo root):
+#   cp .env.example .env      # then fill in every value
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# kidney-backend and kidney-frontend come up as soon as postgres is healthy
+# -- they do NOT wait on ocr-service/ollama. That pair is deliberately
+# decoupled: ollama's healthcheck can take up to ~1 hour on a machine's
+# very first run while it pulls the ~3.3GB model (see the healthcheck
+# comment below), and per kidney-backend/README.md, everything except the
+# OCR photo-upload step works fine without it. Blocking the whole stack on
+# that first pull would make "does it come up" unnecessarily slow to answer.
+name: kidney-transplant-prod
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+    # Not published to the host on purpose: this machine may already have a
+    # native Postgres service on 5432 (a known conflict on at least one dev
+    # box -- see the project's postgres-container-setup notes), and nothing
+    # outside the compose network needs to reach this directly. Add a
+    # `ports:` mapping here (to a non-5432 host port) only if you need
+    # external DB access, e.g. for a one-off psql session.
+
+  ollama:
+    # Part J (J10): pinned, not :latest -- see ocr-service/docker-compose.yml
+    # for the full rationale (this is a system producing clinical output;
+    # an untracked model/decoding-behavior change on `pull` is not
+    # acceptable here). Bump deliberately, in lockstep with that file.
+    image: ollama/ollama:0.12.7
+    environment:
+      - OLLAMA_FLASH_ATTENTION=1
+      - OLLAMA_KV_CACHE_TYPE=q8_0
+      - OLLAMA_KEEP_ALIVE=-1
+      - OLLAMA_NUM_PARALLEL=1
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_MAX_QUEUE=8
+    volumes:
+      - ollama-models:/root/.ollama
+      - ./ocr-service/docker/ollama-entrypoint.sh:/ollama-entrypoint.sh:ro
+    entrypoint: ["/bin/bash", "/ollama-entrypoint.sh"]
+    healthcheck:
+      # See ocr-service/docker-compose.yml for why the retry budget is sized
+      # for a ~1 hour first-run model pull, and why interval/retries stay
+      # this generous even though a warm restart reports healthy in seconds.
+      test: ["CMD-SHELL", "ollama list | grep -q qwen3-vl:4b-nothink"]
+      interval: 15s
+      timeout: 5s
+      retries: 240
+      start_period: 30s
+    restart: unless-stopped
+    # Requested addition: bound container RAM. qwen3-vl:4b's full-precision
+    # weights are ~4.5 GiB (confirmed via Ollama's own load logs -- see
+    # ocr-service/docker-compose.yml's OLLAMA_KV_CACHE_TYPE comment), plus
+    # up to ~1.5 GiB for an 8192-context KV cache at f16 (less with the
+    # q8_0 quantization set above) and compute buffers. NUM_PARALLEL=1 /
+    # MAX_LOADED_MODELS=1 above mean that's the ceiling, not a
+    # per-request multiple. 6g leaves real headroom above the ~6 GiB
+    # legitimate peak while still catching a genuine leak or an
+    # accidental multi-model load.
+    mem_limit: 6g
+
+  ocr-service:
+    build: ./ocr-service
+    environment:
+      - OCR_SERVICE_API_KEY=${OCR_SERVICE_API_KEY}
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=qwen3-vl:4b-nothink
+    depends_on:
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=3)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
+    # Same reasoning as ocr-service/docker-compose.yml: bounds the PIL
+    # decode + tiling peak, not the model itself (that's ollama's mem_limit
+    # above). Not published to the host -- only kidney-backend calls it,
+    # over the compose network, and it's guarded by OCR_SERVICE_API_KEY
+    # regardless.
+    mem_limit: 1g
+
+  kidney-backend:
+    build: ./kidney-backend
+    # Runs migrations before every start so a fresh clone comes up with a
+    # current schema without a separate manual step -- safe on this
+    # single-worker, single-host deployment (see app/main.py's lifespan
+    # docstring for why that qualifier matters).
+    command: ["sh", "-c", "uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      # Required by Settings but not read anywhere in the app yet (reserved
+      # for future caching/rate-limiting use -- see
+      # kidney-backend/README.md). No redis service is stood up here on
+      # purpose; this placeholder just satisfies the non-optional field.
+      - REDIS_URL=redis://unused:6379/0
+      - SECRET_KEY=${SECRET_KEY}
+      - ENVIRONMENT=production
+      - CORS_ORIGINS=${CORS_ORIGINS}
+      - OCR_SERVICE_URL=http://ocr-service:8001
+      - OCR_SERVICE_API_KEY=${OCR_SERVICE_API_KEY}
+    volumes:
+      # Persists report-file attachments and the OCR upload spool across
+      # container restarts/rebuilds -- both are relative paths under ./uploads
+      # (see app/core/config.py's report_files_storage_dir/ocr_spool_dir).
+      - backend-uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "uv run python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
+
+  kidney-frontend:
+    build:
+      context: ./kidney-frontend
+      args:
+        - VITE_API_BASE_URL=${VITE_API_BASE_URL}
+    depends_on:
+      - kidney-backend
+    ports:
+      - "3000:80"
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  ollama-models:
+  backend-uploads:

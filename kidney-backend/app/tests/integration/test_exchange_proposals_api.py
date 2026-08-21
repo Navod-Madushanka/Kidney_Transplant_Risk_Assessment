@@ -10,11 +10,12 @@ from datetime import datetime, timedelta, timezone
 
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.main import app as fastapi_app
 from app.models.audit_log import AuditLog
 from app.models.exchange_proposal import ExchangeProposal
-from app.tests.conftest import _unique_email, create_donor, create_patient
+from app.tests.conftest import create_donor, create_patient, register_test_doctor
 
 MATCHING_TYPING = [
     {"locus": "A", "allele_1": "01", "allele_2": "02"},
@@ -23,20 +24,18 @@ MATCHING_TYPING = [
 ]
 
 
-async def _make_third_client() -> AsyncClient:
+async def _make_third_client(db_session: AsyncSession) -> AsyncClient:
     """A third, independent doctor -- for authorization tests where neither
     `auth_client` nor `second_auth_client` should be allowed to act (they
     both own a pair in the seeded swap)."""
     transport = ASGITransport(app=fastapi_app)
     ac = AsyncClient(transport=transport, base_url="http://test")
-    payload = {
-        "hospital_name": "Third Test Hospital",
-        "email": _unique_email(),
-        "password": "correct-horse-battery-staple",
-        "full_name": "Dr. Third Doctor",
-    }
-    assert (await ac.post("/auth/register", json=payload)).status_code == 201
-    login = await ac.post("/auth/login", json={"email": payload["email"], "password": payload["password"]})
+    credentials = await register_test_doctor(
+        db_session, hospital_name="Third Test Hospital", full_name="Dr. Third Doctor"
+    )
+    login = await ac.post(
+        "/auth/login", json={"email": credentials["email"], "password": credentials["password"]}
+    )
     assert login.status_code == 200
     ac.headers["Authorization"] = f"Bearer {login.json()['access_token']}"
     return ac
@@ -162,7 +161,7 @@ class TestCreateProposal:
 
 class TestListAndGetProposal:
     async def test_get_is_visible_to_a_doctor_who_owns_no_pair_in_it(
-        self, auth_client: AsyncClient, second_auth_client: AsyncClient
+        self, auth_client: AsyncClient, second_auth_client: AsyncClient, db_session: AsyncSession
     ):
         await _seed_two_way_swap(auth_client, second_auth_client)
         cycle = await _seeded_cycle(auth_client)
@@ -171,7 +170,7 @@ class TestListAndGetProposal:
         )
         proposal_id = create_response.json()["id"]
 
-        third_client = await _make_third_client()
+        third_client = await _make_third_client(db_session)
         try:
             response = await third_client.get(f"/exchange/proposals/{proposal_id}")
             assert response.status_code == 200
@@ -183,7 +182,7 @@ class TestListAndGetProposal:
         assert response.status_code == 404
 
     async def test_mine_filter_returns_only_proposals_with_a_pending_pair_i_own(
-        self, auth_client: AsyncClient, second_auth_client: AsyncClient
+        self, auth_client: AsyncClient, second_auth_client: AsyncClient, db_session: AsyncSession
     ):
         await _seed_two_way_swap(auth_client, second_auth_client)
         cycle = await _seeded_cycle(auth_client)
@@ -195,7 +194,7 @@ class TestListAndGetProposal:
         assert mine_response.status_code == 200
         assert len(mine_response.json()) == 1
 
-        third_client = await _make_third_client()
+        third_client = await _make_third_client(db_session)
         try:
             not_mine_response = await third_client.get(
                 "/exchange/proposals", params={"mine": "true"}
@@ -330,7 +329,7 @@ class TestDecisionEndpoint:
 
 class TestCancelEndpoint:
     async def test_requires_the_proposer_or_an_admin(
-        self, auth_client: AsyncClient, second_auth_client: AsyncClient
+        self, auth_client: AsyncClient, second_auth_client: AsyncClient, db_session: AsyncSession
     ):
         await _seed_two_way_swap(auth_client, second_auth_client)
         cycle = await _seeded_cycle(auth_client)
@@ -339,7 +338,7 @@ class TestCancelEndpoint:
         )
         proposal_id = create_response.json()["id"]
 
-        third_client = await _make_third_client()
+        third_client = await _make_third_client(db_session)
         try:
             forbidden_response = await third_client.post(f"/exchange/proposals/{proposal_id}/cancel")
             assert forbidden_response.status_code == 403

@@ -11,6 +11,7 @@ import Badge from "../components/ui/Badge"
 import Button from "../components/ui/Button"
 import Card from "../components/ui/Card"
 import EmptyState from "../components/ui/EmptyState"
+import Modal from "../components/ui/Modal"
 import Spinner from "../components/ui/Spinner"
 
 // See ExchangeProposalCard's docstring: workflow state, never the clinical
@@ -31,6 +32,12 @@ export default function ExchangeProposalDetailPage() {
   const [failed, setFailed] = useState(false)
   const [isBusy, setBusy] = useState(false)
   const [declineReason, setDeclineReason] = useState("")
+  const [actionError, setActionError] = useState("")
+  // Gates handleDecision behind a confirm step -- "accepted" | "declined" | null.
+  // Both are a one-click irreversible commitment with no undo anywhere in
+  // the workflow (accept locks this pair's side of the cycle; decline
+  // drops it out of the cycle).
+  const [confirmingDecision, setConfirmingDecision] = useState(null)
 
   const load = useCallback(() => {
     setFailed(false)
@@ -66,6 +73,7 @@ export default function ExchangeProposalDetailPage() {
 
   async function handleDecision(decision) {
     setBusy(true)
+    setActionError("")
     try {
       await decideExchangeProposalPair(
         proposalId,
@@ -74,6 +82,8 @@ export default function ExchangeProposalDetailPage() {
         decision === "declined" ? declineReason || null : null
       )
       await load()
+    } catch (err) {
+      setActionError(err.message || "Couldn't record that decision. Please try again.")
     } finally {
       setBusy(false)
     }
@@ -81,9 +91,12 @@ export default function ExchangeProposalDetailPage() {
 
   async function handleCancel() {
     setBusy(true)
+    setActionError("")
     try {
       await cancelExchangeProposal(proposalId)
       await load()
+    } catch (err) {
+      setActionError(err.message || "Couldn't cancel this proposal. Please try again.")
     } finally {
       setBusy(false)
     }
@@ -136,6 +149,12 @@ export default function ExchangeProposalDetailPage() {
         </div>
       </Card>
 
+      {actionError && (
+        <p role="alert" className="text-[13px] text-high-risk font-medium">
+          {actionError}
+        </p>
+      )}
+
       {canCancel && (
         <div>
           <Button variant="secondary" size="sm" disabled={isBusy} onClick={handleCancel}>
@@ -162,16 +181,47 @@ export default function ExchangeProposalDetailPage() {
               className="h-11 flex-1 rounded-md border border-border px-3.5 text-[15px] bg-surface text-text focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
             />
             <div className="flex gap-2 shrink-0">
-              <Button variant="secondary" disabled={isBusy} onClick={() => handleDecision("declined")}>
+              <Button
+                variant="secondary"
+                disabled={isBusy}
+                onClick={() => setConfirmingDecision("declined")}
+              >
                 Decline
               </Button>
-              <Button disabled={isBusy} onClick={() => handleDecision("accepted")}>
+              <Button disabled={isBusy} onClick={() => setConfirmingDecision("accepted")}>
                 Accept
               </Button>
             </div>
           </div>
         </div>
       )}
+
+      <Modal
+        open={Boolean(confirmingDecision)}
+        onClose={() => setConfirmingDecision(null)}
+        title={confirmingDecision === "accepted" ? "Accept this proposal?" : "Decline this proposal?"}
+      >
+        <p className="text-[15px] text-text-muted">
+          {confirmingDecision === "accepted"
+            ? "This locks in your pair's side of the cycle. It can't be undone."
+            : "This drops your pair out of this cycle. It can't be undone."}
+        </p>
+        <div className="flex justify-end gap-2 mt-6">
+          <Button variant="secondary" onClick={() => setConfirmingDecision(null)}>
+            Cancel
+          </Button>
+          <Button
+            variant={confirmingDecision === "declined" ? "destructive" : "primary"}
+            onClick={() => {
+              const decision = confirmingDecision
+              setConfirmingDecision(null)
+              handleDecision(decision)
+            }}
+          >
+            {confirmingDecision === "accepted" ? "Accept" : "Decline"}
+          </Button>
+        </div>
+      </Modal>
     </div>
   )
 }

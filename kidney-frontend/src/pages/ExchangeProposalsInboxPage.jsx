@@ -22,6 +22,7 @@ export default function ExchangeProposalsInboxPage() {
   const [proposals, setProposals] = useState(null)
   const [failed, setFailed] = useState(false)
   const [busyPairId, setBusyPairId] = useState(null)
+  const [actionError, setActionError] = useState("")
 
   const load = useCallback(() => {
     let cancelled = false
@@ -41,9 +42,12 @@ export default function ExchangeProposalsInboxPage() {
 
   async function handleDecision(proposalId, pair, decision) {
     setBusyPairId(pair.id)
+    setActionError("")
     try {
       await decideExchangeProposalPair(proposalId, pair.id, decision)
       load()
+    } catch (err) {
+      setActionError(err.message || "Couldn't record that decision. Please try again.")
     } finally {
       setBusyPairId(null)
     }
@@ -51,9 +55,12 @@ export default function ExchangeProposalsInboxPage() {
 
   async function handleCancel(proposalId) {
     setBusyPairId(proposalId)
+    setActionError("")
     try {
       await cancelExchangeProposal(proposalId)
       load()
+    } catch (err) {
+      setActionError(err.message || "Couldn't cancel this proposal. Please try again.")
     } finally {
       setBusyPairId(null)
     }
@@ -74,6 +81,12 @@ export default function ExchangeProposalsInboxPage() {
       <div className="max-w-xs">
         <SegmentedControl options={SCOPE_OPTIONS} value={scope} onChange={setScope} />
       </div>
+
+      {actionError && (
+        <p role="alert" className="text-[13px] text-high-risk font-medium">
+          {actionError}
+        </p>
+      )}
 
       {status === "loading" && (
         <div className="flex justify-center py-16">

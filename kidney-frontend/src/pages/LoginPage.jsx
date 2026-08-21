@@ -99,7 +99,7 @@ export default function LoginPage() {
         <p className="text-center text-[13px] text-text-muted mt-6">
           Need an account?{" "}
           <Link to="/register" className="text-accent font-semibold hover:text-accent-hover">
-            Register your hospital
+            Request access
           </Link>
         </p>
       </div>

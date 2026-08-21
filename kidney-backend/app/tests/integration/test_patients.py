@@ -1,9 +1,10 @@
 # app/tests/integration/test_patients.py
 from httpx import AsyncClient
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.audit_log import AuditLog
-from app.tests.conftest import create_patient, make_patient_payload
+from app.tests.conftest import create_patient, make_patient_payload, register_test_doctor
 
 
 async def test_create_patient(auth_client: AsyncClient):
@@ -33,10 +34,10 @@ async def test_duplicate_nic_for_same_doctor_returns_clean_conflict(auth_client:
     # Regression test for a real bug (found 2026-08-03): this used to crash
     # with an unhandled 500 (raw asyncpg.UniqueViolationError) instead of a
     # clean error.
-    await create_patient(auth_client, nic_number="198001610076")
+    await create_patient(auth_client, nic_number="198723456789")
 
     response = await auth_client.post(
-        "/patients", json=make_patient_payload(full_name="Someone Else", nic_number="198001610076")
+        "/patients", json=make_patient_payload(full_name="Someone Else", nic_number="198723456789")
     )
 
     assert response.status_code == 409
@@ -52,30 +53,30 @@ async def test_two_different_doctors_can_use_the_same_nic(
     # people who happen to share an NIC (or re-running the same real
     # patient's paperwork under a second doctor account) would crash. NIC
     # uniqueness is now scoped per-doctor to match the isolation model.
-    first = await create_patient(auth_client, nic_number="198001610076")
-    second = await create_patient(second_auth_client, nic_number="198001610076")
+    first = await create_patient(auth_client, nic_number="198723456789")
+    second = await create_patient(second_auth_client, nic_number="198723456789")
 
     assert first["id"] != second["id"]
-    assert first["nic_number"] == second["nic_number"] == "198001610076"
+    assert first["nic_number"] == second["nic_number"] == "198723456789"
 
 
 async def test_list_patients_returns_only_this_doctors_patients(
-    auth_client: AsyncClient, client: AsyncClient
+    auth_client: AsyncClient, client: AsyncClient, db_session: AsyncSession
 ):
     await create_patient(auth_client, full_name="Doctor A's Patient")
 
-    # A second doctor, registered independently, should see an empty list —
+    # A second doctor, provisioned independently, should see an empty list —
     # patients are scoped per doctor, not shared across the hospital.
-    other_doctor_payload = {
-        "hospital_name": "Other Hospital",
-        "email": "other-doctor@example.com",
-        "password": "another-secret-1234",
-        "full_name": "Dr. Other",
-    }
-    await client.post("/auth/register", json=other_doctor_payload)
+    other_doctor = await register_test_doctor(
+        db_session,
+        hospital_name="Other Hospital",
+        email="other-doctor@example.com",
+        password="another-secret-1234",
+        full_name="Dr. Other",
+    )
     login = await client.post(
         "/auth/login",
-        json={"email": other_doctor_payload["email"], "password": other_doctor_payload["password"]},
+        json={"email": other_doctor["email"], "password": other_doctor["password"]},
     )
     other_client_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
 
@@ -103,19 +104,21 @@ async def test_get_nonexistent_patient_is_404(auth_client: AsyncClient):
     assert response.status_code == 404
 
 
-async def test_cannot_get_another_doctors_patient(auth_client: AsyncClient, client: AsyncClient):
+async def test_cannot_get_another_doctors_patient(
+    auth_client: AsyncClient, client: AsyncClient, db_session: AsyncSession
+):
     created = await create_patient(auth_client)
 
-    other_doctor_payload = {
-        "hospital_name": "Other Hospital",
-        "email": "second-doctor@example.com",
-        "password": "another-secret-1234",
-        "full_name": "Dr. Second",
-    }
-    await client.post("/auth/register", json=other_doctor_payload)
+    other_doctor = await register_test_doctor(
+        db_session,
+        hospital_name="Other Hospital",
+        email="second-doctor@example.com",
+        password="another-secret-1234",
+        full_name="Dr. Second",
+    )
     login = await client.post(
         "/auth/login",
-        json={"email": other_doctor_payload["email"], "password": other_doctor_payload["password"]},
+        json={"email": other_doctor["email"], "password": other_doctor["password"]},
     )
     other_client_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
 

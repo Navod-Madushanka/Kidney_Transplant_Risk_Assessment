@@ -25,8 +25,23 @@ export default function ExtractionProgressList({ documentSlots, extractionDocume
   const activeSlots = documentSlots.filter(({ documentType }) => extractionDocuments[documentType])
   if (activeSlots.length === 0) return null
 
+  // Without this, a bar sitting at 1/8 for a couple of minutes reads as
+  // stuck rather than normal -- see api/ocr.js's startExtractionJob comment
+  // for where the 1.5-3 min/page figure comes from. Shown whenever anything
+  // is still in flight, not just once at the top, since that's the moment a
+  // viewer is actually watching the bar and wondering.
+  const stillRunning = activeSlots.some(({ documentType }) => {
+    const status = extractionDocuments[documentType]?.status
+    return status && status !== "done"
+  })
+
   return (
     <ul className="mt-3 flex flex-col gap-2.5">
+      {stillRunning && (
+        <li className="text-[12px] text-text-muted -mb-1">
+          This usually takes 2–3 minutes per page — a bar sitting still for a while is normal.
+        </li>
+      )}
       {activeSlots.map(({ documentType, label }) => {
         const progress = extractionDocuments[documentType]
         const isDone = progress.status === "done"

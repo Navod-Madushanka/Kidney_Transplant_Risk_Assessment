@@ -1,8 +1,10 @@
 // src/components/domain/exchange/ExchangeProposalCard.jsx
+import { useState } from "react"
 import { Link } from "react-router-dom"
 import Badge from "../../ui/Badge"
 import Button from "../../ui/Button"
 import Card from "../../ui/Card"
+import Modal from "../../ui/Modal"
 
 // K10: proposal workflow states are NOT clinical status -- every badge here
 // uses Badge's "neutral" style (bg-bg/border, no clinical hue) even though
@@ -58,6 +60,19 @@ export default function ExchangeProposalCard({
 
   const canCancel = Boolean(onCancel) && ["proposed", "accepted"].includes(proposal.status)
 
+  // Gates the actual onAccept/onDecline call behind a confirm step -- both
+  // are a one-click irreversible commitment (accept locks this pair's side
+  // of the cycle; decline drops it out of the cycle) with no undo anywhere
+  // in the workflow. { pair, decision } | null.
+  const [confirming, setConfirming] = useState(null)
+
+  function confirmAndClose() {
+    const { pair, decision } = confirming
+    setConfirming(null)
+    if (decision === "accepted") onAccept(pair)
+    else onDecline(pair)
+  }
+
   return (
     <Card>
       <Card.Header
@@ -108,11 +123,15 @@ export default function ExchangeProposalCard({
                       size="sm"
                       variant="secondary"
                       disabled={isBusy}
-                      onClick={() => onDecline(pairRow)}
+                      onClick={() => setConfirming({ pair: pairRow, decision: "declined" })}
                     >
                       Decline
                     </Button>
-                    <Button size="sm" disabled={isBusy} onClick={() => onAccept(pairRow)}>
+                    <Button
+                      size="sm"
+                      disabled={isBusy}
+                      onClick={() => setConfirming({ pair: pairRow, decision: "accepted" })}
+                    >
                       Accept
                     </Button>
                   </div>
@@ -130,6 +149,29 @@ export default function ExchangeProposalCard({
           </Button>
         </div>
       )}
+
+      <Modal
+        open={Boolean(confirming)}
+        onClose={() => setConfirming(null)}
+        title={confirming?.decision === "accepted" ? "Accept this pair?" : "Decline this pair?"}
+      >
+        <p className="text-[15px] text-text-muted">
+          {confirming?.decision === "accepted"
+            ? "This locks in your pair's side of the cycle. It can't be undone."
+            : "This drops your pair out of this cycle. It can't be undone."}
+        </p>
+        <div className="flex justify-end gap-2 mt-6">
+          <Button variant="secondary" onClick={() => setConfirming(null)}>
+            Cancel
+          </Button>
+          <Button
+            variant={confirming?.decision === "declined" ? "destructive" : "primary"}
+            onClick={confirmAndClose}
+          >
+            {confirming?.decision === "accepted" ? "Accept" : "Decline"}
+          </Button>
+        </div>
+      </Modal>
     </Card>
   )
 }

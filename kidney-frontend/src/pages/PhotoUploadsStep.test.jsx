@@ -51,7 +51,7 @@ const DONE_DOCUMENT = {
   status: "done",
   completed: 1,
   total: 1,
-  patient_details: { full_name: "Rev.A.Premarathna Thero" },
+  patient_details: { full_name: "Rev.S.Amarasinghe Thero" },
   donor_details: {},
   patient_hla: [],
   donor_hla: [],
@@ -79,7 +79,7 @@ describe("PhotoUploadsStep", () => {
     // The actual regression this replaces: extraction results must reach
     // the wizard's shared state, not just PhotoUploadsStep's own display.
     expect(await screen.findByTestId("patient-name-peek")).toHaveTextContent(
-      "Rev.A.Premarathna Thero"
+      "Rev.S.Amarasinghe Thero"
     )
   })
 
@@ -133,7 +133,7 @@ describe("PhotoUploadsStep", () => {
 
     expect(await screen.findByText("Subject Step")).toBeInTheDocument()
     expect(await screen.findByTestId("patient-name-peek")).toHaveTextContent(
-      "Rev.A.Premarathna Thero"
+      "Rev.S.Amarasinghe Thero"
     )
   })
 

@@ -12,7 +12,7 @@ pytestmark = pytest.mark.integration
 # identically in Phase 3's real production run: a genuine w/v ambiguity in
 # the source image's print itself (not a model defect -- see the migration
 # plan's Phase 1 Results). Treated as an accepted alternate, not a failure.
-_ACCEPTED_PATIENT_NAMES = {"D.G.I.D.Jeewananda", "D.G.I.D.Jeevananda"}
+_ACCEPTED_PATIENT_NAMES = {"D.G.S.K.Ratnayake", "D.G.S.K.Ratanayake"}
 
 
 async def test_crossmatch_matches_ground_truth(crossmatch_image_bytes, crossmatch_ground_truth):

@@ -1,14 +1,14 @@
 {
   "patient_details": {
-    "full_name": "Rev.A.Premarathna Thero",
-    "nic_number": "198001610076",
+    "full_name": "Rev.S.Amarasinghe Thero",
+    "nic_number": "198723456789",
     "date_of_birth": "16-Jan-1980",
     "blood_type": "B Positive",
     "hla_ref_no": "847/26M"
   },
   "donor_details": {
-    "full_name": "K.R.Bandara",
-    "nic_number": "823275544v",
+    "full_name": "K.R.Wickremasinghe",
+    "nic_number": "852741963v",
     "date_of_birth": "22-Nov-1982",
     "blood_type": "B Positive",
     "hla_ref_no": "848/26M"

@@ -1,5 +1,5 @@
 // src/pages/ExchangeProposalDetailPage.test.jsx
-import { render, screen } from "@testing-library/react"
+import { render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -114,9 +114,26 @@ describe("ExchangeProposalDetailPage", () => {
     await screen.findByText("Exchange proposal")
 
     await user.click(screen.getByRole("button", { name: "Accept" }))
+    const dialog = screen.getByRole("dialog")
+    await user.click(within(dialog).getByRole("button", { name: "Accept" }))
 
     expect(decideExchangeProposalPair).toHaveBeenCalledWith("proposal-1", "pair-a", "accepted", null)
     expect(getExchangeProposal).toHaveBeenCalledTimes(2)
+  })
+
+  it("shows an error message instead of failing silently when the decision fails", async () => {
+    getExchangeProposal.mockResolvedValue(makeProposal())
+    decideExchangeProposalPair.mockRejectedValue(new Error("Pair already decided."))
+    const user = userEvent.setup()
+
+    renderPage()
+    await screen.findByText("Exchange proposal")
+
+    await user.click(screen.getByRole("button", { name: "Accept" }))
+    const dialog = screen.getByRole("dialog")
+    await user.click(within(dialog).getByRole("button", { name: "Accept" }))
+
+    expect(await screen.findByText("Pair already decided.")).toBeInTheDocument()
   })
 
   it("sends the typed decline reason", async () => {
@@ -132,6 +149,8 @@ describe("ExchangeProposalDetailPage", () => {
       "Recipient no longer eligible"
     )
     await user.click(screen.getByRole("button", { name: "Decline" }))
+    const dialog = screen.getByRole("dialog")
+    await user.click(within(dialog).getByRole("button", { name: "Decline" }))
 
     expect(decideExchangeProposalPair).toHaveBeenCalledWith(
       "proposal-1", "pair-a", "declined", "Recipient no longer eligible"

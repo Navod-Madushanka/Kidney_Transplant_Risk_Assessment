@@ -32,6 +32,7 @@ import uuid
 
 from httpx import AsyncClient
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.audit_log import AuditLog
 from app.models.match_report import MatchReport
@@ -40,6 +41,7 @@ from app.tests.conftest import (
     COMPATIBLE_PATIENT_HLA,
     create_donor,
     create_patient,
+    register_test_doctor,
 )
 
 NEGATIVE_CROSSMATCH = {
@@ -841,7 +843,9 @@ async def test_get_nonexistent_report_is_404(auth_client: AsyncClient):
     assert response.status_code == 404
 
 
-async def test_cannot_get_another_doctors_report(auth_client: AsyncClient, client: AsyncClient):
+async def test_cannot_get_another_doctors_report(
+    auth_client: AsyncClient, client: AsyncClient, db_session: AsyncSession
+):
     patient = await create_patient(auth_client, blood_type="O")
     donor = await create_donor(auth_client, blood_type="A")
     check = await auth_client.post(
@@ -850,16 +854,16 @@ async def test_cannot_get_another_doctors_report(auth_client: AsyncClient, clien
     )
     report_id = check.json()["id"]
 
-    other_doctor_payload = {
-        "hospital_name": "Other Hospital",
-        "email": "third-doctor@example.com",
-        "password": "another-secret-1234",
-        "full_name": "Dr. Third",
-    }
-    await client.post("/auth/register", json=other_doctor_payload)
+    other_doctor = await register_test_doctor(
+        db_session,
+        hospital_name="Other Hospital",
+        email="third-doctor@example.com",
+        password="another-secret-1234",
+        full_name="Dr. Third",
+    )
     login = await client.post(
         "/auth/login",
-        json={"email": other_doctor_payload["email"], "password": other_doctor_payload["password"]},
+        json={"email": other_doctor["email"], "password": other_doctor["password"]},
     )
     other_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
 

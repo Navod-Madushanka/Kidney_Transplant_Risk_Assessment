@@ -58,6 +58,8 @@ from sqlalchemy.ext.asyncio import (  # noqa: E402
 import app.models  # noqa: E402,F401 — registers every mapped model on Base.metadata
 from app.db.base import Base  # noqa: E402
 from app.main import app as fastapi_app  # noqa: E402
+from app.services.doctor_service import create_doctor  # noqa: E402
+from app.services.hospital_service import get_or_create_hospital  # noqa: E402
 
 _test_engine = create_async_engine(os.environ["DATABASE_URL"], future=True)
 _TestSessionLocal = async_sessionmaker(_test_engine, expire_on_commit=False)
@@ -133,25 +135,32 @@ def _unique_email() -> str:
     return f"doctor-{uuid.uuid4().hex[:12]}@example.com"
 
 
-@pytest.fixture
-def register_payload() -> dict:
-    """A fresh, valid /auth/register payload. Call _unique_email() again
-    (or override the 'email' key) if a test needs more than one doctor."""
-    return {
-        "hospital_name": "Test General Hospital",
-        "email": _unique_email(),
-        "password": "correct-horse-battery-staple",
-        "full_name": "Dr. Test Doctor",
-    }
+async def register_test_doctor(
+    db_session: AsyncSession,
+    *,
+    hospital_name: str = "Test General Hospital",
+    email: str | None = None,
+    password: str = "correct-horse-battery-staple",
+    full_name: str = "Dr. Test Doctor",
+) -> dict:
+    """Creates a doctor row directly via the service layer, the same way an
+    operator provisions one now that there is no self-service /auth/register
+    endpoint (see app/api/auth.py, app/scripts/promote_admin.py). Returns
+    the plaintext credentials so the caller can log in with them."""
+    hospital = await get_or_create_hospital(db_session, hospital_name)
+    email = email or _unique_email()
+    await create_doctor(
+        db_session, hospital_id=hospital.id, email=email, password=password, full_name=full_name
+    )
+    await db_session.commit()
+    return {"hospital_name": hospital_name, "email": email, "password": password, "full_name": full_name}
 
 
 @pytest_asyncio.fixture
-async def registered_doctor(client: AsyncClient, register_payload: dict) -> dict:
-    """Registers a doctor via the real /auth/register endpoint and returns
-    the payload used (so tests have the email/password to log in with)."""
-    response = await client.post("/auth/register", json=register_payload)
-    assert response.status_code == 201, response.text
-    return register_payload
+async def registered_doctor(db_session: AsyncSession) -> dict:
+    """A doctor provisioned directly (see register_test_doctor) and its
+    plaintext credentials, so tests have someone to log in as."""
+    return await register_test_doctor(db_session)
 
 
 @pytest_asyncio.fixture
@@ -171,8 +180,8 @@ async def auth_client(client: AsyncClient, registered_doctor: dict) -> AsyncClie
 
 
 @pytest_asyncio.fixture
-async def second_auth_client() -> AsyncIterator[AsyncClient]:
-    """A second, independently-registered-and-logged-in doctor at a
+async def second_auth_client(db_session: AsyncSession) -> AsyncIterator[AsyncClient]:
+    """A second, independently-provisioned-and-logged-in doctor at a
     different hospital, on its own AsyncClient — for cross-hospital donor
     search/matching tests that need two distinct accounts talking to the
     same app/DB. Separate from `auth_client` (which wraps the shared
@@ -181,18 +190,13 @@ async def second_auth_client() -> AsyncIterator[AsyncClient]:
     """
     transport = ASGITransport(app=fastapi_app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        payload = {
-            "hospital_name": "Second Test Hospital",
-            "email": _unique_email(),
-            "password": "correct-horse-battery-staple",
-            "full_name": "Dr. Second Doctor",
-        }
-        register_response = await ac.post("/auth/register", json=payload)
-        assert register_response.status_code == 201, register_response.text
+        credentials = await register_test_doctor(
+            db_session, hospital_name="Second Test Hospital", full_name="Dr. Second Doctor"
+        )
 
         login_response = await ac.post(
             "/auth/login",
-            json={"email": payload["email"], "password": payload["password"]},
+            json={"email": credentials["email"], "password": credentials["password"]},
         )
         assert login_response.status_code == 200, login_response.text
 

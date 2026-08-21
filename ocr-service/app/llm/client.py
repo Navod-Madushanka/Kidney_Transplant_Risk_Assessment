@@ -25,18 +25,32 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-REQUEST_TIMEOUT_SECONDS = 180.0  # Widened 2026-08-01 after a real run: the FIRST
-                                   # request after a container (re)start has to pay a
-                                   # one-time cost loading the model into memory
+REQUEST_TIMEOUT_SECONDS = 300.0  # Widened 2026-08-01 (120->180) after a real run: the
+                                   # FIRST request after a container (re)start has to pay
+                                   # a one-time cost loading the model into memory
                                    # (observed ~88s on CPU) on top of actual
                                    # generation time, which blew past the original
                                    # 120s budget with little margin left for
                                    # generation. That load cost isn't paid again for
-                                   # OLLAMA_KEEP_ALIVE's duration (5 min default), so
-                                   # this padding mostly matters for the first call.
-                                   # Also see docker-compose.override.yml — running
-                                   # without GPU passthrough is the bigger factor in
-                                   # slow inference than this timeout value.
+                                   # OLLAMA_KEEP_ALIVE's duration, so this padding
+                                   # mostly matters for the first call.
+                                   #
+                                   # Widened again 2026-08-19 (180->300): confirmed via
+                                   # Ollama's own load log that a freshly-pulled
+                                   # ollama/ollama:0.12.7 places this vision model's
+                                   # compute graph (not just weights) partly on CPU on
+                                   # this RTX 2060 (6GB) -- decode dropped from a
+                                   # previously-measured ~45-50 tok/s to ~15-23 tok/s,
+                                   # and a single HLA-typing call genuinely timed out at
+                                   # 180s (confirmed via ollama's own gin log: the
+                                   # request ran the full 3m0s before the client gave up
+                                   # and Ollama logged it as a 500). This is a stopgap,
+                                   # not a fix -- extraction correctness/quality is
+                                   # unaffected (num_ctx/num_predict/schema unchanged),
+                                   # only how long a slow-but-working call is allowed to
+                                   # run before being treated as hung. The real fix
+                                   # (why this GPU no longer fits the compute graph it
+                                   # used to) is still open.
 
 # CONFIRMED ROOT CAUSE (verified 2026-07-31 against ollama/ollama#13353,
 # #14798, #14645): "think": false in the request payload is silently

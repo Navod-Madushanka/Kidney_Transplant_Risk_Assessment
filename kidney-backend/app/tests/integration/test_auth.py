@@ -2,28 +2,22 @@
 from httpx import AsyncClient
 
 
-async def test_register_creates_doctor_and_returns_token(client: AsyncClient, register_payload):
-    response = await client.post("/auth/register", json=register_payload)
+async def test_register_endpoint_does_not_exist(client: AsyncClient):
+    # Closed 2026-08-21: self-service signup is a real exposure risk (any
+    # network-reachable client could create a doctor account), so there is
+    # no route to hit at all -- see app/api/auth.py and
+    # app/scripts/promote_admin.py for how accounts are provisioned now.
+    response = await client.post(
+        "/auth/register",
+        json={
+            "hospital_name": "Anyone's Hospital",
+            "email": "anyone@example.com",
+            "password": "whatever123",
+            "full_name": "Anyone",
+        },
+    )
 
-    assert response.status_code == 201
-    body = response.json()
-    assert "access_token" in body
-    assert body["token_type"] == "bearer"
-
-
-async def test_register_duplicate_email_is_rejected(client: AsyncClient, register_payload):
-    first = await client.post("/auth/register", json=register_payload)
-    assert first.status_code == 201
-
-    second = await client.post("/auth/register", json=register_payload)
-
-    assert second.status_code == 400
-
-
-async def test_register_rejects_missing_fields(client: AsyncClient):
-    response = await client.post("/auth/register", json={"email": "incomplete@example.com"})
-
-    assert response.status_code == 422
+    assert response.status_code == 404
 
 
 async def test_login_with_correct_credentials_returns_token(

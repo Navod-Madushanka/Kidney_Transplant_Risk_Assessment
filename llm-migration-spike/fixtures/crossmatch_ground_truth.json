@@ -2,15 +2,15 @@
   "_source_image": "sample_simple.jpg (Histocompatibility Report, National Hospital - Kandy)",
   "_confidence": "high — short, sparse, high-contrast document, transcribed directly by eye with no ambiguity.",
   "patient_details": {
-    "full_name": "D.G.I.D.Jeewananda",
-    "nic_number": "765811562V",
+    "full_name": "D.G.S.K.Ratnayake",
+    "nic_number": "742963851V",
     "date_of_birth": "21.03.1976",
     "blood_type": "B Positive",
     "hla_ref_no": "102/26"
   },
   "donor_details": {
-    "full_name": "J.A.R.Kumara",
-    "nic_number": "199315003570",
+    "full_name": "J.A.S.Fernando",
+    "nic_number": "199834567123",
     "date_of_birth": "29.05.1993",
     "blood_type": "B Positive",
     "hla_ref_no": "103/26"

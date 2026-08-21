@@ -218,6 +218,18 @@ async def extract_bead_specificity_stream(
                 result = await chat_json(
                     settings.ollama_model, settings.ollama_base_url, BEAD_SPECIFICITY_PROMPT, _b64(tile_bytes),
                     label=f"bead_specificity tile {index + 1}/{total}",
+                    # Tried lowering this to 6144 (2026-08-19) to chase a
+                    # measured ~3x decode slowdown (see the ollama container's
+                    # load log: compute graph landing on CPU rather than GPU
+                    # on a freshly reloaded model). Reverted -- confirmed via
+                    # the same load log that the CPU-resident compute graph
+                    # stayed ~4.2 GiB at both 8192 and 6144, so it's not the
+                    # text KV cache scaling with context length driving this;
+                    # almost certainly this vision-language model's image-
+                    # processing buffers, which num_ctx doesn't touch. Not
+                    # worth the truncation risk on large tiles for no
+                    # measured speed benefit. Root cause of the slowdown
+                    # itself is still open -- see project memory.
                     num_ctx=8192, num_predict=1536, schema=BEAD_SPECIFICITY_SCHEMA,
                 )
                 rows = result.get("bead_specificity", [])

@@ -16,11 +16,18 @@ import PatientForm from "../components/domain/patient/PatientForm"
 import DonorForm from "../components/domain/donor/DonorForm"
 import HlaTypingEditor from "../components/domain/hla/HlaTypingEditor"
 
-// Only the two joint documents are extracted -- see
-// implementation-prompt-part-f.md F5.1/F6. The bead specificity pages are
-// storage-only here: several minutes per page to read and not needed to
-// create a record, so they're archived to the patient for the
-// compatibility check to read later instead.
+// Only the two joint documents are extracted synchronously, in the form
+// above -- see implementation-prompt-part-f.md F5.1/F6. F12 originally
+// specified the bead specificity pages as storage-only at registration
+// time (several minutes per page, not needed to create the record), but
+// that was never actually implemented: handleRegister below kicks off a
+// real background extraction job for them immediately after registration
+// succeeds, unattended (see its own comment). The copy in DOCUMENT_SLOTS
+// below was left describing the F12 behavior instead of the shipped one --
+// fixed to say what actually happens. Whether bead charts SHOULD be read
+// this early is a clinical-workflow question for the doctors, not
+// something to decide here; this only makes the UI stop contradicting the
+// code.
 const DOCUMENT_SLOTS = [
   {
     slot: "hlaTypingReport",
@@ -39,13 +46,13 @@ const DOCUMENT_SLOTS = [
   {
     slot: "beadSpecificityPage1",
     label: "Bead Specificity Chart — Page 1",
-    helperText: "Stored for the compatibility check — not read now",
+    helperText: "Read automatically in the background after you register — no need to wait here",
     extractable: false,
   },
   {
     slot: "beadSpecificityPage2",
     label: "Bead Specificity Chart — Page 2",
-    helperText: "Stored for the compatibility check — not read now",
+    helperText: "Read automatically in the background after you register — no need to wait here",
     extractable: false,
   },
 ]

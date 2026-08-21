@@ -647,7 +647,7 @@ export default function ReportDetailPage() {
   const outcome = report.outcome
 
   return (
-    <div className="flex flex-col gap-6 max-w-2xl">
+    <div className="flex flex-col gap-6 max-w-2xl mx-auto">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-[19px] sm:text-[22px] font-bold text-text break-words">Compatibility report</h1>

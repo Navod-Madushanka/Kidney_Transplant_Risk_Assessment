@@ -54,20 +54,6 @@ export function AuthProvider({ children }) {
     [applySession]
   );
 
-  // Updated: Register no longer logs the user in automatically
-  const register = useCallback(
-    async ({ email, password, fullName, hospitalName }) => {
-      await apiPost("/auth/register", {
-        email,
-        password,
-        full_name: fullName,
-        hospital_name: hospitalName,
-      });
-      // No applySession() → user will be redirected to login page
-    },
-    []
-  );
-
   const logout = useCallback(() => {
     clearSession();
     dispatch({ type: "UNAUTHENTICATED" });
@@ -89,7 +75,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ ...state, login, register, logout }}>
+    <AuthContext.Provider value={{ ...state, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

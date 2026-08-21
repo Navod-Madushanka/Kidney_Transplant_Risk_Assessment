@@ -1,5 +1,5 @@
 // src/pages/ExchangeProposalsInboxPage.test.jsx
-import { render, screen } from "@testing-library/react"
+import { render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -110,11 +110,28 @@ describe("ExchangeProposalsInboxPage", () => {
     await screen.findByText(/2 pairs/)
 
     await user.click(screen.getByRole("button", { name: "Accept" }))
+    const dialog = screen.getByRole("dialog")
+    await user.click(within(dialog).getByRole("button", { name: "Accept" }))
 
     expect(decideExchangeProposalPair).toHaveBeenCalledWith(
       "proposal-1", "pair-a", "accepted"
     )
     expect(listExchangeProposals).toHaveBeenCalledTimes(2)
+  })
+
+  it("shows an error message instead of failing silently when the decision fails", async () => {
+    listExchangeProposals.mockResolvedValue([PROPOSAL])
+    decideExchangeProposalPair.mockRejectedValue(new Error("Pair already decided."))
+    const user = userEvent.setup()
+
+    renderPage()
+    await screen.findByText(/2 pairs/)
+
+    await user.click(screen.getByRole("button", { name: "Accept" }))
+    const dialog = screen.getByRole("dialog")
+    await user.click(within(dialog).getByRole("button", { name: "Accept" }))
+
+    expect(await screen.findByText("Pair already decided.")).toBeInTheDocument()
   })
 
   it("shows Cancel proposal only for the proposal's own proposer", async () => {

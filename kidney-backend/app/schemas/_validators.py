@@ -7,7 +7,7 @@ def normalize_nic(value: str | None) -> str | None:
     and OCR output converge on one case for the same person -- the active-
     row uniqueness indexes (ix_donors_nic_number_active_unique,
     uq_patients_doctor_id_nic_number_active) are exact-match and
-    case-sensitive, so "823275544v" and "823275544V" would otherwise be
+    case-sensitive, so "852741963v" and "852741963V" would otherwise be
     treated as two different people.
 
     Deliberately does NOT attempt old-format-to-new-format conversion --

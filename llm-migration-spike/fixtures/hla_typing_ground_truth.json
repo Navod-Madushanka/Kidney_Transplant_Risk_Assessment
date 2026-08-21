@@ -2,15 +2,15 @@
   "_source_image": "sample.jpg (HLA Typing Report, National Blood Transfusion Service Sri Lanka)",
   "_confidence": "high — verified this session by running the actual patched extract_hla()/extract_demographics() against the real raw OCR text/box data and cross-checking every field against the printed report by eye. Treat this fixture as authoritative.",
   "patient_details": {
-    "full_name": "Rev.A.Premarathna Thero",
-    "nic_number": "198001610076",
+    "full_name": "Rev.S.Amarasinghe Thero",
+    "nic_number": "198723456789",
     "date_of_birth": "16-Jan-1980",
     "blood_type": "B Positive",
     "hla_ref_no": "847/26M"
   },
   "donor_details": {
-    "full_name": "K.R.Bandara",
-    "nic_number": "823275544v",
+    "full_name": "K.R.Wickremasinghe",
+    "nic_number": "852741963v",
     "date_of_birth": "22-Nov-1982",
     "blood_type": "B Positive",
     "hla_ref_no": "848/26M"

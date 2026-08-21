@@ -9,7 +9,12 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR /app
 
-COPY pyproject.toml uv.lock ./
+# README.md must be copied before `uv sync` -- pyproject.toml declares it as
+# the package readme (readme = "README.md"), and this single `uv sync` step
+# both installs deps AND builds+installs the project itself (unlike
+# kidney-backend's two-step Dockerfile), so hatchling's metadata validation
+# runs here and fails with "Readme file does not exist" without it.
+COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-dev
 
 COPY app/ ./app/

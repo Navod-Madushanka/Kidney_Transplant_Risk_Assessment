@@ -1,5 +1,5 @@
 // src/components/domain/exchange/ExchangeProposalCard.test.jsx
-import { render, screen } from "@testing-library/react"
+import { render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter } from "react-router-dom"
 import { describe, expect, it, vi } from "vitest"
@@ -78,9 +78,29 @@ describe("ExchangeProposalCard", () => {
     expect(acceptButtons).toHaveLength(1)
 
     await userEvent.click(acceptButtons[0])
+    // Accept/decline is irreversible and gated behind a confirm dialog --
+    // the first click only opens it, onAccept isn't called yet.
+    expect(onAccept).not.toHaveBeenCalled()
+
+    const dialog = screen.getByRole("dialog")
+    await userEvent.click(within(dialog).getByRole("button", { name: "Accept" }))
+
     expect(onAccept).toHaveBeenCalledWith(
       expect.objectContaining({ id: "pair-a", donor_id: "donor-a" })
     )
+  })
+
+  it("closes the confirm dialog without acting if Cancel is clicked", async () => {
+    const onAccept = vi.fn()
+    const onDecline = vi.fn()
+    renderCard({ onAccept, onDecline })
+
+    await userEvent.click(screen.getByRole("button", { name: "Decline" }))
+    const dialog = screen.getByRole("dialog")
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }))
+
+    expect(onDecline).not.toHaveBeenCalled()
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
   })
 
   it("does not show decision actions once the proposal is no longer proposed", () => {

@@ -1,70 +1,8 @@
 // src/pages/RegisterPage.jsx
-import { useState } from "react"
-import { Link, useNavigate } from "react-router-dom"
-import { useAuth } from "../hooks/useAuth"
-import { ApiError } from "../api/client"
+import { Link } from "react-router-dom"
 import Card from "../components/ui/Card"
-import InputField from "../components/ui/InputField"
-import Button from "../components/ui/Button"
 
 export default function RegisterPage() {
-  const { register } = useAuth()
-  const navigate = useNavigate()
-
-  const [form, setForm] = useState({
-    fullName: "",
-    email: "",
-    password: "",
-    confirmPassword: "",
-  })
-
-  const [errors, setErrors] = useState({})
-  const [formError, setFormError] = useState("")
-  const [isSubmitting, setIsSubmitting] = useState(false)
-
-  function updateField(field) {
-    return (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }))
-  }
-
-  function validate() {
-    const next = {}
-    if (!form.fullName.trim()) next.fullName = "Your full name is required"
-    if (!form.email.trim()) next.email = "Email is required"
-    if (!form.password) next.password = "Password is required"
-    else if (form.password.length < 8) next.password = "Password must be at least 8 characters"
-    if (form.confirmPassword !== form.password) next.confirmPassword = "Passwords don't match"
-    setErrors(next)
-    return Object.keys(next).length === 0
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault()
-    setFormError("")
-    if (!validate()) return
-
-    setIsSubmitting(true)
-    try {
-      await register({
-        email: form.email.trim(),
-        password: form.password,
-        fullName: form.fullName.trim(),
-        hospitalName: "Kandy National Hospital Sri Lanka",
-      })
-
-      // Success: silently redirect to login
-      navigate("/login", { replace: true })
-
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 400) {
-        setFormError(err.message || "An account with this email already exists.")
-      } else {
-        setFormError("Something went wrong. Please try again.")
-      }
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-bg px-4 py-10">
       <div className="w-full max-w-sm">
@@ -74,58 +12,12 @@ export default function RegisterPage() {
         </div>
 
         <Card>
-          <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
-            <InputField
-              label="Hospital name"
-              value="Kandy National Hospital Sri Lanka"
-              disabled
-              required
-            />
-            <InputField
-              label="Your full name"
-              value={form.fullName}
-              onChange={updateField("fullName")}
-              error={errors.fullName}
-              required
-            />
-            <InputField
-              label="Email"
-              type="email"
-              autoComplete="username"
-              value={form.email}
-              onChange={updateField("email")}
-              error={errors.email}
-              required
-            />
-            <InputField
-              label="Password"
-              type="password"
-              autoComplete="new-password"
-              value={form.password}
-              onChange={updateField("password")}
-              error={errors.password}
-              required
-            />
-            <InputField
-              label="Confirm password"
-              type="password"
-              autoComplete="new-password"
-              value={form.confirmPassword}
-              onChange={updateField("confirmPassword")}
-              error={errors.confirmPassword}
-              required
-            />
-
-            {formError && (
-              <p role="alert" className="text-[13px] text-high-risk font-medium">
-                {formError}
-              </p>
-            )}
-
-            <Button type="submit" loading={isSubmitting} className="w-full mt-2">
-              Create account
-            </Button>
-          </form>
+          <div className="flex flex-col gap-3 text-center">
+            <p className="text-[15px] font-semibold text-text">Self-registration is disabled</p>
+            <p className="text-[13px] text-text-muted">
+              Contact your system administrator to request an account.
+            </p>
+          </div>
         </Card>
 
         <p className="text-center text-[13px] text-text-muted mt-6">

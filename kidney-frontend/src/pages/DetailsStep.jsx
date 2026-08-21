@@ -208,7 +208,16 @@ export default function DetailsStep() {
         <Button variant="secondary" onClick={() => navigate("/checks/new/subject")}>
           Back
         </Button>
-        <Button size="lg" onClick={handleContinue}>
+        <Button
+          size="lg"
+          onClick={handleContinue}
+          disabled={Boolean(patientBloodConflict || donorBloodConflict)}
+          title={
+            patientBloodConflict || donorBloodConflict
+              ? "Resolve the blood group conflict above before continuing"
+              : undefined
+          }
+        >
           Continue
         </Button>
       </div>
