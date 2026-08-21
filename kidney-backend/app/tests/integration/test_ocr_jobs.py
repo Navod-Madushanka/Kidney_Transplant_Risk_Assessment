@@ -66,7 +66,9 @@ def _fake_call_ocr_service_stream(structured_by_document_type, total_tiles=3):
     return _fake
 
 
-async def _await_job_done(auth_client: AsyncClient, job_id: str, attempts: int = 20, delay: float = 0.05) -> dict:
+async def _await_job_done(
+    auth_client: AsyncClient, job_id: str, attempts: int = 20, delay: float = 0.05
+) -> dict:
     # The job is scheduled via asyncio.create_task, not FastAPI's
     # BackgroundTasks (see ocr_job_service.schedule_extraction_job's
     # docstring for why) -- so unlike a BackgroundTasks-driven job, the
@@ -126,7 +128,9 @@ async def test_job_reaches_done_with_hydrated_data(monkeypatch, auth_client: Asy
     assert doc["patient_hla"] == [{"locus": "A", "allele_1": "29", "allele_2": "33"}]
 
 
-async def test_document_level_failure_does_not_fail_whole_job(monkeypatch, auth_client: AsyncClient):
+async def test_document_level_failure_does_not_fail_whole_job(
+    monkeypatch, auth_client: AsyncClient
+):
     # Regression guard: one document's OCR call blowing up must still let
     # the job (and any other document in the same batch) reach "done" --
     # matching stream_batch_extraction's existing per-document error

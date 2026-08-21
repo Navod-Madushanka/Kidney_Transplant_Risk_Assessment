@@ -88,7 +88,18 @@ async def search_compatible_donors(
             donor_typing_entries.get(donor.id, []), MISMATCH_COUNTED_LOCI
         )
         mismatch_result = calculate_mismatch_result(patient_typing, donor_typing)
-        if mismatch_result.is_halted:
+        # is_halted alone used to double as "exclude this candidate" AND
+        # "exclude an untyped pairing", since worst-casing 3 missing loci
+        # summed to exactly MAX_ACCEPTABLE_MISMATCHES. is_halted no longer
+        # fires on imputed data by itself (see hla_mismatch_service.py's
+        # data_completeness gate -- a real, measured 6/6 must never look
+        # identical to "we don't actually know"), so that side effect is
+        # gone and has to be checked for explicitly: an incomplete-typing
+        # pairing still isn't a real candidate to show a doctor searching
+        # for a donor, it's just unknown rather than disqualified --
+        # data_completeness excludes it here instead of it falling through
+        # with what would look like an ordinary, if high, mismatch count.
+        if mismatch_result.is_halted or not mismatch_result.data_completeness:
             continue
 
         candidates.append(

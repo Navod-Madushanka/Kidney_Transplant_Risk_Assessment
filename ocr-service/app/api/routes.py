@@ -2,7 +2,7 @@
 import asyncio
 import json
 
-from fastapi import APIRouter, UploadFile, File, Form, Header, HTTPException
+from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
 from app.core.config import settings

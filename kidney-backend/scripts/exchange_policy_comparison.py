@@ -26,7 +26,15 @@ from pathlib import Path
 
 from app.models.donor import Donor
 from app.models.donor_hla_typing import DonorHLATyping
-from app.models.enums import BloodType, DonorStatus, HLALocusEnum, Race, RhFactor, Sex, SmokingStatus
+from app.models.enums import (
+    BloodType,
+    DonorStatus,
+    HLALocusEnum,
+    Race,
+    RhFactor,
+    Sex,
+    SmokingStatus,
+)
 from app.models.patient import Patient
 from app.models.patient_hla_typing import PatientHLATyping
 from app.reference_data.abo_compatibility import ABO_COMPATIBILITY

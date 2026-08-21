@@ -24,13 +24,29 @@ MISMATCH_RESULT_INCOMPLETE = {
     "data_completeness": False,
     "missing_inputs": ["donor DRB1 typing"],
 }
-PRA_BUCKET_LOW = {"bucket_name": "<30%", "percent": 10.0, "is_halted": False, "has_sufficient_data": True}
-PRA_BUCKET_HIGH = {"bucket_name": ">60%", "percent": 75.0, "is_halted": False, "has_sufficient_data": True}
+PRA_BUCKET_LOW = {
+    "bucket_name": "<30%",
+    "percent": 10.0,
+    "is_halted": False,
+    "has_sufficient_data": True,
+}
+PRA_BUCKET_HIGH = {
+    "bucket_name": ">60%",
+    "percent": 75.0,
+    "is_halted": False,
+    "has_sufficient_data": True,
+}
 DSA_CLEAR = {"is_halted": False, "requires_review": False, "matches": []}
 DSA_REVIEW = {
     "is_halted": False,
     "requires_review": True,
     "matches": [{"antigen": "B44", "mfi": 2500, "severity": "moderate", "warning_message": "..."}],
+}
+DSA_UNMAPPED_ANTIBODY = {
+    "is_halted": False,
+    "requires_review": True,
+    "matches": [],
+    "unmapped_antibodies": [{"antigen": "B*44:02", "mfi": 12000.0, "reason": "..."}],
 }
 
 
@@ -52,7 +68,10 @@ def test_every_overall_status_produces_a_non_null_outcome_with_a_valid_verdict(o
         mismatch_result=MISMATCH_RESULT_COMPLETE,
         pra_bucket_result=PRA_BUCKET_LOW,
         dsa_result=DSA_CLEAR,
-        crossmatch_result={"is_positive": overall_status == "halted_crossmatch_positive", "is_halted": overall_status == "halted_crossmatch_positive"},
+        crossmatch_result={
+            "is_positive": overall_status == "halted_crossmatch_positive",
+            "is_halted": overall_status == "halted_crossmatch_positive",
+        },
         final_risk_level="Low Risk" if overall_status == "completed" else None,
     )
     assert outcome is not None
@@ -129,6 +148,28 @@ def test_row_5_completed_with_review_flag_is_proceed_with_caution():
     assert outcome.verdict == VERDICT_PROCEED_CAUTION
     assert outcome.risk_level == "Low-Average Risk"
     assert any(flag["code"] == "dsa_requires_review" for flag in outcome.review_flags)
+
+
+def test_unmapped_antibody_is_a_visible_review_flag_not_dropped():
+    # Regression: an antibody the DSA check couldn't map to any donor
+    # antigen (e.g. entered allele-level) must never look identical to "no
+    # antibody against this donor" -- it has to surface as its own review
+    # flag naming the antigen and MFI, distinct from the ordinary
+    # weak/moderate DSA-match flag.
+    outcome = build_report_outcome(
+        overall_status="completed",
+        abo_result=ABO_RESULT,
+        mismatch_result=MISMATCH_RESULT_COMPLETE,
+        pra_bucket_result=PRA_BUCKET_LOW,
+        dsa_result=DSA_UNMAPPED_ANTIBODY,
+        final_risk_level="Low Risk",
+    )
+    assert outcome.verdict == VERDICT_PROCEED_CAUTION
+    flag_codes = [flag["code"] for flag in outcome.review_flags]
+    assert "unmapped_antibody" in flag_codes
+    unmapped_flag = next(f for f in outcome.review_flags if f["code"] == "unmapped_antibody")
+    assert "B*44:02" in unmapped_flag["detail"]
+    assert "12000" in unmapped_flag["detail"]
 
 
 def test_row_6_completed_with_no_flags_is_compatible():

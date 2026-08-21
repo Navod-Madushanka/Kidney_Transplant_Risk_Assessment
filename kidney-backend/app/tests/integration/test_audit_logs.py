@@ -18,7 +18,7 @@ from app.services.abo_service import ABOResult
 from app.services.audit_service import GENESIS_HASH, compute_audit_hash, create_audit_log
 from app.services.match_pipeline import MatchPipelineResult
 from app.services.match_report_service import create_match_report
-from app.tests.conftest import create_donor, create_patient
+from app.tests.conftest import create_donor, create_patient, type_patient_and_donor_hla
 
 
 async def _promote_to_admin(db_session: AsyncSession) -> None:
@@ -34,6 +34,7 @@ async def test_running_a_check_writes_a_verifiable_audit_entry(
 ):
     patient = await create_patient(auth_client, blood_type="O")
     donor = await create_donor(auth_client, blood_type="A")  # ABO-incompatible -> halts fast
+    await type_patient_and_donor_hla(auth_client, patient["id"], donor["id"])
 
     response = await auth_client.post(
         "/compatibility/check",
@@ -90,6 +91,7 @@ async def test_list_audit_logs_requires_admin(auth_client: AsyncClient, db_sessi
 
     patient = await create_patient(auth_client, blood_type="O")
     donor = await create_donor(auth_client, blood_type="A")
+    await type_patient_and_donor_hla(auth_client, patient["id"], donor["id"])
     await auth_client.post(
         "/compatibility/check",
         json={"patient_id": patient["id"], "donor_id": donor["id"]},
@@ -102,19 +104,24 @@ async def test_list_audit_logs_requires_admin(auth_client: AsyncClient, db_sessi
     assert body["rows"][0]["seq"] > body["rows"][-1]["seq"]  # newest first
 
 
-async def test_verify_detects_a_rewritten_row_id(auth_client: AsyncClient, db_session: AsyncSession):
+async def test_verify_detects_a_rewritten_row_id(
+    auth_client: AsyncClient, db_session: AsyncSession
+):
     # Review #2 bug 16: the row's own id wasn't part of the hash digest --
     # rewriting it (e.g. swapping which row is which) touched no hashed
     # field and used to pass verification.
     patient = await create_patient(auth_client, blood_type="O")
     donor = await create_donor(auth_client, blood_type="A")
+    await type_patient_and_donor_hla(auth_client, patient["id"], donor["id"])
     await auth_client.post(
         "/compatibility/check",
         json={"patient_id": patient["id"], "donor_id": donor["id"]},
     )
 
     row = (
-        await db_session.execute(select(AuditLog).where(AuditLog.action == "ran_compatibility_check"))
+        await db_session.execute(
+            select(AuditLog).where(AuditLog.action == "ran_compatibility_check")
+        )
     ).scalar_one()
     await db_session.execute(
         text("UPDATE audit_logs SET id = :new_id WHERE id = :old_id"),
@@ -128,16 +135,22 @@ async def test_verify_detects_a_rewritten_row_id(auth_client: AsyncClient, db_se
     assert verify_response.json()["is_valid"] is False
 
 
-async def test_verify_endpoint_detects_tampering(auth_client: AsyncClient, db_session: AsyncSession):
+async def test_verify_endpoint_detects_tampering(
+    auth_client: AsyncClient, db_session: AsyncSession
+):
     patient = await create_patient(auth_client, blood_type="O")
     donor = await create_donor(auth_client, blood_type="A")
+    await type_patient_and_donor_hla(auth_client, patient["id"], donor["id"])
     await auth_client.post(
         "/compatibility/check",
         json={"patient_id": patient["id"], "donor_id": donor["id"]},
     )
 
     await db_session.execute(
-        text("UPDATE audit_logs SET action = 'tampered_action' WHERE action = 'ran_compatibility_check'")
+        text(
+            "UPDATE audit_logs SET action = 'tampered_action' "
+            "WHERE action = 'ran_compatibility_check'"
+        )
     )
     await db_session.commit()
     await _promote_to_admin(db_session)
@@ -159,6 +172,7 @@ async def test_verify_detects_a_deleted_middle_row_via_seq_gap(
     is really targeting (see its reason string below)."""
     patient = await create_patient(auth_client, blood_type="O")
     donor = await create_donor(auth_client, blood_type="A")
+    await type_patient_and_donor_hla(auth_client, patient["id"], donor["id"])
     await auth_client.post(
         "/compatibility/check",
         json={"patient_id": patient["id"], "donor_id": donor["id"]},
@@ -253,6 +267,7 @@ async def test_verify_does_not_yet_catch_a_deleted_tail_row(
     papered over by a future change to verify_audit_chain."""
     patient = await create_patient(auth_client, blood_type="O")
     donor = await create_donor(auth_client, blood_type="A")
+    await type_patient_and_donor_hla(auth_client, patient["id"], donor["id"])
     await auth_client.post(
         "/compatibility/check",
         json={"patient_id": patient["id"], "donor_id": donor["id"]},
@@ -292,7 +307,9 @@ async def test_match_report_and_audit_entry_share_one_transaction(
         abo_result=ABOResult(is_compatible=False, recipient_type="O", donor_type="A"),
     )
 
-    report = await create_match_report(db_session, patient_id, donor_id, pipeline_result, commit=False)
+    report = await create_match_report(
+        db_session, patient_id, donor_id, pipeline_result, commit=False
+    )
     await create_audit_log(
         db_session,
         doctor_id=uuid.uuid4(),

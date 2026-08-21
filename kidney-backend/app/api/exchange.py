@@ -21,7 +21,11 @@ from app.schemas.exchange import (
 )
 from app.services.audit_service import create_audit_log
 from app.services.exchange_explanation_service import compute_pair_match_explanations
-from app.services.exchange_graph_service import ExchangeGraph, build_exchange_graph, load_exchange_pool
+from app.services.exchange_graph_service import (
+    ExchangeGraph,
+    build_exchange_graph,
+    load_exchange_pool,
+)
 from app.services.exchange_matching_service import (
     WEIGHT_POLICIES,
     SelectedCycle,
@@ -30,6 +34,8 @@ from app.services.exchange_matching_service import (
     solve_exchange_matching,
     solve_exchange_matching_all_policies,
     uses_dialysis_start_date,
+)
+from app.services.exchange_matching_service import (
     wait_days as patient_wait_days,
 )
 
@@ -53,7 +59,9 @@ def _node_responses(graph: ExchangeGraph) -> list[ExchangeNodeResponse]:
             patient_doctor_full_name=node.patient_doctor_full_name,
             patient_doctor_email=node.patient_doctor_email,
             patient_wait_source=(
-                "dialysis_start_date" if uses_dialysis_start_date(node.patient) else "created_at_fallback"
+                "dialysis_start_date"
+                if uses_dialysis_start_date(node.patient)
+                else "created_at_fallback"
             ),
         )
         for node in graph.nodes

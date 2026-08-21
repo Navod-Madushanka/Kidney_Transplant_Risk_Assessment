@@ -19,6 +19,10 @@ to fall through it. MismatchResult.data_completeness reflects whether any
 locus had to be scored this way, so callers (e.g. the Step 7 final risk
 classification in match_pipeline.py) can refuse to present a risk level
 built on incomplete typing data rather than showing a falsely favorable one.
+The same flag gates is_halted below: worst-casing three untyped loci sums to
+exactly MAX_ACCEPTABLE_MISMATCHES, so without this gate incomplete typing
+would halt the pipeline as a confirmed reject rather than an unmeasured
+result -- see the comment on is_halted's computation.
 
 MismatchResult.missing_inputs names exactly which side(s)/locus/loci were
 absent (e.g. "donor DRB1 typing"), so a caller presenting a "cannot assess"
@@ -108,7 +112,17 @@ def calculate_mismatch_result(
     # unreachable. MAX_ACCEPTABLE_MISMATCHES is the first count that
     # rejects, not the last one that still passes -- see the comment on it
     # in mismatch_buckets.py.
-    is_halted = total_mismatches >= MAX_ACCEPTABLE_MISMATCHES
+    #
+    # data_completeness gates is_halted too: three untyped loci impute to
+    # MAX_MISMATCHES_PER_LOCUS x 3 = 6, i.e. exactly MAX_ACCEPTABLE_MISMATCHES,
+    # so an unhalted `>=` check alone would reject pairings on imputed data
+    # as if they were a measured 6/6 mismatch -- reported as "Not Compatible"
+    # with no hint the number was invented rather than counted. A halt here
+    # must be a real, measured result; incomplete typing instead falls
+    # through to Step 7's "cannot assess" path (see build_report_outcome's
+    # Row 3 in report_outcome_service.py), which is reachable specifically
+    # because overall_status never becomes halted_mismatch_reject for it.
+    is_halted = data_completeness and total_mismatches >= MAX_ACCEPTABLE_MISMATCHES
 
     return MismatchResult(
         total_mismatches=total_mismatches,

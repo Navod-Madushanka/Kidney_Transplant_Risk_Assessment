@@ -20,7 +20,7 @@ fields.
 """
 import asyncio
 import base64
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 from app.core.config import settings
 from app.extraction.bead_reconciliation import (

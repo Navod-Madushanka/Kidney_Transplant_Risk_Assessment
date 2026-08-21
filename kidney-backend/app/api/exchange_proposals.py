@@ -168,7 +168,10 @@ async def create_proposal_endpoint(
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="One of these pairs was just committed to a different proposal. Re-run the match and try again.",
+            detail=(
+                "One of these pairs was just committed to a different proposal. "
+                "Re-run the match and try again."
+            ),
         )
 
     await create_audit_log(

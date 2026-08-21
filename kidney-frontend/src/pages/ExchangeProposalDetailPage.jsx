@@ -40,11 +40,22 @@ export default function ExchangeProposalDetailPage() {
   const [confirmingDecision, setConfirmingDecision] = useState(null)
 
   const load = useCallback(() => {
-    setFailed(false)
     return getExchangeProposal(proposalId)
       .then(setProposal)
       .catch(() => setFailed(true))
   }, [proposalId])
+
+  // Resets `failed` when proposalId changes (e.g. navigating between two
+  // proposals reuses this component instance) via a render-time state
+  // adjustment rather than a setState call in the effect body -- every
+  // caller of load() elsewhere (handleDecision, handleCancel) only ever
+  // runs once the page has already loaded successfully, so `failed` is
+  // already false at those call sites and never needed resetting there.
+  const [syncedProposalId, setSyncedProposalId] = useState(proposalId)
+  if (proposalId !== syncedProposalId) {
+    setSyncedProposalId(proposalId)
+    setFailed(false)
+  }
 
   useEffect(() => {
     load()
@@ -62,7 +73,6 @@ export default function ExchangeProposalDetailPage() {
   }
 
   const nodes = proposal.cycle_snapshot?.nodes ?? []
-  const nodeByPairId = new Map(nodes.map((node) => [node.pair_id, node]))
   const pairRowByDonorId = new Map(proposal.pairs.map((pair) => [pair.donor_id, pair]))
   const myPendingPair = proposal.pairs.find(
     (pair) => pair.owning_doctor_id === user?.id && pair.decision === "pending"

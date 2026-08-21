@@ -35,9 +35,17 @@ export default function AuditLogPage() {
     }
   }, [])
 
+  // Falls back to "loading" (rather than flashing the previous page's
+  // rows) the moment `offset` changes, via a render-time state adjustment
+  // instead of a setState call in the effect body.
+  const [syncedOffset, setSyncedOffset] = useState(offset)
+  if (offset !== syncedOffset) {
+    setSyncedOffset(offset)
+    setListState((current) => ({ ...current, status: "loading" }))
+  }
+
   useEffect(() => {
     let cancelled = false
-    setListState((current) => ({ ...current, status: "loading" }))
     listAuditLogs(PAGE_SIZE, offset)
       .then(
         (data) =>

@@ -109,6 +109,12 @@ def test_donor_with_no_hla_typing_at_all_is_not_a_perfect_match():
     assert result.bucket_name == "3-6 mismatches"
     assert result.data_completeness is False
     assert result.missing_inputs == ["donor A typing", "donor B typing", "donor DRB1 typing"]
+    # Regression: 3 untyped loci impute to exactly MAX_ACCEPTABLE_MISMATCHES
+    # (6), which used to trip is_halted even though nothing was actually
+    # measured -- reported as a confirmed "Not Compatible" reject instead of
+    # an unmeasured "cannot assess". is_halted must never fire on imputed
+    # data; only Step 7's completed-but-incomplete path may report this.
+    assert result.is_halted is False
 
 
 def test_patient_with_no_hla_typing_at_all_is_also_incomplete():
@@ -129,6 +135,7 @@ def test_patient_with_no_hla_typing_at_all_is_also_incomplete():
         "patient B typing",
         "patient DRB1 typing",
     ]
+    assert result.is_halted is False
 
 
 def test_donor_missing_a_single_locus_does_not_silently_improve_the_score():
@@ -146,3 +153,4 @@ def test_donor_missing_a_single_locus_does_not_silently_improve_the_score():
     assert result.bucket_name == "3-6 mismatches"
     assert result.data_completeness is False
     assert result.missing_inputs == ["donor DRB1 typing"]
+    assert result.is_halted is False

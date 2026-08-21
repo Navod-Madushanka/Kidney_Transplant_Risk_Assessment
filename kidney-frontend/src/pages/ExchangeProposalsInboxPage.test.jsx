@@ -3,11 +3,7 @@ import { render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import {
-  cancelExchangeProposal,
-  decideExchangeProposalPair,
-  listExchangeProposals,
-} from "../api/exchangeProposals"
+import { decideExchangeProposalPair, listExchangeProposals } from "../api/exchangeProposals"
 import ExchangeProposalsInboxPage from "./ExchangeProposalsInboxPage"
 
 vi.mock("../api/exchangeProposals", () => ({

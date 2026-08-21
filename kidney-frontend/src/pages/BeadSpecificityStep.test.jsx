@@ -73,7 +73,7 @@ describe("BeadSpecificityStep", () => {
     const wizardValue = makeWizardValue()
     renderStep(wizardValue)
 
-    await user.type(screen.getAllByPlaceholderText("Antigen (e.g. B*44:02)")[0], "DQ7")
+    await user.type(screen.getAllByPlaceholderText("Antigen (e.g. B44)")[0], "DQ7")
     await user.click(screen.getByRole("button", { name: /continue/i }))
 
     expect(await screen.findByText("MFI is required")).toBeInTheDocument()
@@ -85,7 +85,7 @@ describe("BeadSpecificityStep", () => {
     const wizardValue = makeWizardValue()
     renderStep(wizardValue)
 
-    await user.type(screen.getAllByPlaceholderText("Antigen (e.g. B*44:02)")[0], "DQ7")
+    await user.type(screen.getAllByPlaceholderText("Antigen (e.g. B44)")[0], "DQ7")
     await user.type(screen.getAllByPlaceholderText("MFI value")[0], "not-a-number")
     await user.click(screen.getByRole("button", { name: /continue/i }))
 
@@ -98,7 +98,7 @@ describe("BeadSpecificityStep", () => {
     const wizardValue = makeWizardValue()
     renderStep(wizardValue)
 
-    await user.type(screen.getAllByPlaceholderText("Antigen (e.g. B*44:02)")[0], "DQ7")
+    await user.type(screen.getAllByPlaceholderText("Antigen (e.g. B44)")[0], "DQ7")
     await user.type(screen.getAllByPlaceholderText("MFI value")[0], "3500")
     await user.click(screen.getByRole("button", { name: /continue/i }))
 
@@ -114,7 +114,7 @@ describe("BeadSpecificityStep", () => {
     const wizardValue = {
       state: {
         bead_specificity: [
-          { antigen: "B*44:02", mfi: 3500 },
+          { antigen: "B44", mfi: 3500 },
           { antigen: "DQ7", mfi: 1200 },
         ],
       },
@@ -122,18 +122,33 @@ describe("BeadSpecificityStep", () => {
     }
     renderStep(wizardValue)
 
-    expect(screen.getAllByPlaceholderText("Antigen (e.g. B*44:02)")).toHaveLength(3) // 2 rows + trailing blank
+    expect(screen.getAllByPlaceholderText("Antigen (e.g. B44)")).toHaveLength(3) // 2 rows + trailing blank
 
     await user.type(screen.getByLabelText("Search by antigen/bead name"), "DQ7")
-    const antigenInputs = screen.getAllByPlaceholderText("Antigen (e.g. B*44:02)")
+    const antigenInputs = screen.getAllByPlaceholderText("Antigen (e.g. B44)")
     expect(antigenInputs).toHaveLength(1)
     expect(antigenInputs[0]).toHaveValue("DQ7")
 
     await user.clear(screen.getByLabelText("Search by antigen/bead name"))
     await user.type(screen.getByLabelText("Search by MFI value"), "3500")
-    const antigenInputsAfterMfiSearch = screen.getAllByPlaceholderText("Antigen (e.g. B*44:02)")
+    const antigenInputsAfterMfiSearch = screen.getAllByPlaceholderText("Antigen (e.g. B44)")
     expect(antigenInputsAfterMfiSearch).toHaveLength(1)
-    expect(antigenInputsAfterMfiSearch[0]).toHaveValue("B*44:02")
+    expect(antigenInputsAfterMfiSearch[0]).toHaveValue("B44")
+  })
+
+  it("rejects an allele-level antigen (e.g. \"B*44:02\") entered manually", async () => {
+    const user = userEvent.setup()
+    const wizardValue = makeWizardValue()
+    renderStep(wizardValue)
+
+    await user.type(screen.getAllByPlaceholderText("Antigen (e.g. B44)")[0], "B*44:02")
+    await user.type(screen.getAllByPlaceholderText("MFI value")[0], "12000")
+    await user.click(screen.getByRole("button", { name: /continue/i }))
+
+    expect(
+      await screen.findByText(/serological designation.*B44.*allele-level typing.*B\*44:02/)
+    ).toBeInTheDocument()
+    expect(wizardValue.actions.setBeadSpecificity).not.toHaveBeenCalled()
   })
 
   it("shows a no-match message and clears the search if Continue finds a row error hidden behind it", async () => {

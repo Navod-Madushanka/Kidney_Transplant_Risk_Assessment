@@ -65,9 +65,15 @@ export function useExtractionJobPolling({
   // callers (WizardProvider, NewPairPage) pass fresh closures on every
   // render, and depending on them directly would tear down and restart the
   // poll loop (and its setTimeout chain) on every render instead of only
-  // when jobId/status actually change.
+  // when jobId/status actually change. Updated from a no-deps effect
+  // (runs after every commit) rather than during render itself, since
+  // mutating a ref's `.current` during render is impure -- poll() only
+  // ever reads this ref later, asynchronously, so a post-commit update is
+  // just as fresh as a during-render one would have been.
   const callbacksRef = useRef({ onDocumentDone, onStatusChange, onPollingStalled })
-  callbacksRef.current = { onDocumentDone, onStatusChange, onPollingStalled }
+  useEffect(() => {
+    callbacksRef.current = { onDocumentDone, onStatusChange, onPollingStalled }
+  })
 
   useEffect(() => {
     hydratedDocTypesRef.current = new Set()

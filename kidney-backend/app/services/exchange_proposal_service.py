@@ -74,7 +74,8 @@ class IllegalExchangeProposalTransition(Exception):
         self.current = current
         self.requested = requested
         super().__init__(
-            f"Cannot transition exchange proposal status from {current.value!r} to {requested.value!r}"
+            f"Cannot transition exchange proposal status from {current.value!r} "
+            f"to {requested.value!r}"
         )
 
 
@@ -167,7 +168,9 @@ def build_cycle_snapshot(index: GraphIndex, pair_ids: Cycle) -> dict:
                 "mismatch_result": asdict(edge.result.mismatch_result),
                 "dsa_result": asdict(edge.result.dsa_result),
                 "lkdpi_result": (
-                    asdict(edge.result.lkdpi_result) if edge.result.lkdpi_result is not None else None
+                    asdict(edge.result.lkdpi_result)
+                    if edge.result.lkdpi_result is not None
+                    else None
                 ),
             }
         )
@@ -209,7 +212,9 @@ async def create_proposal(
     Raises ExchangeProposalConflict if any pair's donor is already part of
     a different open proposal.
     """
-    await db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _PROPOSAL_CREATION_LOCK_KEY})
+    await db.execute(
+        text("SELECT pg_advisory_xact_lock(:key)"), {"key": _PROPOSAL_CREATION_LOCK_KEY}
+    )
 
     donor_ids = list(pair_ids)
     conflict_result = await db.execute(
@@ -334,7 +339,9 @@ async def decide_pair(
     await db.flush()
 
     if decision == ExchangeProposalPairDecision.DECLINED:
-        await transition_proposal_status(db, proposal, ExchangeProposalStatus.DECLINED, commit=False)
+        await transition_proposal_status(
+            db, proposal, ExchangeProposalStatus.DECLINED, commit=False
+        )
         await _release_cycle_donors(db, proposal.id)
     else:
         remaining = await db.execute(
@@ -346,7 +353,9 @@ async def decide_pair(
             )
         )
         if remaining.scalar_one() == 0:
-            await transition_proposal_status(db, proposal, ExchangeProposalStatus.ACCEPTED, commit=False)
+            await transition_proposal_status(
+                db, proposal, ExchangeProposalStatus.ACCEPTED, commit=False
+            )
             await _reserve_cycle_donors(db, proposal.id)
 
     if commit:

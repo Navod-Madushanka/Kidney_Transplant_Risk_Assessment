@@ -26,7 +26,6 @@ export default function ExchangeProposalsInboxPage() {
 
   const load = useCallback(() => {
     let cancelled = false
-    setFailed(false)
     listExchangeProposals(scope === "mine")
       .then((data) => !cancelled && setProposals(data))
       .catch(() => !cancelled && setFailed(true))
@@ -35,8 +34,20 @@ export default function ExchangeProposalsInboxPage() {
     }
   }, [scope])
 
-  useEffect(() => {
+  // Falls back to "loading" (rather than flashing the previous scope's
+  // list) the moment the scope toggle changes, via a render-time state
+  // adjustment instead of a setState call in the effect body -- load()'s
+  // other callers (handleDecision, handleCancel) only ever run once the
+  // list has already loaded, so `failed` is already false at those call
+  // sites and never needed resetting there.
+  const [syncedScope, setSyncedScope] = useState(scope)
+  if (scope !== syncedScope) {
+    setSyncedScope(scope)
     setProposals(null)
+    setFailed(false)
+  }
+
+  useEffect(() => {
     return load()
   }, [load])
 

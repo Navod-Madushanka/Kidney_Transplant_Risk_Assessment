@@ -29,9 +29,18 @@ export default function PairDocumentsCard({ patientId, donorId }) {
   const [files, setFiles] = useState([])
   const [linkedPerson, setLinkedPerson] = useState(null)
 
+  // Falls back to "loading" (rather than flashing the previous pair's
+  // documents) the moment patientId/donorId changes, via a render-time
+  // state adjustment instead of a setState call in the effect body.
+  const [syncedKey, setSyncedKey] = useState(`${patientId ?? ""}:${donorId ?? ""}`)
+  const currentKey = `${patientId ?? ""}:${donorId ?? ""}`
+  if (currentKey !== syncedKey) {
+    setSyncedKey(currentKey)
+    setLoadState("loading")
+  }
+
   useEffect(() => {
     let cancelled = false
-    setLoadState("loading")
 
     listPairs({ patientId, donorId })
       .then(async (pairs) => {

@@ -9,7 +9,6 @@ import { listPairs } from "../api/pairs"
 import {
   listPatientReportFiles,
   listPairReportFiles,
-  fetchPatientReportFileBlob,
   fetchPairReportFileBlob,
 } from "../api/reportFiles"
 import NewCheckFromRecordsPage from "./NewCheckFromRecordsPage"

@@ -100,7 +100,9 @@ async def list_pairs_for_doctor(
     return list(result.scalars().all())
 
 
-async def delete_pair(db: AsyncSession, pair: DonorPatientPair, commit: bool = True) -> DonorPatientPair:
+async def delete_pair(
+    db: AsyncSession, pair: DonorPatientPair, commit: bool = True
+) -> DonorPatientPair:
     """Soft-delete, same pattern as delete_patient/delete_donor -- frees the
     (patient_id, donor_id) combination for re-registration (see the active
     partial-unique index on donor_patient_pairs)."""

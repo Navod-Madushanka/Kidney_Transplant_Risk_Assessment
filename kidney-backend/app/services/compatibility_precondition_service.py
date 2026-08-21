@@ -1,13 +1,20 @@
 # app/services/compatibility_precondition_service.py
 """
 Shared "is this pairing ready to check" logic, used by two endpoints that
-share their source of truth (unverified_data_gaps) but read it at
-different strictness:
+share their source of truth (unverified_data_gaps, compute_hla_mismatch_result)
+but read it at different strictness:
 
 - POST /compatibility/check (app/api/compatibility.py) -- hard-blocks on
-  ANY unverified OCR data before running the pipeline at all. This is the
-  real safety net and checks every gap in _UNVERIFIED_CHECKS,
-  unfiltered -- see unverified_data_reasons.
+  ANY unverified OCR data before running the pipeline at all (every gap in
+  _UNVERIFIED_CHECKS, unfiltered -- see unverified_data_reasons), AND on
+  incomplete A/B/DRB1 HLA typing (compute_hla_mismatch_result's
+  data_completeness). The latter is enforced directly by the endpoint
+  itself, not only by the readiness preview below -- a caller that reaches
+  POST /compatibility/check by any route other than the wizard (Swagger,
+  a script, a future client) gets the same 422 a wizard user would have
+  been stopped by earlier, rather than a report built on worst-cased,
+  invented mismatch data. See app/api/compatibility.py's precondition
+  block.
 - GET /compatibility/readiness (this module's build_compatibility_readiness)
   -- a preview a doctor can look at BEFORE submitting, naming exactly what's
   missing rather than making them find out via a failed submission. Its
@@ -29,10 +36,11 @@ anymore.
 
 Three categories of "not ready," never conflated:
 
-1. `blocking` -- POST /compatibility/check would refuse to run at all
-   (unverified OCR data the wizard has no later step to re-confirm) or
-   would almost certainly halt on worst-cased data (missing A/B/DRB1 HLA
-   typing). Continue should be disabled.
+1. `blocking` -- POST /compatibility/check refuses to run at all: either
+   unverified OCR data the wizard has no later step to re-confirm, or
+   incomplete A/B/DRB1 HLA typing (see compute_hla_mismatch_result --
+   Step 3 would otherwise worst-case the missing locus/loci rather than
+   ever refuse to run). Continue should be disabled.
 2. Unverified-but-wizard-resolvable (_READINESS_NON_BLOCKING_CODES) --
    POST /compatibility/check would still hard-block on these too, but the
    readiness preview doesn't, because the wizard already has a dedicated
@@ -55,7 +63,11 @@ from app.models.patient import Patient
 from app.services.abo_service import check_abo_compatibility
 from app.services.donor_risk_input_adapter import donor_risk_input_from_record
 from app.services.donor_risk_service import assess_donor_risk
-from app.services.hla_mismatch_service import MISMATCH_COUNTED_LOCI, calculate_mismatch_result
+from app.services.hla_mismatch_service import (
+    MISMATCH_COUNTED_LOCI,
+    MismatchResult,
+    calculate_mismatch_result,
+)
 from app.services.hla_typing_service import (
     build_partial_typing_dict,
     get_donor_hla_typing_entries,
@@ -181,6 +193,26 @@ def unverified_data_reasons(patient: Patient, donor: Donor) -> list[str]:
     return [gap.label for gap in unverified_data_gaps(patient, donor)]
 
 
+async def compute_hla_mismatch_result(
+    db: AsyncSession, patient: Patient, donor: Donor
+) -> MismatchResult:
+    """The single source of truth for "is this pairing's A/B/DRB1 HLA
+    typing complete enough to trust a mismatch count" -- both POST
+    /compatibility/check's hard block (see its module-level docstring's
+    category 1) and GET /compatibility/readiness's blocking list call this,
+    so they can't independently drift on what counts as complete. Mirrors
+    exactly what Step 3 of the pipeline itself does (hla_mismatch_service.py
+    via match_pipeline.py) -- same queries, same partial-typing-dict
+    shaping -- so a "complete" verdict here is never contradicted once the
+    pipeline actually runs.
+    """
+    patient_hla_entries = await get_patient_hla_typing_entries(db, patient.id)
+    donor_hla_entries = await get_donor_hla_typing_entries(db, donor.id)
+    patient_typing = build_partial_typing_dict(patient_hla_entries, MISMATCH_COUNTED_LOCI)
+    donor_typing = build_partial_typing_dict(donor_hla_entries, MISMATCH_COUNTED_LOCI)
+    return calculate_mismatch_result(patient_typing, donor_typing)
+
+
 async def build_compatibility_readiness(
     db: AsyncSession, patient: Patient, donor: Donor
 ) -> CompatibilityReadiness:
@@ -190,11 +222,7 @@ async def build_compatibility_readiness(
         if gap.code not in _READINESS_NON_BLOCKING_CODES
     ]
 
-    patient_hla_entries = await get_patient_hla_typing_entries(db, patient.id)
-    donor_hla_entries = await get_donor_hla_typing_entries(db, donor.id)
-    patient_typing = build_partial_typing_dict(patient_hla_entries, MISMATCH_COUNTED_LOCI)
-    donor_typing = build_partial_typing_dict(donor_hla_entries, MISMATCH_COUNTED_LOCI)
-    mismatch_result = calculate_mismatch_result(patient_typing, donor_typing)
+    mismatch_result = await compute_hla_mismatch_result(db, patient, donor)
 
     for missing in mismatch_result.missing_inputs:
         subject = "patient" if missing.startswith("patient") else "donor"

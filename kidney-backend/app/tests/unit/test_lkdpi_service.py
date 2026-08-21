@@ -87,7 +87,9 @@ def test_weight_ratio_caps_at_point_nine(ratio_inputs):
 def test_age_hinge_at_and_below_fifty_contributes_zero():
     for age in (50, 45):
         result = calculate_lkdpi(_full_input(donor_age_years=age))
-        age_term = next(c for c in result.contributions if c["label"].startswith("Donor age over 50"))
+        age_term = next(
+            c for c in result.contributions if c["label"].startswith("Donor age over 50")
+        )
         assert age_term["points"] == 0.0
 
 

@@ -148,7 +148,9 @@ async def list_pairs_endpoint(
     current_doctor: Doctor = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    pairs = await list_pairs_for_doctor(db, current_doctor.id, patient_id=patient_id, donor_id=donor_id)
+    pairs = await list_pairs_for_doctor(
+        db, current_doctor.id, patient_id=patient_id, donor_id=donor_id
+    )
     return [PairResponse.model_validate(p) for p in pairs]
 
 

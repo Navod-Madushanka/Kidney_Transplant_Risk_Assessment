@@ -50,4 +50,19 @@ describe("AntibodyProfileEditor", () => {
 
     expect(screen.getAllByPlaceholderText("Antigen (e.g. DQ7)")[0].value).toBe("DQ9")
   })
+
+  it("rejects an allele-level antigen (e.g. \"B*44:02\") instead of silently saving it", async () => {
+    const user = userEvent.setup()
+    const onSave = vi.fn()
+    render(<AntibodyProfileEditor loadState="loaded" initialEntries={[]} onSave={onSave} />)
+
+    await user.type(screen.getAllByPlaceholderText("Antigen (e.g. DQ7)")[0], "B*44:02")
+    await user.type(screen.getAllByPlaceholderText("MFI value")[0], "12000")
+    await user.click(screen.getByRole("button", { name: /save antibody profile/i }))
+
+    expect(
+      await screen.findByText(/serological designation.*B44.*allele-level typing.*B\*44:02/)
+    ).toBeInTheDocument()
+    expect(onSave).not.toHaveBeenCalled()
+  })
 })

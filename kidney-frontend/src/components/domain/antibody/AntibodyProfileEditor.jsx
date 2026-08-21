@@ -1,8 +1,9 @@
 // src/components/domain/antibody/AntibodyProfileEditor.jsx
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import InputField from "../../ui/InputField"
 import Button from "../../ui/Button"
 import Card from "../../ui/Card"
+import { isAlleleLevelAntigen, ALLELE_LEVEL_ANTIGEN_ERROR } from "../../../utils/antigenFormat"
 
 let nextRowId = 1
 function makeRow(entry) {
@@ -24,15 +25,20 @@ export default function AntibodyProfileEditor({ loadState, initialEntries = [], 
     initialEntries.length > 0 ? initialEntries.map(makeRow) : [makeRow()]
   )
 
-  // See HlaTypingEditor's matching effect -- initialEntries arrives after
+  // See HlaTypingEditor's matching check -- initialEntries arrives after
   // this component has already mounted (while the parent is still
   // "loading"), so the useState initializer above misses it. Re-sync once
-  // real data lands; initialEntries' reference stays stable across
-  // unrelated re-renders so this won't stomp on in-progress edits.
-  useEffect(() => {
-    if (loadState !== "loaded") return
+  // real data lands, using React's render-time state-adjustment pattern
+  // (comparing against the last-seen value and calling setState during
+  // render) instead of an effect, since that runs once before the browser
+  // paints rather than causing a second commit. initialEntries' reference
+  // stays stable across unrelated re-renders so this won't stomp on
+  // in-progress edits.
+  const [syncedEntries, setSyncedEntries] = useState(initialEntries)
+  if (loadState === "loaded" && initialEntries !== syncedEntries) {
+    setSyncedEntries(initialEntries)
     setRows(initialEntries.length > 0 ? initialEntries.map(makeRow) : [makeRow()])
-  }, [loadState, initialEntries])
+  }
 
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState("")
@@ -59,7 +65,9 @@ export default function AntibodyProfileEditor({ loadState, initialEntries = [], 
     const nextRowErrors = {}
     for (const row of populated) {
       if (!row.antigen.trim()) nextRowErrors[row.rowId] = "Antigen is required"
-      else if (row.mfi.trim() === "" || Number.isNaN(Number(row.mfi))) {
+      else if (isAlleleLevelAntigen(row.antigen.trim())) {
+        nextRowErrors[row.rowId] = ALLELE_LEVEL_ANTIGEN_ERROR
+      } else if (row.mfi.trim() === "" || Number.isNaN(Number(row.mfi))) {
         nextRowErrors[row.rowId] = "MFI must be a number"
       }
     }

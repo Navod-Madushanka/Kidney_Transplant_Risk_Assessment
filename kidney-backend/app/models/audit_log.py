@@ -31,7 +31,9 @@ class AuditLog(Base, UUIDPrimaryKeyMixin):
     # free-standing Sequence object isn't owned by the column and silently
     # keeps climbing across TRUNCATEs, which broke the gap-free check
     # between tests during development of this feature.
-    seq: Mapped[int] = mapped_column(BigInteger, Identity(), nullable=False, unique=True, index=True)
+    seq: Mapped[int] = mapped_column(
+        BigInteger, Identity(), nullable=False, unique=True, index=True
+    )
 
     doctor_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
     action: Mapped[str] = mapped_column(String(100), nullable=False)

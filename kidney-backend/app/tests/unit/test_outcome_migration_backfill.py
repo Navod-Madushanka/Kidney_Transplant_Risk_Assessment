@@ -36,7 +36,12 @@ def test_migration_backfill_matches_the_live_service_for_a_completed_report():
         "data_completeness": True,
         "missing_inputs": [],
     }
-    pra_bucket_result = {"bucket_name": "<30%", "percent": 0.0, "is_halted": False, "has_sufficient_data": True}
+    pra_bucket_result = {
+        "bucket_name": "<30%",
+        "percent": 0.0,
+        "is_halted": False,
+        "has_sufficient_data": True,
+    }
     dsa_result = {"is_halted": False, "requires_review": False, "matches": []}
     final_risk_level = "High-Average Risk"
 
@@ -81,7 +86,12 @@ def test_migration_backfill_matches_row_4_high_cpra_case():
         "data_completeness": True,
         "missing_inputs": [],
     }
-    pra_bucket_result = {"bucket_name": ">60%", "percent": 75.0, "is_halted": False, "has_sufficient_data": True}
+    pra_bucket_result = {
+        "bucket_name": ">60%",
+        "percent": 75.0,
+        "is_halted": False,
+        "has_sufficient_data": True,
+    }
     dsa_result = {"is_halted": False, "requires_review": False, "matches": []}
 
     live_outcome = build_report_outcome(

@@ -1,5 +1,5 @@
 // src/components/domain/hla/HlaTypingEditor.jsx
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import Select from "../../ui/Select"
 import InputField from "../../ui/InputField"
 import Button from "../../ui/Button"
@@ -35,13 +35,18 @@ export default function HlaTypingEditor({ loadState, initialEntries = [], onSave
   // initialEntries=[]), after the useState initializer above has already
   // run -- React doesn't re-run it on later renders, so without this the
   // editor stays stuck on the empty fallback row even once real data
-  // lands. initialEntries keeps a stable reference across unrelated
-  // parent re-renders (it only changes when the parent's fetch actually
-  // resolves again), so this won't clobber in-progress edits.
-  useEffect(() => {
-    if (loadState !== "loaded") return
+  // lands. Re-sync using React's render-time state-adjustment pattern
+  // (comparing against the last-seen value and calling setState during
+  // render) instead of an effect, since that runs once before the browser
+  // paints rather than causing a second commit. initialEntries keeps a
+  // stable reference across unrelated parent re-renders (it only changes
+  // when the parent's fetch actually resolves again), so this won't
+  // clobber in-progress edits.
+  const [syncedEntries, setSyncedEntries] = useState(initialEntries)
+  if (loadState === "loaded" && initialEntries !== syncedEntries) {
+    setSyncedEntries(initialEntries)
     setRows(initialEntries.length > 0 ? initialEntries.map(makeRow) : [makeRow()])
-  }, [loadState, initialEntries])
+  }
 
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState("")

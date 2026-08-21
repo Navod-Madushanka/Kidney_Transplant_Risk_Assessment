@@ -57,16 +57,24 @@ export default function ExchangePoolPage() {
   const [hardToMatchResult, setHardToMatchResult] = useState(null)
   const [hardToMatchFailed, setHardToMatchFailed] = useState(false)
 
+  // Clears any stale failure for this exact policy the moment the dropdown
+  // switches back to it (review #2 bug 23) -- failedPolicy used to only
+  // ever be set (in the effect's .catch() below) and never reset, so
+  // retrying a policy that had previously failed showed the old error
+  // message the whole time the new request was in flight instead of the
+  // loading spinner. Done as a render-time state adjustment (comparing
+  // against the last-synced policy) rather than a setState call in the
+  // effect body, so it takes effect before the browser paints instead of
+  // costing a second commit.
+  const [lastSyncedPolicy, setLastSyncedPolicy] = useState(policy)
+  if (policy !== lastSyncedPolicy) {
+    setLastSyncedPolicy(policy)
+    setFailedPolicy((current) => (current === policy ? null : current))
+  }
+
   useEffect(() => {
     if (viewMode !== "single") return
     let cancelled = false
-
-    // Clears any stale failure for this exact policy before the new
-    // request starts (review #2 bug 23) -- failedPolicy used to only ever
-    // be set (in .catch() below) and never reset, so retrying a policy
-    // that had previously failed showed the old error message the whole
-    // time the new request was in flight instead of the loading spinner.
-    setFailedPolicy((current) => (current === policy ? null : current))
 
     getExchangeMatch(policy)
       .then((data) => !cancelled && setResult({ policy, data }))
@@ -80,7 +88,6 @@ export default function ExchangePoolPage() {
   useEffect(() => {
     if (viewMode !== "compare" || compareResult) return
     let cancelled = false
-    setCompareFailed(false)
 
     getExchangeCompare()
       .then((data) => !cancelled && setCompareResult(data))
@@ -94,7 +101,6 @@ export default function ExchangePoolPage() {
   useEffect(() => {
     if (viewMode !== "hard-to-match" || hardToMatchResult) return
     let cancelled = false
-    setHardToMatchFailed(false)
 
     getExchangeHardToMatch()
       .then((data) => !cancelled && setHardToMatchResult(data))

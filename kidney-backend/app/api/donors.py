@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.dependencies import get_current_user
 from app.db.session import get_db
 from app.models.doctor import Doctor
-from app.models.donor import Donor
 from app.models.enums import ReportFileCategory
 from app.schemas.donor import DonorCreate, DonorResponse, DonorStatusUpdate, DonorUpdate
 from app.schemas.donor_risk import DonorRiskAssessmentResponse

@@ -64,10 +64,11 @@ export default function DonorDetailPage() {
   }, [donorId])
 
   useEffect(() => {
-    if (!donor?.intended_recipient_id) {
-      setIntendedRecipient(null)
-      return
-    }
+    // intendedRecipient is only ever rendered behind a
+    // `donor.intended_recipient_id &&` guard below, so there's nothing to
+    // reset here when the id is absent -- skip the fetch entirely instead
+    // of calling setState synchronously from the effect body.
+    if (!donor?.intended_recipient_id) return
     let cancelled = false
     getPatient(donor.intended_recipient_id)
       .then((data) => !cancelled && setIntendedRecipient(data))

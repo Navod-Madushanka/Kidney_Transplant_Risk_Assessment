@@ -55,7 +55,6 @@ export default function ExchangeProposalCard({
   detailLinkTo,
 }) {
   const nodes = proposal.cycle_snapshot?.nodes ?? []
-  const nodeByPairId = new Map(nodes.map((node) => [node.pair_id, node]))
   const pairRowByDonorId = new Map(proposal.pairs.map((pair) => [pair.donor_id, pair]))
 
   const canCancel = Boolean(onCancel) && ["proposed", "accepted"].includes(proposal.status)

@@ -102,7 +102,8 @@ async def create_audit_log(
     await db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _AUDIT_CHAIN_LOCK_KEY})
 
     created_at = datetime.now(timezone.utc)
-    row_id = uuid.uuid4()  # generated up front so it can be hashed -- see compute_audit_hash's docstring
+    row_id = uuid.uuid4()  # generated up front so it can be hashed -- see
+    # compute_audit_hash's docstring
     prev_hash = await _get_last_audit_hash(db)
     row_hash = compute_audit_hash(
         prev_hash, doctor_id, patient_id, donor_id, action, created_at, details, row_id

@@ -244,7 +244,9 @@ async def list_patient_report_files(
 async def get_patient_report_file_by_id(
     db: AsyncSession, patient_id: uuid.UUID, report_file_id: uuid.UUID
 ) -> PatientReportFile | None:
-    return await _get_report_file_by_id(db, PatientReportFile, "patient_id", patient_id, report_file_id)
+    return await _get_report_file_by_id(
+        db, PatientReportFile, "patient_id", patient_id, report_file_id
+    )
 
 
 async def delete_patient_report_file(

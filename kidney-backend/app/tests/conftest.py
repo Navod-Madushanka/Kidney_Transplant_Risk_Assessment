@@ -153,7 +153,12 @@ async def register_test_doctor(
         db_session, hospital_id=hospital.id, email=email, password=password, full_name=full_name
     )
     await db_session.commit()
-    return {"hospital_name": hospital_name, "email": email, "password": password, "full_name": full_name}
+    return {
+        "hospital_name": hospital_name,
+        "email": email,
+        "password": password,
+        "full_name": full_name,
+    }
 
 
 @pytest_asyncio.fixture
@@ -267,3 +272,24 @@ async def create_donor(client: AsyncClient, **overrides) -> dict:
     response = await client.post("/donors", json=make_donor_payload(**overrides))
     assert response.status_code == 201, response.text
     return response.json()
+
+
+async def type_patient_and_donor_hla(
+    patient_client: AsyncClient,
+    patient_id: str,
+    donor_id: str,
+    donor_client: AsyncClient | None = None,
+) -> None:
+    """Fills in full A/B/DRB1 typing (COMPATIBLE_PATIENT_HLA/
+    COMPATIBLE_DONOR_HLA) for both sides of a pair. POST /compatibility/
+    check's completeness precondition (compute_hla_mismatch_result in
+    compatibility_precondition_service.py) hard-blocks on any missing
+    locus, so any test driving that endpoint needs this first even when
+    HLA data isn't otherwise relevant to what it's testing (audit logging,
+    dashboard listing, ...). donor_client defaults to patient_client;
+    pass it explicitly for a cross-hospital donor owned by a different
+    doctor (PUT .../hla-typings is ownership-scoped)."""
+    await patient_client.put(f"/patients/{patient_id}/hla-typings", json=COMPATIBLE_PATIENT_HLA)
+    await (donor_client or patient_client).put(
+        f"/donors/{donor_id}/hla-typings", json=COMPATIBLE_DONOR_HLA
+    )

@@ -49,8 +49,8 @@ export default function Sidebar({ pendingExchangeCount = 0 }) {
 
       <div className="px-3 py-4 border-t border-border">
         <div className="px-3 pb-3">
-          <p className="text-[13px] font-semibold text-text truncate">{user?.full_name ?? user?.email}</p>
-          <p className="text-[12px] text-text-muted truncate">{user?.hospital_name ?? user?.role}</p>
+          <p className="text-[13px] font-semibold text-text truncate">{user?.fullName ?? user?.email}</p>
+          <p className="text-[12px] text-text-muted truncate">{user?.hospitalName ?? user?.role}</p>
         </div>
         <button
           onClick={logout}

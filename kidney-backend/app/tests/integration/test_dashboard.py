@@ -6,6 +6,7 @@ from app.tests.conftest import (
     COMPATIBLE_PATIENT_HLA,
     create_donor,
     create_patient,
+    type_patient_and_donor_hla,
 )
 
 
@@ -92,6 +93,7 @@ async def test_dashboard_recent_reports_empty_for_new_doctor(auth_client: AsyncC
 async def test_dashboard_recent_reports_includes_patient_and_donor_names(auth_client: AsyncClient):
     patient = await create_patient(auth_client, blood_type="O", full_name="Recent Patient")
     donor = await create_donor(auth_client, blood_type="A", full_name="Recent Donor")
+    await type_patient_and_donor_hla(auth_client, patient["id"], donor["id"])
     await auth_client.post(
         "/compatibility/check",
         json={"patient_id": patient["id"], "donor_id": donor["id"]},
@@ -112,6 +114,7 @@ async def test_dashboard_recent_reports_respects_limit(auth_client: AsyncClient)
     for _ in range(3):
         patient = await create_patient(auth_client, blood_type="O")
         donor = await create_donor(auth_client, blood_type="A")
+        await type_patient_and_donor_hla(auth_client, patient["id"], donor["id"])
         await auth_client.post(
             "/compatibility/check",
             json={"patient_id": patient["id"], "donor_id": donor["id"]},
@@ -126,6 +129,7 @@ async def test_dashboard_recent_reports_respects_limit(auth_client: AsyncClient)
 async def test_dashboard_recent_reports_excludes_deleted_patient(auth_client: AsyncClient):
     patient = await create_patient(auth_client, blood_type="O")
     donor = await create_donor(auth_client, blood_type="A")
+    await type_patient_and_donor_hla(auth_client, patient["id"], donor["id"])
     await auth_client.post(
         "/compatibility/check",
         json={"patient_id": patient["id"], "donor_id": donor["id"]},
@@ -143,6 +147,7 @@ async def test_dashboard_recent_reports_excludes_deleted_patient(auth_client: As
 async def test_dashboard_recent_reports_excludes_deleted_donor(auth_client: AsyncClient):
     patient = await create_patient(auth_client, blood_type="O")
     donor = await create_donor(auth_client, blood_type="A")
+    await type_patient_and_donor_hla(auth_client, patient["id"], donor["id"])
     await auth_client.post(
         "/compatibility/check",
         json={"patient_id": patient["id"], "donor_id": donor["id"]},
@@ -171,6 +176,9 @@ async def test_dashboard_recent_reports_masks_external_donor_name(
     # that donor's real name must never leak onto this doctor's own view.
     patient = await create_patient(auth_client, blood_type="AB")
     donor = await create_donor(second_auth_client, blood_type="O", full_name="Secret Donor Name")
+    await type_patient_and_donor_hla(
+        auth_client, patient["id"], donor["id"], donor_client=second_auth_client
+    )
     await auth_client.post(
         "/compatibility/check",
         json={"patient_id": patient["id"], "donor_id": donor["id"]},

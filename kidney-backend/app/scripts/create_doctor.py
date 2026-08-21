@@ -74,7 +74,8 @@ async def create_doctor_account(
 def main() -> None:
     if len(sys.argv) not in (4, 5):
         raise SystemExit(
-            "Usage: uv run python -m app.scripts.create_doctor <email> <password> <full_name> [hospital_name]"
+            "Usage: uv run python -m app.scripts.create_doctor <email> <password> <full_name> "
+            "[hospital_name]"
         )
     email, password, full_name = sys.argv[1], sys.argv[2], sys.argv[3]
     hospital_name = sys.argv[4] if len(sys.argv) == 5 else DEFAULT_HOSPITAL_NAME

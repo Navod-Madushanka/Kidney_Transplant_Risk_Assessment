@@ -25,7 +25,10 @@ import statistics
 
 import pytest
 
-from app.extraction.llm_extract import BEAD_SPECIFICITY_ALWAYS_VERIFY_WARNING, extract_bead_specificity
+from app.extraction.llm_extract import (
+    BEAD_SPECIFICITY_ALWAYS_VERIFY_WARNING,
+    extract_bead_specificity,
+)
 from app.tests.integration._scoring import score_anchors
 
 pytestmark = pytest.mark.integration

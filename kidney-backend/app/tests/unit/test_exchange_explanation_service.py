@@ -13,13 +13,13 @@ from app.models.enums import BloodType, DonorStatus, RhFactor
 from app.models.patient import Patient
 from app.services.abo_service import ABOResult
 from app.services.dsa_service import DSAResult
+from app.services.exchange_explanation_service import compute_pair_match_explanations
 from app.services.exchange_graph_service import (
     ExchangeEdge,
     ExchangeGraph,
     ExchangePairNode,
     PairEdgeResult,
 )
-from app.services.exchange_explanation_service import compute_pair_match_explanations
 from app.services.exchange_matching_service import SelectedCycle
 from app.services.hla_mismatch_service import MismatchResult
 

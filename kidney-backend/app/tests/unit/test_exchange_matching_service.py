@@ -8,10 +8,12 @@ test_exchange_graph_service.py for coverage of the edge-scoring itself.
 import itertools
 import uuid
 from datetime import date, datetime, timedelta, timezone
+from unittest.mock import patch
 
 import pulp
 import pytest
 
+import app.services.exchange_matching_service as exchange_matching_service
 from app.models.donor import Donor
 from app.models.enums import BloodType, DonorStatus, RhFactor
 from app.models.patient import Patient
@@ -23,9 +25,6 @@ from app.services.exchange_graph_service import (
     ExchangePairNode,
     PairEdgeResult,
 )
-from unittest.mock import patch
-
-import app.services.exchange_matching_service as exchange_matching_service
 from app.services.exchange_matching_service import (
     WEIGHT_POLICIES,
     _canonicalize,
@@ -189,7 +188,9 @@ class TestWaitFraction:
         assert uses_dialysis_start_date(patient) is True
         assert wait_days(patient) in (99, 100)
 
-    def test_falls_back_to_created_at_and_flags_the_fallback_when_dialysis_start_date_is_unset(self):
+    def test_falls_back_to_created_at_and_flags_the_fallback_when_dialysis_start_date_is_unset(
+        self,
+    ):
         patient = _patient()
         patient.dialysis_start_date = None
         patient.created_at = datetime.now(timezone.utc) - timedelta(days=30)

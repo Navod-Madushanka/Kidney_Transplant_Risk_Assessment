@@ -107,8 +107,6 @@ from app.services.hla_mismatch_service import (
     MismatchResult,
     calculate_mismatch_result,
 )
-from app.services.lkdpi_input_adapter import lkdpi_input_from_records
-from app.services.lkdpi_service import LKDPIResult, calculate_lkdpi
 from app.services.hla_scoring_service import HLAScoringResult, calculate_hla_risk_score
 from app.services.hla_typing_service import (
     build_partial_typing_dict,
@@ -119,6 +117,8 @@ from app.services.hla_typing_service import (
     hla_antigen_designation,
     normalize_antibody_antigen,
 )
+from app.services.lkdpi_input_adapter import lkdpi_input_from_records
+from app.services.lkdpi_service import LKDPIResult, calculate_lkdpi
 from app.services.pra_bucket_service import PRABucketResult, calculate_pra_bucket
 from app.services.report_outcome_service import build_report_outcome
 from app.services.risk_tier_service import get_risk_tier

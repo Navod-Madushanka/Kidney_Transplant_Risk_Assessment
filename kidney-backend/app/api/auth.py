@@ -9,10 +9,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.dependencies import get_current_user
 from app.core.security import create_access_token, verify_password
 from app.db.session import get_db
-from app.schemas.auth import LoginRequest, TokenResponse
+from app.models.doctor import Doctor
+from app.schemas.auth import CurrentUserResponse, LoginRequest, TokenResponse
 from app.services.doctor_service import get_doctor_by_email
+from app.services.hospital_service import get_hospital_by_id
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -42,3 +45,24 @@ async def login(credentials: LoginRequest, db: AsyncSession = Depends(get_db)):
     )
 
     return TokenResponse(access_token=access_token)
+
+
+@router.get("/me", response_model=CurrentUserResponse)
+async def read_current_user(
+    current_doctor: Doctor = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    # The frontend calls this right after login (and on session restore) to
+    # get the doctor's name and hospital for the sidebar -- the JWT itself
+    # only carries hospital_id/role, not anything display-worthy (see
+    # login()'s access_token claims above).
+    hospital = await get_hospital_by_id(db, current_doctor.hospital_id)
+
+    return CurrentUserResponse(
+        id=current_doctor.id,
+        email=current_doctor.email,
+        full_name=current_doctor.full_name,
+        hospital_id=current_doctor.hospital_id,
+        hospital_name=hospital.name if hospital else "",
+        is_admin=current_doctor.is_admin,
+    )

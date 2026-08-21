@@ -48,7 +48,10 @@ async def _seed_two_way_swap(auth_client: AsyncClient, second_auth_client: Async
     donor_b = await create_donor(
         second_auth_client, blood_type="A", intended_recipient_id=patient_b["id"]
     )
-    for client, patient_id in ((auth_client, patient_a["id"]), (second_auth_client, patient_b["id"])):
+    for client, patient_id in (
+        (auth_client, patient_a["id"]),
+        (second_auth_client, patient_b["id"]),
+    ):
         assert (
             await client.put(f"/patients/{patient_id}/hla-typings", json=MATCHING_TYPING)
         ).status_code == 204
@@ -90,7 +93,9 @@ class TestCreateProposal:
         # Donors are NOT reserved at proposal time (K4) -- only on full
         # acceptance. Donor CRUD reads are owner-scoped, so each side reads
         # its own donor.
-        assert (await auth_client.get(f"/donors/{seeded['donor_a']['id']}")).json()["status"] == "available"
+        assert (
+            await auth_client.get(f"/donors/{seeded['donor_a']['id']}")
+        ).json()["status"] == "available"
         assert (
             await second_auth_client.get(f"/donors/{seeded['donor_b']['id']}")
         ).json()["status"] == "available"
@@ -265,7 +270,9 @@ class TestDecisionEndpoint:
         assert second_response.status_code == 200
         assert second_response.json()["status"] == "accepted"
 
-        assert (await auth_client.get(f"/donors/{seeded['donor_a']['id']}")).json()["status"] == "reserved"
+        assert (
+            await auth_client.get(f"/donors/{seeded['donor_a']['id']}")
+        ).json()["status"] == "reserved"
         assert (
             await second_auth_client.get(f"/donors/{seeded['donor_b']['id']}")
         ).json()["status"] == "reserved"
@@ -296,7 +303,9 @@ class TestDecisionEndpoint:
 
         assert response.status_code == 200
         assert response.json()["status"] == "declined"
-        assert (await auth_client.get(f"/donors/{seeded['donor_a']['id']}")).json()["status"] == "available"
+        assert (
+            await auth_client.get(f"/donors/{seeded['donor_a']['id']}")
+        ).json()["status"] == "available"
         assert (
             await second_auth_client.get(f"/donors/{seeded['donor_b']['id']}")
         ).json()["status"] == "available"
@@ -340,7 +349,9 @@ class TestCancelEndpoint:
 
         third_client = await _make_third_client(db_session)
         try:
-            forbidden_response = await third_client.post(f"/exchange/proposals/{proposal_id}/cancel")
+            forbidden_response = await third_client.post(
+                f"/exchange/proposals/{proposal_id}/cancel"
+            )
             assert forbidden_response.status_code == 403
         finally:
             await third_client.aclose()
@@ -367,7 +378,9 @@ class TestCancelEndpoint:
             f"/exchange/proposals/{body['id']}/pairs/{pair_by_donor_id[seeded['donor_b']['id']]['id']}/decision",
             json={"decision": "accepted"},
         )
-        assert (await auth_client.get(f"/donors/{seeded['donor_a']['id']}")).json()["status"] == "reserved"
+        assert (
+            await auth_client.get(f"/donors/{seeded['donor_a']['id']}")
+        ).json()["status"] == "reserved"
         assert (
             await second_auth_client.get(f"/donors/{seeded['donor_b']['id']}")
         ).json()["status"] == "reserved"
@@ -376,7 +389,9 @@ class TestCancelEndpoint:
 
         assert cancel_response.status_code == 200
         assert cancel_response.json()["status"] == "cancelled"
-        assert (await auth_client.get(f"/donors/{seeded['donor_a']['id']}")).json()["status"] == "available"
+        assert (
+            await auth_client.get(f"/donors/{seeded['donor_a']['id']}")
+        ).json()["status"] == "available"
         assert (
             await second_auth_client.get(f"/donors/{seeded['donor_b']['id']}")
         ).json()["status"] == "available"
@@ -394,7 +409,9 @@ class TestCancelEndpoint:
             "/exchange/proposals", json={"policy": "max_transplants", "pair_ids": cycle["pair_ids"]}
         )
         proposal_id = create_response.json()["id"]
-        assert (await auth_client.post(f"/exchange/proposals/{proposal_id}/cancel")).status_code == 200
+        assert (
+            await auth_client.post(f"/exchange/proposals/{proposal_id}/cancel")
+        ).status_code == 200
 
         second_cancel = await auth_client.post(f"/exchange/proposals/{proposal_id}/cancel")
 

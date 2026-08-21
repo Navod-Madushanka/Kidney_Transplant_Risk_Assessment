@@ -71,9 +71,15 @@ async def test_check_compatibility_requires_existing_patient_and_donor(auth_clie
 
 async def test_abo_incompatible_pair_halts_before_hla_scoring(auth_client: AsyncClient):
     # Recipient O only accepts an O donor (app/reference_data/abo_compatibility.py)
-    # — pairing with an A donor should halt immediately.
+    # — pairing with an A donor should halt immediately. Typing is fully
+    # entered here (irrelevant to the point of this test) purely so the
+    # endpoint's completeness precondition doesn't intercept the request
+    # before Step 1 ever runs -- the assertions below are what actually
+    # prove ABO halts before Step 3+ touch it.
     patient = await create_patient(auth_client, blood_type="O")
     donor = await create_donor(auth_client, blood_type="A")
+    await auth_client.put(f"/patients/{patient['id']}/hla-typings", json=COMPATIBLE_PATIENT_HLA)
+    await auth_client.put(f"/donors/{donor['id']}/hla-typings", json=COMPATIBLE_DONOR_HLA)
 
     response = await auth_client.post(
         "/compatibility/check",
@@ -499,17 +505,22 @@ async def test_lkdpi_inputs_never_affect_verdict_or_risk_level(auth_client: Asyn
     assert body_with["lkdpi_result"] != body_without["lkdpi_result"]
 
 
-async def test_completed_check_with_incomplete_typing_is_cannot_assess(auth_client: AsyncClient):
-    # Row 3 of the outcome decision table: a completed check whose mismatch
-    # count was partly worst-cased due to missing typing must be
-    # cannot_assess, and action_required must name the exact missing locus
-    # from mismatch_result.missing_inputs rather than a generic message.
+async def test_incomplete_hla_typing_is_rejected_with_422_before_running_the_pipeline(
+    auth_client: AsyncClient, db_session
+):
+    # The endpoint's own precondition (app/api/compatibility.py, backed by
+    # compute_hla_mismatch_result in compatibility_precondition_service.py)
+    # must catch incomplete A/B/DRB1 typing itself, not rely on
+    # GET /compatibility/readiness -- a caller reaching this endpoint by any
+    # route other than the wizard (Swagger, a script, a future client) never
+    # sees that preview. Was previously reachable all the way to
+    # run_match_pipeline with only one locus missing.
     patient = await create_patient(auth_client, blood_type="AB")
     donor = await create_donor(auth_client, blood_type="O")
 
     await auth_client.put(f"/patients/{patient['id']}/hla-typings", json=COMPATIBLE_PATIENT_HLA)
-    # Donor typing omits DRB1 entirely -- Step 3 worst-cases that locus
-    # instead of treating the missing side as a match.
+    # Donor typing omits DRB1 entirely -- Step 3 would otherwise worst-case
+    # that locus instead of treating the missing side as a match.
     donor_typing_missing_drb1 = [
         row for row in COMPATIBLE_DONOR_HLA if row["locus"] != "DRB1"
     ]
@@ -524,14 +535,62 @@ async def test_completed_check_with_incomplete_typing_is_cannot_assess(auth_clie
         },
     )
 
-    assert response.status_code == 201
+    assert response.status_code == 422
     body = response.json()
-    assert body["overall_status"] == "completed"
-    assert body["mismatch_result"]["data_completeness"] is False
-    assert body["mismatch_result"]["missing_inputs"] == ["donor DRB1 typing"]
-    assert body["outcome"]["verdict"] == "cannot_assess"
-    assert body["outcome"]["risk_level"] is None
-    assert "donor DRB1 typing" in body["outcome"]["action_required"]
+    assert body["detail"]["missing_inputs"] == ["donor DRB1 typing"]
+    assert "donor DRB1 typing" in body["detail"]["msg"]
+
+    result = await db_session.execute(
+        select(MatchReport).where(MatchReport.patient_id == uuid.UUID(patient["id"]))
+    )
+    assert result.scalar_one_or_none() is None
+
+
+async def test_imputed_mismatches_reaching_the_halt_threshold_never_reach_the_pipeline(
+    auth_client: AsyncClient,
+):
+    # Regression for the bug where 4 genuinely measured mismatches at A/B
+    # plus a fully untyped DRB1 (imputed at its worst case, 2) summed to
+    # exactly 6 -- MAX_ACCEPTABLE_MISMATCHES -- and halted Step 3 as if it
+    # were a confirmed 6/6 reject. calculate_mismatch_result's is_halted no
+    # longer fires on data that includes an imputed locus (see
+    # test_hla_mismatch_service.py's unit-level regression coverage for
+    # that), and this endpoint now blocks incomplete typing before the
+    # pipeline runs at all -- so this case never even reaches Step 3 to ask
+    # the question.
+    patient = await create_patient(auth_client, blood_type="AB")
+    donor = await create_donor(auth_client, blood_type="O")
+
+    await auth_client.put(
+        f"/patients/{patient['id']}/hla-typings",
+        json=[
+            {"locus": "A", "allele_1": "01", "allele_2": "02"},
+            {"locus": "B", "allele_1": "01", "allele_2": "02"},
+            {"locus": "DRB1", "allele_1": "01", "allele_2": "02"},
+        ],
+    )
+    # Donor A/B fully mismatch the patient (2 + 2 = 4 measured); DRB1 is
+    # omitted entirely, which would worst-case it at 2 -- 4 + 2 = 6, the
+    # same total as a real 6/6 -- if this ever reached Step 3.
+    await auth_client.put(
+        f"/donors/{donor['id']}/hla-typings",
+        json=[
+            {"locus": "A", "allele_1": "11", "allele_2": "12"},
+            {"locus": "B", "allele_1": "11", "allele_2": "12"},
+        ],
+    )
+
+    response = await auth_client.post(
+        "/compatibility/check",
+        json={
+            "patient_id": patient["id"],
+            "donor_id": donor["id"],
+            "crossmatch": NEGATIVE_CROSSMATCH,
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["missing_inputs"] == ["donor DRB1 typing"]
 
 
 async def test_positive_crossmatch_halts_after_dsa(auth_client: AsyncClient):
@@ -823,6 +882,8 @@ async def test_manual_edits_without_ocr_verified_param_stay_trusted(auth_client:
 async def test_get_report_by_id(auth_client: AsyncClient):
     patient = await create_patient(auth_client, blood_type="O")
     donor = await create_donor(auth_client, blood_type="A")
+    await auth_client.put(f"/patients/{patient['id']}/hla-typings", json=COMPATIBLE_PATIENT_HLA)
+    await auth_client.put(f"/donors/{donor['id']}/hla-typings", json=COMPATIBLE_DONOR_HLA)
     check = await auth_client.post(
         "/compatibility/check",
         json={"patient_id": patient["id"], "donor_id": donor["id"]},
@@ -848,6 +909,8 @@ async def test_cannot_get_another_doctors_report(
 ):
     patient = await create_patient(auth_client, blood_type="O")
     donor = await create_donor(auth_client, blood_type="A")
+    await auth_client.put(f"/patients/{patient['id']}/hla-typings", json=COMPATIBLE_PATIENT_HLA)
+    await auth_client.put(f"/donors/{donor['id']}/hla-typings", json=COMPATIBLE_DONOR_HLA)
     check = await auth_client.post(
         "/compatibility/check",
         json={"patient_id": patient["id"], "donor_id": donor["id"]},
@@ -877,6 +940,8 @@ async def test_full_check_allowed_against_non_owned_available_donor(
 ):
     patient = await create_patient(auth_client, blood_type="AB")
     donor = await create_donor(second_auth_client, blood_type="O")
+    await auth_client.put(f"/patients/{patient['id']}/hla-typings", json=COMPATIBLE_PATIENT_HLA)
+    await second_auth_client.put(f"/donors/{donor['id']}/hla-typings", json=COMPATIBLE_DONOR_HLA)
 
     response = await auth_client.post(
         "/compatibility/check",
@@ -927,6 +992,8 @@ async def test_cross_hospital_check_uses_distinct_audit_action(
 ):
     patient = await create_patient(auth_client, blood_type="AB")
     donor = await create_donor(second_auth_client, blood_type="O")
+    await auth_client.put(f"/patients/{patient['id']}/hla-typings", json=COMPATIBLE_PATIENT_HLA)
+    await second_auth_client.put(f"/donors/{donor['id']}/hla-typings", json=COMPATIBLE_DONOR_HLA)
 
     response = await auth_client.post(
         "/compatibility/check",
@@ -945,6 +1012,7 @@ async def test_cross_hospital_check_uses_distinct_audit_action(
 
     # The same-doctor path must still use the original action name, unchanged.
     own_donor = await create_donor(auth_client, blood_type="O")
+    await auth_client.put(f"/donors/{own_donor['id']}/hla-typings", json=COMPATIBLE_DONOR_HLA)
     await auth_client.post(
         "/compatibility/check",
         json={"patient_id": patient["id"], "donor_id": own_donor["id"]},

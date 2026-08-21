@@ -71,15 +71,24 @@ export default function NewCheckFromRecordsPage() {
     }
   }, [])
 
-  useEffect(() => {
-    if (!patientId || !donorId) {
-      setMatches(null)
-      setPairId(null)
-      return
-    }
-    let cancelled = false
+  // Resets isResolving/resolveError the moment the patient+donor pair
+  // changes, via a render-time state adjustment instead of a setState call
+  // in the effect body.
+  const pairKey = `${patientId}:${donorId}`
+  const [syncedPairKey, setSyncedPairKey] = useState(pairKey)
+  if (patientId && donorId && pairKey !== syncedPairKey) {
+    setSyncedPairKey(pairKey)
     setIsResolving(true)
     setResolveError("")
+  }
+
+  useEffect(() => {
+    // matches/pairId are only ever read from behind a `patientId && donorId`
+    // guard below, so there's nothing to reset here when either is unset --
+    // skip the fetch entirely instead of calling setState synchronously
+    // from the effect body.
+    if (!patientId || !donorId) return
+    let cancelled = false
     Promise.all([listPatientReportFiles(patientId), listPairs({ patientId, donorId })])
       .then(async ([patientFiles, pairs]) => {
         if (cancelled) return

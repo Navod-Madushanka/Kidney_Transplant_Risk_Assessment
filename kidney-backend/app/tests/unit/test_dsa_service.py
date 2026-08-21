@@ -94,3 +94,47 @@ def test_result_records_the_floor_and_bands_in_force():
     assert result.floor == DSA_MFI_FLOOR
     assert [band["name"] for band in result.bands] == ["weak", "moderate", "strong"]
     assert result.bands[-1]["max_mfi"] is None
+
+
+def test_allele_level_antigen_is_flagged_as_unmapped_not_silently_dropped():
+    # Regression: an antibody entered allele-level ("B*44:02") can never
+    # exact-match a donor's serological designation ("B44") no matter how
+    # strong the MFI -- see hla_antigen_designation()'s docstring. Before
+    # this fix, a strong DSA entered this way produced no match, no halt,
+    # and no flag at all, identical to "the patient has no antibody against
+    # this donor". It must now surface as a review flag instead.
+    patient_antibodies = [PatientAntibody(antigen="B*44:02", mfi=12000)]
+    donor_hla_antigens = ["B44"]
+
+    result = check_dsa(patient_antibodies, donor_hla_antigens)
+
+    assert result.is_halted is False
+    assert result.matches == []
+    assert result.requires_review is True
+    assert len(result.unmapped_antibodies) == 1
+    assert result.unmapped_antibodies[0].antigen == "B*44:02"
+    assert result.unmapped_antibodies[0].mfi == 12000
+
+
+def test_unmatched_antibody_in_valid_format_is_not_flagged_as_unmapped():
+    # A patient antibody that simply isn't against any of this donor's
+    # antigens is the normal, expected case (most of a sensitized patient's
+    # antibody profile has nothing to do with any one specific donor) -- it
+    # must not be treated the same as the format problem above.
+    patient_antibodies = [PatientAntibody(antigen="A2", mfi=6000)]
+    donor_hla_antigens = ["B44"]
+
+    result = check_dsa(patient_antibodies, donor_hla_antigens)
+
+    assert result.unmapped_antibodies == []
+    assert result.requires_review is False
+
+
+def test_allele_level_antigen_below_floor_is_not_flagged():
+    patient_antibodies = [PatientAntibody(antigen="B*44:02", mfi=DSA_MFI_FLOOR - 1)]
+    donor_hla_antigens = ["B44"]
+
+    result = check_dsa(patient_antibodies, donor_hla_antigens)
+
+    assert result.unmapped_antibodies == []
+    assert result.requires_review is False

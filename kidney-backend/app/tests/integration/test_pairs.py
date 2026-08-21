@@ -114,7 +114,9 @@ async def test_register_pair_happy_path(auth_client: AsyncClient, db_session):
 async def test_register_pair_donor_nic_conflict_rolls_back_the_patient_too(
     auth_client: AsyncClient, db_session
 ):
-    existing_donor = await auth_client.post("/donors", json=make_donor_payload(nic_number="900000001V"))
+    existing_donor = await auth_client.post(
+        "/donors", json=make_donor_payload(nic_number="900000001V")
+    )
     assert existing_donor.status_code == 201
 
     response = await auth_client.post(
@@ -224,7 +226,9 @@ async def test_pair_read_detects_intended_recipient_drift(auth_client: AsyncClie
     # pair via a direct write (e.g. PUT /donors/{id} repointing it), which
     # app/api/pairs.py's own contract deliberately leaves possible -- see
     # DonorPatientPair's docstring and F2.2.
-    await db_session.execute(update(Donor).where(Donor.id == donor_id).values(intended_recipient_id=None))
+    await db_session.execute(
+        update(Donor).where(Donor.id == donor_id).values(intended_recipient_id=None)
+    )
     await db_session.commit()
 
     response = await auth_client.get(f"/pairs/{pair_id}")

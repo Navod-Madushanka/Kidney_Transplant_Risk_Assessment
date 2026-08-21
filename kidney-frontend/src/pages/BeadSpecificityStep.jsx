@@ -6,6 +6,7 @@ import InputField from "../components/ui/InputField"
 import Button from "../components/ui/Button"
 import Card from "../components/ui/Card"
 import ToggleSwitch from "../components/ui/ToggleSwitch"
+import { isAlleleLevelAntigen, ALLELE_LEVEL_ANTIGEN_ERROR } from "../utils/antigenFormat"
 
 let nextRowId = 1
 function makeRow(entry) {
@@ -150,6 +151,10 @@ export default function BeadSpecificityStep() {
         nextRowErrors[row.rowId] = "Antigen is required"
         return
       }
+      if (isAlleleLevelAntigen(row.antigen.trim())) {
+        nextRowErrors[row.rowId] = ALLELE_LEVEL_ANTIGEN_ERROR
+        return
+      }
       if (hasMfi && Number.isNaN(Number(row.mfi))) {
         nextRowErrors[row.rowId] = "MFI must be a number"
         return
@@ -195,7 +200,7 @@ export default function BeadSpecificityStep() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <InputField
             label="Search by antigen/bead name"
-            placeholder="e.g. B*44:02"
+            placeholder="e.g. B44"
             value={antigenFilter}
             onChange={(e) => setAntigenFilter(e.target.value)}
           />
@@ -229,7 +234,7 @@ export default function BeadSpecificityStep() {
               <div key={row.rowId} className="flex flex-col gap-1">
                 <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-start">
                   <InputField
-                    placeholder="Antigen (e.g. B*44:02)"
+                    placeholder="Antigen (e.g. B44)"
                     value={row.antigen}
                     onChange={(e) => updateRow(row.rowId, "antigen", e.target.value)}
                     error={rowErrors[row.rowId]}

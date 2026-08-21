@@ -20,7 +20,6 @@ from sqlalchemy.exc import IntegrityError
 from app.models.donor import Donor
 from app.models.enums import (
     DonorStatus,
-    ExchangeProposalPairDecision,
     ExchangeProposalStatus,
 )
 from app.models.exchange_proposal import ExchangeProposal

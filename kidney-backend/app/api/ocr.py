@@ -159,7 +159,9 @@ async def get_extract_batch_job(
 ):
     job = await get_extraction_job(db, current_doctor.id, job_id)
     if job is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Extraction job not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Extraction job not found"
+        )
 
     return OcrJobStatusResponse(
         job_id=job.id, status=job.status, documents=job.documents, error=job.error

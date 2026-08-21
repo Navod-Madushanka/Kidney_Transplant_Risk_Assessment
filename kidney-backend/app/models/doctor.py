@@ -26,4 +26,6 @@ class Doctor(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     # warrants) -- an operator sets this directly in the database. See
     # docs/clinical-basis.md's sibling doc-comment style: this is a
     # deliberately minimal, single-flag start, not a full role system.
-    is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    is_admin: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )

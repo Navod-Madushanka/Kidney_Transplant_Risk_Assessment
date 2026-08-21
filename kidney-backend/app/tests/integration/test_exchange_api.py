@@ -111,7 +111,10 @@ async def test_hard_to_match_endpoint_reports_a_structurally_isolated_pair(
     # patient_a is A, patient_b is B) -- zero edges in either direction.
     patient_c = await create_patient(auth_client, blood_type="O", full_name="Isolated Patient")
     donor_c = await create_donor(
-        auth_client, blood_type="AB", full_name="Isolated Donor", intended_recipient_id=patient_c["id"]
+        auth_client,
+        blood_type="AB",
+        full_name="Isolated Donor",
+        intended_recipient_id=patient_c["id"],
     )
     assert (
         await auth_client.put(f"/patients/{patient_c['id']}/hla-typings", json=MATCHING_TYPING)
@@ -169,7 +172,10 @@ async def test_match_excludes_an_untyped_pair(
         second_auth_client, blood_type="A", intended_recipient_id=patient_b["id"]
     )
 
-    for client, patient_id in ((auth_client, patient_a["id"]), (second_auth_client, patient_b["id"])):
+    for client, patient_id in (
+        (auth_client, patient_a["id"]),
+        (second_auth_client, patient_b["id"]),
+    ):
         response = await client.put(f"/patients/{patient_id}/hla-typings", json=MATCHING_TYPING)
         assert response.status_code == 204, response.text
 

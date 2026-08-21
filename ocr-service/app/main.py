@@ -1,5 +1,6 @@
 import logging
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
 from app.api.routes import router as ocr_router

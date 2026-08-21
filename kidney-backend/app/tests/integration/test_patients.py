@@ -161,6 +161,22 @@ async def test_replace_and_get_patient_antibody_profiles(auth_client: AsyncClien
     assert get_response.json()[0]["antigen"] == "B7"
 
 
+async def test_replace_antibody_profile_rejects_allele_level_antigen(auth_client: AsyncClient):
+    # Regression: "B*44:02" (allele-level) can never match a donor's
+    # serological typing ("B44") in the DSA check, so it used to be accepted
+    # and saved without complaint, silently making a real DSA invisible.
+    # See app/schemas/antibody_profile.py's validator.
+    patient = await create_patient(auth_client)
+    entries = [{"antigen": "B*44:02", "mfi": 12000}]
+
+    put_response = await auth_client.put(
+        f"/patients/{patient['id']}/antibody-profiles", json=entries
+    )
+
+    assert put_response.status_code == 422
+    assert "serological designation" in put_response.text
+
+
 async def test_create_and_list_sensitization_events(auth_client: AsyncClient):
     patient = await create_patient(auth_client)
     entries = [{"event_type": "pregnancy", "event_date": "2020-01-01"}]

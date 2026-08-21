@@ -369,7 +369,8 @@ def _solve_with_shared_cycles(
     # human should keep seeing the number the policy actually means, not
     # this solve-internal scaling.
     tie_broken_weights = [
-        round(weight * TIE_BREAK_PRIMARY_SCALE) + round(_wait_total(cycle, index) * TIE_BREAK_WAIT_SCALE)
+        round(weight * TIE_BREAK_PRIMARY_SCALE)
+        + round(_wait_total(cycle, index) * TIE_BREAK_WAIT_SCALE)
         for weight, cycle in zip(weights, cycles)
     ]
 

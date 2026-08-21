@@ -12,6 +12,7 @@ from app.schemas.match_report import CompatibilityCheckRequest, MatchReportRespo
 from app.services.audit_service import create_audit_log
 from app.services.compatibility_precondition_service import (
     build_compatibility_readiness,
+    compute_hla_mismatch_result,
     unverified_data_reasons,
 )
 from app.services.donor_service import get_donor_for_compatibility_check
@@ -64,6 +65,32 @@ async def check_compatibility(
                 "hasn't been confirmed by a doctor yet. Review and re-save it "
                 "against the source document first."
             ),
+        )
+
+    # Same category of precondition as the OCR-verification check above,
+    # not something to leave for the pipeline to discover: Step 3
+    # (hla_mismatch_service.py) worst-cases any missing A/B/DRB1 locus
+    # rather than refusing to run, which is the right behavior for the
+    # pipeline itself (see that module's docstring) but the wrong one for
+    # THIS endpoint to rely on as its only safeguard. GET
+    # /compatibility/readiness already surfaces this same gap as a
+    # `missing_hla_*` blocking entry for the wizard's preview panel, but
+    # that endpoint is advisory -- anything reaching POST
+    # /compatibility/check directly (Swagger, a script, a future client)
+    # bypasses it entirely. Hoisted here so the API enforces this itself
+    # rather than depending on a caller having checked readiness first.
+    mismatch_result = await compute_hla_mismatch_result(db, patient, donor)
+    if not mismatch_result.data_completeness:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "msg": (
+                    "Cannot run compatibility check: HLA typing is incomplete "
+                    f"({', '.join(mismatch_result.missing_inputs)}). Enter the "
+                    "missing typing, then re-run the check."
+                ),
+                "missing_inputs": mismatch_result.missing_inputs,
+            },
         )
 
     crossmatch_input = None

@@ -21,6 +21,7 @@ from app.reference_data.report_outcome import (
     REVIEW_FLAG_INCOMPLETE_TYPING,
     REVIEW_FLAG_LABELS,
     REVIEW_FLAG_UNCLASSIFIED_RISK,
+    REVIEW_FLAG_UNMAPPED_ANTIBODY,
     TOTAL_STEPS,
     VERDICT_CANNOT_ASSESS,
     VERDICT_COMPATIBLE,
@@ -50,7 +51,8 @@ def _halted_headline_and_detail(
         donor_type = abo_result.get("donor_type") if abo_result else "unknown"
         return (
             "ABO incompatible",
-            f"Recipient blood type {recipient_type} is not compatible with donor type {donor_type}.",
+            f"Recipient blood type {recipient_type} is not compatible with donor type "
+            f"{donor_type}.",
         )
 
     if overall_status == "halted_mismatch_reject":
@@ -58,24 +60,33 @@ def _halted_headline_and_detail(
         bucket = mismatch_result.get("bucket_name") if mismatch_result else "unknown"
         return (
             "Too many HLA mismatches",
-            f"{total} HLA mismatches across A/B/DRB1 (bucket: {bucket}) — above the acceptable threshold.",
+            f"{total} HLA mismatches across A/B/DRB1 (bucket: {bucket}) — above the acceptable "
+            "threshold.",
         )
 
     if overall_status == "halted_dsa_trigger":
         matches = (dsa_result or {}).get("matches") or []
-        strong = [m for m in matches if m.get("severity") and m.get("severity") not in ("weak", "moderate")]
+        strong = [
+            m
+            for m in matches
+            if m.get("severity") and m.get("severity") not in ("weak", "moderate")
+        ]
         target = strong[0] if strong else (matches[0] if matches else None)
         if target:
             return (
                 "Donor-specific antibody detected",
-                f"Strong DSA against donor HLA {target.get('antigen')} with an MFI of {target.get('mfi')}.",
+                f"Strong DSA against donor HLA {target.get('antigen')} with an MFI of "
+                f"{target.get('mfi')}.",
             )
-        return ("Donor-specific antibody detected", "A strong donor-specific antibody was detected.")
+        return (
+            "Donor-specific antibody detected", "A strong donor-specific antibody was detected."
+        )
 
     if overall_status == "halted_crossmatch_positive":
         return (
             "Positive crossmatch",
-            "The patient's serum reacted against donor cells on crossmatch — immunologically incompatible.",
+            "The patient's serum reacted against donor cells on crossmatch — immunologically "
+            "incompatible.",
         )
 
     return ("Not compatible", "This pairing did not clear a required gate.")
@@ -149,6 +160,15 @@ def build_report_outcome(
         )
 
     # --- Row 3: completed but incomplete typing --------------------------
+    # POST /compatibility/check now hard-blocks incomplete A/B/DRB1 typing
+    # before run_match_pipeline ever runs (see compute_hla_mismatch_result
+    # in compatibility_precondition_service.py), so overall_status ==
+    # "completed" with data_completeness False shouldn't occur for a check
+    # made through that endpoint any more. Kept here regardless: this
+    # function also re-derives the outcome for match reports created before
+    # that endpoint check existed (see the Alembic backfill migration this
+    # module's own docstring mentions), which can still carry incomplete
+    # typing on record.
     data_completeness = (mismatch_result or {}).get("data_completeness", True)
     if data_completeness is False:
         missing_inputs = (mismatch_result or {}).get("missing_inputs") or []
@@ -156,7 +176,9 @@ def build_report_outcome(
             "code": REVIEW_FLAG_INCOMPLETE_TYPING,
             "label": REVIEW_FLAG_LABELS[REVIEW_FLAG_INCOMPLETE_TYPING],
             "detail": (
-                f"Missing: {', '.join(missing_inputs)}." if missing_inputs else "HLA typing is incomplete."
+                f"Missing: {', '.join(missing_inputs)}."
+                if missing_inputs
+                else "HLA typing is incomplete."
             ),
         }
         if missing_inputs:
@@ -188,7 +210,8 @@ def build_report_outcome(
         reviewed = [m for m in matches if m.get("severity") not in (None, "strong")]
         target = reviewed[0] if reviewed else (matches[0] if matches else None)
         detail = (
-            f"{(target.get('severity') or 'Moderate').capitalize()} DSA against HLA-{target.get('antigen')}"
+            f"{(target.get('severity') or 'Moderate').capitalize()} DSA against "
+            f"HLA-{target.get('antigen')}"
             if target
             else "A weak or moderate donor-specific antibody was detected."
         )
@@ -197,6 +220,22 @@ def build_report_outcome(
                 "code": REVIEW_FLAG_DSA_REQUIRES_REVIEW,
                 "label": REVIEW_FLAG_LABELS[REVIEW_FLAG_DSA_REQUIRES_REVIEW],
                 "detail": detail,
+            }
+        )
+
+    unmapped_antibodies = (dsa_result or {}).get("unmapped_antibodies") or []
+    if unmapped_antibodies:
+        names = ", ".join(
+            f"{ab['antigen']} (MFI {ab['mfi']:.0f})" for ab in unmapped_antibodies
+        )
+        review_flags.append(
+            {
+                "code": REVIEW_FLAG_UNMAPPED_ANTIBODY,
+                "label": REVIEW_FLAG_LABELS[REVIEW_FLAG_UNMAPPED_ANTIBODY],
+                "detail": (
+                    f"Could not check against donor HLA typing: {names}. Re-enter in "
+                    "serological format (e.g. 'B44') and re-run the check."
+                ),
             }
         )
 
@@ -247,7 +286,10 @@ def build_report_outcome(
             verdict=VERDICT_PROCEED_CAUTION,
             verdict_label=VERDICT_LABELS[VERDICT_PROCEED_CAUTION],
             headline="Proceed with caution",
-            detail="This pairing cleared every gate, but one or more findings need review before scheduling.",
+            detail=(
+                "This pairing cleared every gate, but one or more findings need review "
+                "before scheduling."
+            ),
             risk_level=final_risk_level,
             determined_at_step=7,
             total_steps=TOTAL_STEPS,
