@@ -25,6 +25,21 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
 
+    # CORS. Comma-separated list of allowed origins (scheme + host + port,
+    # no trailing slash), e.g. "http://localhost:5173,http://192.168.1.20:5173".
+    # Defaults cover the two local dev entry points (Vite dev server and
+    # `vite preview`) on both localhost and 127.0.0.1. Override via
+    # CORS_ORIGINS to demo from a LAN IP so devices on the same network can
+    # reach the app.
+    cors_origins: str = (
+        "http://localhost:5173,http://127.0.0.1:5173,"
+        "http://localhost:4173,http://127.0.0.1:4173"
+    )
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
     # OCR service
     ocr_service_url: str = "http://localhost:8001"
     ocr_service_api_key: str
