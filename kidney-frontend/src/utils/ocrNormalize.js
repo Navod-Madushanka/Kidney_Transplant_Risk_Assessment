@@ -108,5 +108,13 @@ export function normalizeOcrBatchResponse(response) {
     donorHla: response.donor_hla || [],
     beadSpecificity,
     crossmatch: response.crossmatch || null,
+    // A job can reach terminal "done" status with nothing actually
+    // extracted -- e.g. ocr-service was unreachable (see
+    // OcrJobDocumentStatus.errors, kidney-backend/app/schemas/ocr.py).
+    // Dropped here until 2026-08-19: every caller treated `status===
+    // "done"` alone as success, so a hard extraction failure silently
+    // looked identical to "nothing found on this document" -- the doctor
+    // saw an empty form with no indication anything had gone wrong.
+    errors: response.errors || [],
   }
 }

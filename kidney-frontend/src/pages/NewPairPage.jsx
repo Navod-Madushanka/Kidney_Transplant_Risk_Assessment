@@ -60,6 +60,35 @@ const BEAD_SPECIFICITY_JOB_SLOTS = [
   { documentType: "bead_specificity_page_2" },
 ]
 
+// The Register button stays disabled until both sub-forms are saved (and,
+// if OCR populated a group, until its confirmation toggle is checked) --
+// but each sub-form's own "Save" button is easy to miss, since filling the
+// fields alone looks complete. This gives a specific, always-visible reason
+// instead of a silently-dead button.
+function getSubmitBlockReason({
+  patientPayload,
+  donorPayload,
+  demographicsExtracted,
+  hlaExtracted,
+  ocrConfirmed,
+}) {
+  const unsaved = []
+  if (!patientPayload) unsaved.push('"Save patient details"')
+  if (!donorPayload) unsaved.push('"Save donor details"')
+  if (unsaved.length > 0) {
+    return `Click ${unsaved.join(" and ")} above before registering.`
+  }
+
+  const unconfirmed = []
+  if (demographicsExtracted && !ocrConfirmed.details) unconfirmed.push("the patient/donor details")
+  if (hlaExtracted && !ocrConfirmed.hlaTyping) unconfirmed.push("the HLA typing")
+  if (unconfirmed.length > 0) {
+    return `Confirm ${unconfirmed.join(" and ")} above — this data was read by AI and hasn't been checked against the source document yet.`
+  }
+
+  return null
+}
+
 function buildCrossmatchInput(crossmatch) {
   if (!crossmatch) return null
   const { t_cell_result, b_cell_result, interpretation, remarks, test_date } = crossmatch
@@ -137,6 +166,14 @@ export default function NewPairPage() {
     jobId: extraction.jobId,
     status: extraction.status,
     onDocumentDone: (_documentType, payload) => {
+      // A document can reach "done" with nothing extracted -- e.g.
+      // ocr-service was unreachable (see ocrNormalize.js's `errors` comment).
+      // Surface it instead of letting the blanket "Extracted" success
+      // message imply everything worked while every field stays empty.
+      if (payload.errors?.length > 0) {
+        setExtractError(payload.errors.map((e) => e.message).join(" "))
+      }
+
       const detailsChanged = hasAnyValue(payload.patientDetails) || hasAnyValue(payload.donorDetails)
       const hlaChanged = payload.patientHla?.length > 0 || payload.donorHla?.length > 0
 
@@ -416,18 +453,23 @@ export default function NewPairPage() {
               />
             )}
           </div>
-          {!canSubmit && (patientPayload || donorPayload) && (
-            <p className="text-[13px] text-high-risk font-medium mt-2">
-              Confirm the extracted data above before registering — this data was read by AI and
-              hasn't been checked against the source document yet.
-            </p>
-          )}
         </Card>
       )}
 
       {submitError && <p className="text-[13px] text-high-risk font-medium">{submitError}</p>}
 
-      <div className="flex justify-end">
+      <div className="flex flex-col items-end gap-1">
+        {!canSubmit && (
+          <p className="text-[13px] text-high-risk font-medium">
+            {getSubmitBlockReason({
+              patientPayload,
+              donorPayload,
+              demographicsExtracted,
+              hlaExtracted,
+              ocrConfirmed,
+            })}
+          </p>
+        )}
         <Button size="lg" loading={isSubmitting} disabled={!canSubmit} onClick={handleRegister}>
           Register patient &amp; donor
         </Button>

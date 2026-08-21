@@ -86,6 +86,26 @@ describe("NewPairPage", () => {
     expect(sentPhotos.beadSpecificityPage2).toBeUndefined()
   })
 
+  it("explains why Register is disabled before either sub-form has been saved", async () => {
+    renderPage()
+
+    const registerButton = screen.getByRole("button", { name: /register patient/i })
+    expect(registerButton).toBeDisabled()
+    expect(
+      screen.getByText('Click "Save patient details" and "Save donor details" above before registering.')
+    ).toBeInTheDocument()
+  })
+
+  it("narrows the disabled-Register hint down to whichever sub-form is still unsaved", async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    await fillRequiredFields(user, "Patient", { bloodType: "O", rh: "Positive (+)" })
+    await saveSection(user, "Patient", "Save patient details")
+
+    expect(screen.getByText('Click "Save donor details" above before registering.')).toBeInTheDocument()
+  })
+
   it("blocks Register while an OCR-populated group is unconfirmed, then allows it once confirmed", async () => {
     const user = userEvent.setup()
     startExtractionJob.mockResolvedValue({ job_id: "job-1" })
