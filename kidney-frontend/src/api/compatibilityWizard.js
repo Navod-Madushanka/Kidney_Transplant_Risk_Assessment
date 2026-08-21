@@ -91,9 +91,22 @@ export async function submitCompatibilityCheck(
     const hlaOcrVerified = wasOcrExtracted(wizardState, "hla_typing_report")
       ? wizardState.ocr_verified.hla_typing
       : undefined
+    // Bead specificity also counts as "needs a verified/unverified verdict"
+    // when the patient's record already carries antibody_profile_verified
+    // === false, even if THIS session never extracted a bead page itself
+    // (e.g. the registration-time background extraction job saved it
+    // unattended, or "start from records" prefilled an already-unverified
+    // profile) — must mirror BeadSpecificityStep.jsx's own wasOcrExtracted
+    // exactly. Dropping this clause silently sends `undefined` instead of
+    // the doctor's actual `true`, which the backend treats as "no claim
+    // made, leave the existing (false) flag alone" — so the checkbox the
+    // doctor ticked has no effect and the pair stays permanently blocked
+    // from POST /compatibility/check. This is not hypothetical: it shipped
+    // and blocked real submissions before being caught.
     const beadSpecificityOcrVerified =
       wasOcrExtracted(wizardState, "bead_specificity_page_1") ||
-      wasOcrExtracted(wizardState, "bead_specificity_page_2")
+      wasOcrExtracted(wizardState, "bead_specificity_page_2") ||
+      wizardState.subject?.patientRecord?.antibody_profile_verified === false
         ? wizardState.ocr_verified.bead_specificity
         : undefined
 

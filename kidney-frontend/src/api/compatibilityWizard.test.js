@@ -123,6 +123,29 @@ describe("submitCompatibilityCheck — writes to linked records, never creates",
     expect(replacePatientHlaTypings).toHaveBeenCalledWith("patient-1", [], undefined)
   })
 
+  it("passes the confirmed flag for bead specificity when the patient record was already unverified, even if this session extracted nothing itself", async () => {
+    // Mirrors BeadSpecificityStep.test.jsx's makeUnverifiedRecordWizardValue
+    // -- data that arrived from the registration-time background extraction
+    // job or a "start from records" prefill, with no extraction.documents
+    // entry at all this session. The doctor still reviewed and ticked the
+    // confirmation toggle (ocr_verified.bead_specificity: true); that must
+    // reach the backend as `true`, not silently drop to `undefined` (which
+    // the backend reads as "leave the existing false flag alone" and
+    // permanently blocks POST /compatibility/check).
+    const wizardState = baseWizardState({
+      extraction: { documents: {} },
+      ocr_verified: { hla_typing: false, bead_specificity: true },
+      subject: {
+        ...baseWizardState().subject,
+        patientRecord: { ...baseWizardState().subject.patientRecord, antibody_profile_verified: false },
+      },
+    })
+
+    await submitCompatibilityCheck(wizardState)
+
+    expect(replacePatientAntibodyProfiles).toHaveBeenCalledWith("patient-1", [], true)
+  })
+
   it("resumes from progress without re-running already-completed steps", async () => {
     const progress = { patientDetailsDone: true, donorDetailsDone: true }
 
