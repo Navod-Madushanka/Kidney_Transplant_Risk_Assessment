@@ -11,15 +11,21 @@ import {
 import { decodeJwt, isTokenExpired } from "../utils/jwt";
 import { AuthContext } from "./AuthContext";
 
-const initialState = { 
-  status: "loading", 
-  user: null 
+const initialState = {
+  status: "loading",
+  user: null,
+  expiresAt: null,
 };
 
 function reducer(state, action) {
   switch (action.type) {
     case "AUTHENTICATED":
-      return { status: "authenticated", user: action.user };
+      // expiresAt (ms epoch, from the JWT's own exp claim) is what
+      // SessionExpiryBanner.jsx times its warning off of -- set fresh on
+      // every login/reauthenticate/session-restore so re-authenticating
+      // near expiry actually pushes the warning back out, not just
+      // silences it once.
+      return { status: "authenticated", user: action.user, expiresAt: action.expiresAt };
     case "PROFILE_LOADED":
       // Only merges into an already-authenticated session -- a stray
       // /auth/me response resolving after logout (or after the token
@@ -28,7 +34,7 @@ function reducer(state, action) {
         ? { ...state, user: { ...state.user, ...action.profile } }
         : state;
     case "UNAUTHENTICATED":
-      return { status: "unauthenticated", user: null };
+      return { status: "unauthenticated", user: null, expiresAt: null };
     default:
       return state;
   }
@@ -77,7 +83,11 @@ export function AuthProvider({ children }) {
       }
 
       writeSession(session);
-      dispatch({ type: "AUTHENTICATED", user: buildUser(session, claims) });
+      dispatch({
+        type: "AUTHENTICATED",
+        user: buildUser(session, claims),
+        expiresAt: claims.exp * 1000,
+      });
       loadProfile(session);
     },
     [loadProfile]
@@ -113,7 +123,11 @@ export function AuthProvider({ children }) {
     // handles a session with none yet), then refreshes it -- so a reload
     // doesn't flash back to the email/role fallback while /auth/me is
     // in flight.
-    dispatch({ type: "AUTHENTICATED", user: buildUser(session, claims) });
+    dispatch({
+      type: "AUTHENTICATED",
+      user: buildUser(session, claims),
+      expiresAt: claims.exp * 1000,
+    });
     loadProfile(session);
   }, [loadProfile]);
 

@@ -1,14 +1,15 @@
 {
+  "_redaction_note": "full_name/nic_number replaced with synthetic values (B8, PDPA cleanup) -- see fixtures/crossmatch_ground_truth.json's own note in this same directory.",
   "patient_details": {
-    "full_name": "D.G.S.K.Ratnayake",
-    "nic_number": "742963851V",
+    "full_name": "Test Patient One",
+    "nic_number": "000000001V",
     "date_of_birth": "21.03.1976",
     "blood_type": "B Positive",
     "hla_ref_no": "102/26"
   },
   "donor_details": {
-    "full_name": "J.A.S.Fernando",
-    "nic_number": "199834567123",
+    "full_name": "Test Donor Two",
+    "nic_number": "200000000004",
     "date_of_birth": "29.05.1993",
     "blood_type": "B Positive",
     "hla_ref_no": "103/26"

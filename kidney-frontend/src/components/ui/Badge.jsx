@@ -24,7 +24,7 @@ const STATUS_LABELS = {
   low: "Low Risk",
   moderate: "Moderate Risk",
   "high-moderate": "High-Moderate Risk",
-  "high-risk": "High Genetic Risk",
+  "high-risk": "High Immunological Risk",
   pending: "Needs Review",
   neutral: "—",
 }

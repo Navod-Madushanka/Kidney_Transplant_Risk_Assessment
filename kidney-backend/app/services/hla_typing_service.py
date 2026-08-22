@@ -102,6 +102,43 @@ def hla_antigen_designation(locus: str, allele: str) -> str:
     return f"{prefix}{allele.lstrip('0') or '0'}"
 
 
+# Inverse of _SEROLOGICAL_LOCUS_PREFIX: prefix -> typing locus, longest
+# prefix first so "DR"/"DQ"/"DP" are checked before a bare single-letter
+# fallback could ever apply. A and B aren't in _SEROLOGICAL_LOCUS_PREFIX
+# (their serological name already equals their locus name), so they're
+# handled as a same-length single-letter tier below the loop instead.
+_SEROLOGICAL_PREFIX_TO_LOCUS: list[tuple[str, str]] = sorted(
+    ((prefix, locus) for locus, prefix in _SEROLOGICAL_LOCUS_PREFIX.items()),
+    key=lambda pair: -len(pair[0]),
+)
+
+
+def locus_for_antigen_designation(antigen: str) -> str | None:
+    """Inverse of hla_antigen_designation(): given an antigen string as
+    recorded on a patient's antibody profile ("DR13", "B45", "Cw3", "A2"),
+    returns the HLA typing locus it belongs to ("DRB1", "B", "C", "A"), or
+    None if the string doesn't start with a recognized serological prefix at
+    all (e.g. a locus outside this scheme entirely -- see the docstring on
+    _SEROLOGICAL_LOCUS_PREFIX). Does NOT distinguish an allele-level string
+    ("B*07:02") from serological -- both start with a real locus letter, so
+    this resolves "B" for either; callers that care about that distinction
+    (e.g. dsa_service.check_dsa) must check for it separately, before
+    falling back to this.
+
+    Lets a caller check whether the donor actually has typing on record for
+    the locus an antibody targets, rather than treating "no donor typing at
+    this locus" the same as "typed, and confirmed no match" -- see
+    dsa_service.check_dsa's donor_typed_loci parameter.
+    """
+    for prefix, locus in _SEROLOGICAL_PREFIX_TO_LOCUS:
+        if antigen.startswith(prefix):
+            return locus
+    for locus in ("A", "B"):
+        if antigen.startswith(locus):
+            return locus
+    return None
+
+
 def normalize_antibody_antigen(antigen: str) -> str:
     """Strips a real chart's ",Bw4"/",Bw6" (or ".Bw4"/".Bw6") cross-reactive-
     group suffix from a B-locus antibody antigen string, e.g. "B45,Bw6" ->

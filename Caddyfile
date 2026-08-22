@@ -1,0 +1,49 @@
+# Caddyfile
+#
+# TLS-terminating reverse proxy for the production stack (B9 / Phase 3.1 of
+# FINALIZATION-PLAN.md). Two site blocks, not one with path-based routing:
+# kidney-frontend's client-side router and kidney-backend's API both mount
+# routes at their own root (e.g. both could plausibly own "/patients"), so
+# splitting by subdomain is what avoids a real collision, not just style --
+# see docker-compose.prod.yml's comment on the two DNS records this needs.
+#
+# Caddy's automatic HTTPS handles the whole TLS lifecycle here with zero
+# extra config below: obtaining and renewing a Let's Encrypt certificate
+# per domain, redirecting :80 -> :443, and picking a modern TLS
+# configuration. All of that requires DOMAIN to be a real domain with A/AAAA
+# records pointing at this host, and ports 80+443 reachable from the
+# internet (port 80 for the ACME HTTP-01 challenge, not just 443).
+#
+# ACME_EMAIL receives certificate-expiry-problem notices from Let's
+# Encrypt -- not required to function, but skipping it means nobody finds
+# out if renewal ever starts failing until the cert has already expired.
+{
+	email {$ACME_EMAIL}
+}
+
+(security_headers) {
+	header {
+		# Tells the browser to only ever speak HTTPS to this host from now on
+		# -- one year, including subdomains (both kidney-frontend's domain and
+		# api.'s). Not submitting to the HSTS preload list here: that's a
+		# separate, effectively irreversible opt-in (removal takes months to
+		# propagate through browsers) and isn't this deployment's call to make
+		# unilaterally.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		# Don't advertise the exact server software/version in every response.
+		-Server
+	}
+}
+
+{$DOMAIN} {
+	import security_headers
+	reverse_proxy kidney-frontend:80
+}
+
+api.{$DOMAIN} {
+	import security_headers
+	reverse_proxy kidney-backend:8000
+}

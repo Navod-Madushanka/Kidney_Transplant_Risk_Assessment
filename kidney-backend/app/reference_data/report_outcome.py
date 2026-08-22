@@ -33,7 +33,7 @@ app/services/report_outcome_service.py for the implementation):
      (this is a missing *policy* decision — no agreed point value for the
      cPRA ">60%" band — not missing clinical data: every pair-specific gate,
      ABO/mismatch/DSA/crossmatch, already passed for this exact donor. See
-     risk_classification.py's PRA_BUCKET_POINTS docstring.)
+     risk_classification.py's CPRA_BUCKET_POINTS docstring.)
   5. completed AND any review flag present               -> proceed_with_caution
   6. completed, otherwise                                 -> compatible
 """
@@ -69,6 +69,7 @@ REVIEW_FLAG_DSA_REQUIRES_REVIEW = "dsa_requires_review"
 REVIEW_FLAG_HIGH_CPRA = "high_cpra"
 REVIEW_FLAG_UNCLASSIFIED_RISK = "unclassified_risk"
 REVIEW_FLAG_UNMAPPED_ANTIBODY = "unmapped_antibody"
+REVIEW_FLAG_DSA_UNTYPED_LOCUS = "dsa_untyped_locus"
 
 REVIEW_FLAG_LABELS: dict[str, str] = {
     REVIEW_FLAG_INCOMPLETE_TYPING: "Incomplete HLA typing",
@@ -76,6 +77,7 @@ REVIEW_FLAG_LABELS: dict[str, str] = {
     REVIEW_FLAG_HIGH_CPRA: "Recipient is highly sensitised",
     REVIEW_FLAG_UNCLASSIFIED_RISK: "No agreed risk band for this cPRA range",
     REVIEW_FLAG_UNMAPPED_ANTIBODY: "Antibody could not be matched against donor typing",
+    REVIEW_FLAG_DSA_UNTYPED_LOCUS: "Antibody against an untyped donor locus",
 }
 
 # The cPRA bucket name that raises REVIEW_FLAG_HIGH_CPRA — must match the

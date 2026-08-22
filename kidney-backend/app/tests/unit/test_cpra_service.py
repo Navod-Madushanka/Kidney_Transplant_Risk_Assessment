@@ -8,9 +8,9 @@ REFERENCE_VERSION = "test-v1"
 REFERENCE_CITATION = "test citation"
 
 
-def _calculate(sensitized_antigens, antigen_frequencies):
+def _calculate(unacceptable_antigens, antigen_frequencies):
     return calculate_cpra(
-        sensitized_antigens=sensitized_antigens,
+        unacceptable_antigens=unacceptable_antigens,
         antigen_frequencies=antigen_frequencies,
         reference_sample_size=REFERENCE_SAMPLE_SIZE,
         reference_table_version=REFERENCE_VERSION,
@@ -37,7 +37,7 @@ def test_antigen_missing_from_reference_table_defaults_to_zero_frequency():
     assert result.cpra_percentage == 20.0
 
 
-def test_empty_sensitized_antigens_yields_zero_percent_and_ok_message():
+def test_empty_unacceptable_antigens_yields_zero_percent_and_ok_message():
     result = _calculate([], {"A2": 0.2})
 
     assert result.cpra_percentage == 0.0
@@ -53,7 +53,7 @@ def test_has_sufficient_data_is_always_true():
 def test_message_reports_how_many_antigens_matched_the_table():
     result = _calculate(["A2", "B7", "Z99"], {"A2": 0.2, "B7": 0.1})
 
-    assert result.message == "2 of 3 sensitized antigens matched the reference frequency table"
+    assert result.message == "2 of 3 unacceptable antigens matched the reference frequency table"
 
 
 def test_reference_table_metadata_passes_through_unchanged():
@@ -67,11 +67,11 @@ def test_reference_table_metadata_passes_through_unchanged():
 def test_repeated_antigen_does_not_double_count():
     # Part I (I9): a real Sero group legitimately spans several distinct
     # beads (e.g. "A24" on beads 011/012 at different MFIs -- see
-    # ocr-service's bead_reconciliation.py), so a sensitized patient's
+    # ocr-service's bead_reconciliation.py), so a sensitised patient's
     # antigen list can legitimately contain the same name twice. Before
     # deduplication, combining "A24" into the union-probability formula
     # twice computed `2f - f^2` instead of `f`, overstating cPRA for
-    # essentially every sensitized patient -- independent of any OCR
+    # essentially every sensitised patient -- independent of any OCR
     # error. ["A24", "A24", "A2"] must equal ["A24", "A2"].
     with_repeat = _calculate(["A24", "A24", "A2"], {"A24": 0.15, "A2": 0.2})
     without_repeat = _calculate(["A24", "A2"], {"A24": 0.15, "A2": 0.2})
@@ -83,4 +83,4 @@ def test_repeated_antigen_does_not_double_count():
 def test_repeated_antigen_message_reports_unique_count():
     result = _calculate(["A24", "A24", "A2"], {"A24": 0.15, "A2": 0.2})
 
-    assert result.message == "2 of 2 sensitized antigens matched the reference frequency table"
+    assert result.message == "2 of 2 unacceptable antigens matched the reference frequency table"

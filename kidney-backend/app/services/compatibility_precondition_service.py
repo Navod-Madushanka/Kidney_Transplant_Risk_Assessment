@@ -120,13 +120,13 @@ class CompatibilityReadiness:
 _UNVERIFIED_CHECKS: tuple[tuple[str, str, str, str], ...] = (
     (
         "patient_details_unverified",
-        "the patient's demographic details (name/DOB/blood type)",
+        "the patient's demographic details (name/DOB/blood group)",
         "patient",
         "details_verified",
     ),
     (
         "donor_details_unverified",
-        "the donor's demographic details (name/DOB/blood type)",
+        "the donor's demographic details (name/DOB/blood group)",
         "donor",
         "details_verified",
     ),

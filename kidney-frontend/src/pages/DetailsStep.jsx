@@ -14,7 +14,7 @@ function validatePerson(details) {
   if (!details.full_name.trim()) errors.full_name = "Full name is required"
   if (!details.date_of_birth) errors.date_of_birth = "Date of birth is required"
   if (!details.blood_type) errors.blood_type = "Blood group is required"
-  if (!details.rh_factor) errors.rh_factor = "Rh factor is required"
+  if (!details.rh_factor) errors.rh_factor = "RhD type is required"
   return errors
 }
 
@@ -74,7 +74,7 @@ function PersonDetailsCard({ title, subtitle, details, onChange, errors }) {
             required
           />
           <SegmentedControl
-            label="Rh factor"
+            label="RhD type"
             options={RH_FACTOR_OPTIONS}
             value={details.rh_factor}
             onChange={(value) => onChange({ rh_factor: value })}
@@ -198,7 +198,7 @@ export default function DetailsStep() {
           {verificationError && (
             <p className="text-[13px] text-high-risk font-medium mt-2">
               Confirm this before continuing — the compatibility check refuses to run on
-              unverified OCR data, and blood type is permanent once set on a record.
+              unverified OCR data, and blood group is permanent once set on a record.
             </p>
           )}
         </div>

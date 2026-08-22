@@ -1,7 +1,7 @@
 # app/reference_data/abo_compatibility.py
 
 """
-ABO blood type compatibility rules for kidney transplant matching.
+ABO blood group compatibility rules for kidney transplant matching.
 Source: slide 2 — OPTN ABO Blood Group Compatibility policy.
 """
 

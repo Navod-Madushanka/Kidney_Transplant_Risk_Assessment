@@ -191,8 +191,8 @@ export default function BeadSpecificityStep() {
       <div>
         <h1 className="text-[22px] font-bold text-text">Bead specificity report</h1>
         <p className="text-[14px] text-text-muted mt-1">
-          Transcribe each antigen and its MFI value from the bead chart — a new row
-          appears automatically as you go.
+          Transcribe each antigen and its MFI (mean fluorescence intensity) value from the bead
+          chart — a new row appears automatically as you go.
         </p>
       </div>
 

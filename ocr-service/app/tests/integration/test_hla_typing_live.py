@@ -4,6 +4,17 @@
 # compose up` running locally, or ocr_base_url pointed at one -- excluded
 # from the default `pytest` run, see [tool.pytest.ini_options] in
 # pyproject.toml). Run explicitly: `uv run pytest -m integration -v`.
+#
+# B8 (PDPA cleanup, FINALIZATION-PLAN.md Phase 3.4): hla_ground_truth's
+# patient_details/donor_details full_name and nic_number were replaced with
+# synthetic values -- see the _redaction_note in fixtures/
+# hla_typing_ground_truth.json. If you have a real copy of sample.jpg
+# locally, this test will now (correctly) report a mismatch on those two
+# fields specifically -- the fixture no longer claims to match the real
+# report's identity fields, only its clinical ones (DOB, blood type,
+# hla_ref_no, every HLA allele). Fixing that for real means redacting or
+# replacing the reference image itself, not something fixable from this
+# repo alone since sample.jpg isn't tracked here.
 import pytest
 
 from app.extraction.llm_extract import extract_hla_typing

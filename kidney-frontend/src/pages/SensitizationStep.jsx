@@ -9,7 +9,7 @@ import InputField from "../components/ui/InputField"
 import Button from "../components/ui/Button"
 
 function formatPoints(points) {
-  return `+${points.toFixed(1)} sensitization points`
+  return `+${points.toFixed(1)} sensitisation points`
 }
 
 export default function SensitizationStep() {
@@ -40,17 +40,17 @@ export default function SensitizationStep() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-[22px] font-bold text-text">Sensitization</h1>
+        <h1 className="text-[22px] font-bold text-text">Sensitising history (informational)</h1>
         <p className="text-[14px] text-text-muted mt-1">
-          Prior sensitizing events are recorded for clinical reference on the compatibility
+          Prior sensitising events are recorded for clinical reference on the compatibility
           report (Step 2) — they don't change the automated DSA antibody check, which uses its
-          own fixed severity scale regardless of sensitization history.
+          own fixed severity scale regardless of sensitisation history.
         </p>
       </div>
 
       <Card>
         <Card.Header
-          title="Sensitizing events"
+          title="Sensitising events"
           subtitle="Toggle any that apply, and enter when each one occurred"
         />
         <div className="flex flex-col divide-y divide-border">
@@ -83,7 +83,7 @@ export default function SensitizationStep() {
       <div className="rounded-md bg-bg border border-border p-4 flex items-center justify-between">
         <div>
           <p className="text-[13px] font-semibold text-text-muted">
-            Sensitization score: {sensitizationScore.toFixed(1)} pts
+            Sensitisation score: {sensitizationScore.toFixed(1)} pts
           </p>
           <p className="text-[13px] text-text-muted mt-0.5">
             Reference only — shown on the compatibility report's Step 2, doesn't gate anything

@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react"
 import { useParams, Link } from "react-router-dom"
 import { getReport } from "../api/reports"
-import { reportBadgeProps } from "../constants/reportStatus"
+import { mismatchBucketDisplayLabel, reportBadgeProps } from "../constants/reportStatus"
 import { useReviewedReports } from "../hooks/useReviewedReports"
 import Card from "../components/ui/Card"
 import Badge from "../components/ui/Badge"
@@ -357,7 +357,7 @@ function buildSteps(report) {
     summary: `Recipient ${report.abo_result.recipient_type} / donor ${report.abo_result.donor_type}`,
     detail: (
       <Row
-        label="Recipient / donor blood type"
+        label="Recipient / donor blood group"
         value={`${report.abo_result.recipient_type} / ${report.abo_result.donor_type}`}
       />
     ),
@@ -366,12 +366,12 @@ function buildSteps(report) {
   if (report.sensitization_result) {
     steps.push({
       number: 2,
-      name: "Step 2 — Sensitization",
+      name: "Step 2 — Sensitisation",
       status: "pass",
       summary: "Computed for reference — not yet a reject/proceed gate",
       detail: (
         <div className="flex flex-col gap-2">
-          <Row label="Total sensitization score" value={`${report.sensitization_result.total_score.toFixed(1)} pts`} />
+          <Row label="Total sensitisation score" value={`${report.sensitization_result.total_score.toFixed(1)} pts`} />
           <Row
             label="Adjusted MFI cutoff"
             value={report.sensitization_result.adjusted_mfi_cutoff.toLocaleString()}
@@ -380,7 +380,7 @@ function buildSteps(report) {
       ),
     })
   } else {
-    steps.push(notReachedStep(2, "Step 2 — Sensitization"))
+    steps.push(notReachedStep(2, "Step 2 — Sensitisation"))
   }
 
   if (report.mismatch_result) {
@@ -389,7 +389,7 @@ function buildSteps(report) {
       number: 3,
       name: "Step 3 — HLA mismatches",
       status: report.mismatch_result.is_halted ? "halt" : incomplete ? "flagged" : "pass",
-      summary: `${report.mismatch_result.total_mismatches} total (A/B/DRB1) — ${report.mismatch_result.bucket_name}`,
+      summary: `${report.mismatch_result.total_mismatches} total (A/B/DRB1) — ${mismatchBucketDisplayLabel(report.mismatch_result.bucket_name)}`,
       detail: (
         <div className="flex flex-col gap-3">
           {incomplete && (
@@ -411,7 +411,7 @@ function buildSteps(report) {
     const highCpra = report.pra_bucket_result.bucket_name === ">60%"
     steps.push({
       number: 4,
-      name: "Step 4 — PRA",
+      name: "Step 4 — cPRA",
       status: highCpra ? "flagged" : "pass",
       summary: report.pra_bucket_result.has_sufficient_data
         ? `cPRA ${report.pra_bucket_result.percent.toFixed(1)}% — ${report.pra_bucket_result.bucket_name}`
@@ -429,7 +429,7 @@ function buildSteps(report) {
       ),
     })
   } else {
-    steps.push(notReachedStep(4, "Step 4 — PRA"))
+    steps.push(notReachedStep(4, "Step 4 — cPRA"))
   }
 
   if (report.dsa_result) {
@@ -440,8 +440,8 @@ function buildSteps(report) {
       summary: report.dsa_result.is_halted
         ? "Strong donor-specific antibody detected"
         : report.dsa_result.requires_review
-          ? "Weak/moderate DSA — flagged for desensitization review"
-          : "No donor-specific antibody above the MFI floor",
+          ? "Weak/moderate DSA — flagged for desensitisation review"
+          : "No donor-specific antibody above the MFI (mean fluorescence intensity) floor",
       detail:
         report.dsa_result.matches.length > 0 ? (
           <div className="flex flex-col gap-2">
@@ -509,7 +509,7 @@ function buildSteps(report) {
       status: flagged ? "flagged" : "pass",
       summary: report.final_risk_level ?? "No agreed risk band for this cPRA range",
       detail: report.final_risk_level ? (
-        <Row label="Combines the Step 3 mismatch bucket and Step 4 PRA bucket" value={report.final_risk_level} />
+        <Row label="Combines the Step 3 mismatch bucket and Step 4 cPRA bucket" value={report.final_risk_level} />
       ) : (
         <p className="text-[14px] text-moderate break-words">
           No doctor-specified point value exists yet for this cPRA range, so Step 7 can't combine a

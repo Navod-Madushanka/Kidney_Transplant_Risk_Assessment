@@ -129,6 +129,29 @@ uvicorn app.main:app --reload
 pytest
 ```
 
+### 7. Create a doctor account
+
+There is no self-service `/auth/register` endpoint — accounts are
+provisioned by an operator directly:
+
+```bash
+uv run python -m app.scripts.create_doctor <email> <full_name> [hospital_name]
+```
+
+The password is **never** passed on the command line (it would sit in
+shell history and be visible to every other user on the host via `ps` for
+the life of the process) — the script prompts for it interactively
+(no-echo, entered twice) and rejects anything under 12 characters, a
+common/breached password, or an obviously guessable pattern (see
+`app/scripts/password_policy.py`). `hospital_name` defaults to "Kandy
+National Hospital Sri Lanka" if omitted.
+
+New accounts are never admin by default — promote one separately:
+
+```bash
+uv run python -m app.scripts.promote_admin <email>
+```
+
 ## Verifying it's up
 
 1. `GET http://localhost:8000/health` → `{"status": "ok"}` — liveness, no DB

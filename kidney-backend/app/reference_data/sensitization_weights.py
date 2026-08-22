@@ -1,6 +1,6 @@
 # app/reference_data/sensitization_weights.py
 """
-Sensitization event scoring weights.
+Sensitising-event scoring weights.
 Source: project specification slide 5 -- see docs/clinical-basis.md §2 for
 the full rationale and what is/isn't externally citable about these numbers.
 """

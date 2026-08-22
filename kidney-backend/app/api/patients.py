@@ -123,7 +123,7 @@ async def update_patient_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Update a patient's core demographic fields (name, DOB, NIC). Blood
-    type and Rh factor are permanent once set — see PatientUpdate."""
+    group and RhD type are permanent once set — see PatientUpdate."""
     patient = await get_patient_by_id_for_doctor(db, patient_id, current_doctor.id)
     if patient is None:
         raise HTTPException(

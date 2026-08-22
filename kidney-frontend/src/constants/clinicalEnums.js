@@ -31,7 +31,7 @@ export const HLA_LOCUS_OPTIONS = [
 // values are sent as-is in POST /patients/{id}/sensitization-events.
 export const SENSITIZATION_EVENT_OPTIONS = [
   { value: "previous_transplant", label: "Previous transplant" },
-  { value: "pregnancy", label: "Pregnancy" },
+  { value: "pregnancy", label: "Prior pregnancy" },
   { value: "blood_transfusion", label: "Blood transfusion" },
 ]
 

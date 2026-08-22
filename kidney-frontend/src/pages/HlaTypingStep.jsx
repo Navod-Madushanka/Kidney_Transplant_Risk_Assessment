@@ -32,14 +32,14 @@ function LocusCard({ locusLabel, locus, patientRow, donorRow, onPatientChange, o
           <p className="text-[13px] font-semibold text-text-muted">Patient</p>
           <div className="grid grid-cols-2 gap-3">
             <InputField
-              label="Allele 1"
+              label="Antigen 1"
               value={patientRow.allele_1}
               onChange={(e) => onPatientChange({ allele_1: e.target.value })}
               error={patientError}
               required
             />
             <InputField
-              label="Allele 2"
+              label="Antigen 2"
               value={patientRow.allele_2}
               onChange={(e) => onPatientChange({ allele_2: e.target.value })}
               required
@@ -51,14 +51,14 @@ function LocusCard({ locusLabel, locus, patientRow, donorRow, onPatientChange, o
           <p className="text-[13px] font-semibold text-text-muted">Donor</p>
           <div className="grid grid-cols-2 gap-3">
             <InputField
-              label="Allele 1"
+              label="Antigen 1"
               value={donorRow.allele_1}
               onChange={(e) => onDonorChange({ allele_1: e.target.value })}
               error={donorError}
               required
             />
             <InputField
-              label="Allele 2"
+              label="Antigen 2"
               value={donorRow.allele_2}
               onChange={(e) => onDonorChange({ allele_2: e.target.value })}
               required

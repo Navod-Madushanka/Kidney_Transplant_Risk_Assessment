@@ -27,8 +27,8 @@ vi.mock("../api/reportFiles", () => ({
   fetchPairReportFileBlob: vi.fn(),
 }))
 
-const PATIENT = { id: "patient-1", full_name: "Alice Patient", nic_number: "199012345678" }
-const DONOR = { id: "donor-1", full_name: "Bob Donor", nic_number: "198512345678" }
+const PATIENT = { id: "patient-1", full_name: "Alice Patient", nic_number: "200000000006" }
+const DONOR = { id: "donor-1", full_name: "Bob Donor", nic_number: "200000000007" }
 const PAIR = { id: "pair-1", patient_id: "patient-1", donor_id: "donor-1" }
 
 const HLA_FILE = {
@@ -69,8 +69,8 @@ describe("NewCheckFromRecordsPage", () => {
 
     renderPage()
 
-    expect(await screen.findByText("Alice Patient — 199012345678")).toBeInTheDocument()
-    expect(screen.getByText("Bob Donor — 198512345678")).toBeInTheDocument()
+    expect(await screen.findByText("Alice Patient — 200000000006")).toBeInTheDocument()
+    expect(screen.getByText("Bob Donor — 200000000007")).toBeInTheDocument()
   })
 
   it("shows which wizard slots have an archived match once both are picked", async () => {

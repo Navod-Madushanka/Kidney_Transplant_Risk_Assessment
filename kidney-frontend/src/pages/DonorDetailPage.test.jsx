@@ -28,7 +28,7 @@ const DONOR = {
   date_of_birth: "1990-02-20",
   blood_type: "O",
   rh_factor: "+",
-  nic_number: "198512345678",
+  nic_number: "200000000007",
   status: "available",
   intended_recipient_id: null,
   egfr: null,

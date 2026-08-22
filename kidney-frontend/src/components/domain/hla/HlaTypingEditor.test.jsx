@@ -25,11 +25,11 @@ describe("HlaTypingEditor", () => {
       <HlaTypingEditor loadState="loaded" initialEntries={SAVED_ENTRIES} onSave={vi.fn()} />
     )
 
-    expect(screen.getAllByPlaceholderText("Allele 1").map((el) => el.value)).toEqual([
+    expect(screen.getAllByPlaceholderText("Antigen 1").map((el) => el.value)).toEqual([
       "29",
       "07",
     ])
-    expect(screen.getAllByPlaceholderText("Allele 2").map((el) => el.value)).toEqual([
+    expect(screen.getAllByPlaceholderText("Antigen 2").map((el) => el.value)).toEqual([
       "33",
       "58",
     ])
@@ -41,7 +41,7 @@ describe("HlaTypingEditor", () => {
       <HlaTypingEditor loadState="loaded" initialEntries={SAVED_ENTRIES} onSave={vi.fn()} />
     )
 
-    const firstAllele1 = screen.getAllByPlaceholderText("Allele 1")[0]
+    const firstAllele1 = screen.getAllByPlaceholderText("Antigen 1")[0]
     await user.clear(firstAllele1)
     await user.type(firstAllele1, "68")
 
@@ -51,6 +51,6 @@ describe("HlaTypingEditor", () => {
       <HlaTypingEditor loadState="loaded" initialEntries={SAVED_ENTRIES} onSave={vi.fn()} />
     )
 
-    expect(screen.getAllByPlaceholderText("Allele 1")[0].value).toBe("68")
+    expect(screen.getAllByPlaceholderText("Antigen 1")[0].value).toBe("68")
   })
 })

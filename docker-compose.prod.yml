@@ -11,6 +11,17 @@
 #   cp .env.example .env      # then fill in every value
 #   docker compose -f docker-compose.prod.yml up -d --build
 #
+# TLS (B9 / Phase 3.1): the only public entrypoints are caddy's ports 80/443
+# below -- kidney-backend and kidney-frontend no longer publish ports of
+# their own, reachable only over the compose network, so there's no way to
+# bypass TLS and hit either in plaintext. This needs DOMAIN set to a real
+# domain with TWO DNS records pointing at this host's public IP: the bare
+# domain (kidney-frontend) and "api.<domain>" (kidney-backend) -- see the
+# repo-root Caddyfile for why this is two subdomains rather than one origin
+# with path-based routing. Ports 80 and 443 both need to be reachable from
+# the internet (80 for Let's Encrypt's ACME HTTP-01 challenge, not just
+# certificate serving on 443).
+#
 # kidney-backend and kidney-frontend come up as soon as postgres is healthy
 # -- they do NOT wait on ocr-service/ollama. That pair is deliberately
 # decoupled: ollama's healthcheck can take up to ~1 hour on a machine's
@@ -131,8 +142,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    ports:
-      - "8000:8000"
+    # No `ports:` here -- caddy is the only public entrypoint (see the TLS
+    # note above and the Caddyfile). Still reachable at kidney-backend:8000
+    # over the internal compose network, which is all caddy's
+    # reverse_proxy directive needs.
     healthcheck:
       test: ["CMD-SHELL", "uv run python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)\""]
       interval: 10s
@@ -148,11 +161,34 @@ services:
         - VITE_API_BASE_URL=${VITE_API_BASE_URL}
     depends_on:
       - kidney-backend
+    # No `ports:` here either -- see kidney-backend's comment above.
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.8-alpine
+    environment:
+      - DOMAIN=${DOMAIN}
+      - ACME_EMAIL=${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Caddy's own state: the obtained certificates/keys (caddy-data) and
+      # its config/OCSP-staple cache (caddy-config) -- both need to survive
+      # a container restart/rebuild, or every restart re-runs the full
+      # ACME issuance flow against Let's Encrypt's real (rate-limited)
+      # servers instead of reusing what it already has.
+      - caddy-data:/data
+      - caddy-config:/config
     ports:
-      - "3000:80"
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - kidney-backend
+      - kidney-frontend
     restart: unless-stopped
 
 volumes:
   postgres-data:
   ollama-models:
   backend-uploads:
+  caddy-data:
+  caddy-config:

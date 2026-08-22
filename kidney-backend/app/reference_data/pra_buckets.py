@@ -1,8 +1,10 @@
 # app/reference_data/pra_buckets.py
 """
-PRA (%) buckets for Step 4. PRA here is calculated the same way as the
-existing cPRA service (population-based), just re-bucketed per the new
-spec's thresholds rather than the old pass/fail-only cPRA output.
+cPRA (%) buckets for Step 4 -- named PRA in these identifiers for historical
+reasons (kept stable rather than renamed, since PRABucketResult's fields are
+persisted as MatchReport.pra_bucket_result), but the value itself is always
+cPRA (calculated cPRA service, population-based), just re-bucketed per the
+new spec's thresholds rather than the old pass/fail-only cPRA output.
 """
 
 from dataclasses import dataclass

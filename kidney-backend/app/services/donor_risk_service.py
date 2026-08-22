@@ -2,7 +2,7 @@
 """
 Donor safety assessment: "is it safe for this person to donate a kidney?",
 answered on its own, independent of any recipient. Implements the Grams et
-al. (NEJM 2016) living-kidney-donor-candidate ESRD risk projection -- see
+al. (NEJM 2016) living-kidney-donor-candidate kidney-failure risk projection -- see
 app/reference_data/donor_risk_model.py for the model itself, its exact
 source, and its validated-population limitations (read that module's
 docstring before touching this one).
@@ -16,7 +16,7 @@ combined pipeline:
    contraindication-only input -- it is never a term in the projection's own
    linear predictor below.
 2. Quantitative projection (appendix Section 4) -- 15-year and lifetime
-   projected ESRD incidence in the ABSENCE of donation, plus a
+   projected kidney-failure incidence in the ABSENCE of donation, plus a
    relative-risk multiplier, for a donor with no contraindication.
 
 Missing data is surfaced, never guessed -- matching this codebase's existing

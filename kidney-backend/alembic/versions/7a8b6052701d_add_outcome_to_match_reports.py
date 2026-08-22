@@ -55,20 +55,31 @@ HIGH_CPRA_BUCKET_NAME = ">60%"
 TOTAL_STEPS = 7
 
 
+# Mirrors app/reference_data/mismatch_buckets.py's MISMATCH_BUCKET_DISPLAY_LABELS
+# (T7 terminology pass) -- inlined rather than imported since this migration
+# takes no app imports at all (see this module's own top-of-file note).
+_MISMATCH_BUCKET_DISPLAY_LABELS = {
+    "0 mismatches": "0 mismatches",
+    "<3 mismatches": "1-2 mismatches",
+    "3-6 mismatches": "3-6 mismatches",
+}
+
+
 def _halted_headline_and_detail(overall_status, abo_result, mismatch_result, dsa_result):
     if overall_status == "halted_abo_fail":
         recipient_type = (abo_result or {}).get("recipient_type", "unknown")
         donor_type = (abo_result or {}).get("donor_type", "unknown")
         return (
             "ABO incompatible",
-            f"Recipient blood type {recipient_type} is not compatible with donor type {donor_type}.",
+            f"Recipient blood group {recipient_type} is not compatible with donor blood group {donor_type}.",
         )
     if overall_status == "halted_mismatch_reject":
         total = (mismatch_result or {}).get("total_mismatches", "unknown")
-        bucket = (mismatch_result or {}).get("bucket_name", "unknown")
+        bucket = (mismatch_result or {}).get("bucket_name")
+        bucket_label = _MISMATCH_BUCKET_DISPLAY_LABELS.get(bucket, bucket) if bucket else "unknown"
         return (
-            "Too many HLA mismatches",
-            f"{total} HLA mismatches across A/B/DRB1 (bucket: {bucket}) — above the acceptable threshold.",
+            "HLA mismatch count above this system's configured threshold",
+            f"{total} HLA mismatches across A/B/DRB1 (bucket: {bucket_label}) — at or above the configured threshold for this gate.",
         )
     if overall_status == "halted_dsa_trigger":
         matches = (dsa_result or {}).get("matches") or []
@@ -83,7 +94,7 @@ def _halted_headline_and_detail(overall_status, abo_result, mismatch_result, dsa
     if overall_status == "halted_crossmatch_positive":
         return (
             "Positive crossmatch",
-            "The patient's serum reacted against donor cells on crossmatch — immunologically incompatible.",
+            "The recipient's serum reacted against donor cells on crossmatch — immunologically incompatible.",
         )
     return ("Not compatible", "This pairing did not clear a required gate.")
 

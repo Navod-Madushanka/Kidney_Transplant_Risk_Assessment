@@ -118,7 +118,7 @@ async def get_patient_antibody_profiles_bulk(
     return profiles_by_patient
 
 
-async def get_patient_sensitized_antigens(
+async def get_patient_unacceptable_antigens(
     db: AsyncSession, patient_id: uuid.UUID, mfi_cutoff_value: float
 ) -> list[str]:
     profiles = await get_patient_antibody_profiles(db, patient_id)

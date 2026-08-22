@@ -58,10 +58,10 @@ async def test_duplicate_nic_across_doctors_returns_clean_conflict_not_500(
     # with an unhandled 500 (raw asyncpg.UniqueViolationError) instead of a
     # clean error (found 2026-08-03) -- confirm it's a clean 409 now, and
     # that the constraint itself is still global (second doctor is rejected).
-    await create_donor(auth_client, nic_number="852741963v")
+    await create_donor(auth_client, nic_number="000000000v")
 
     response = await second_auth_client.post(
-        "/donors", json=make_donor_payload(full_name="Someone Else", nic_number="852741963v")
+        "/donors", json=make_donor_payload(full_name="Someone Else", nic_number="000000000v")
     )
 
     assert response.status_code == 409
@@ -193,7 +193,7 @@ async def test_update_donor_details_ignores_blood_type_and_rh_factor(auth_client
         json={
             "full_name": "Bob Renamed",
             "date_of_birth": "1991-03-21",
-            "nic_number": "199112345678",
+            "nic_number": "200000000005",
             "blood_type": "AB",
             "rh_factor": "-",
         },
@@ -203,7 +203,7 @@ async def test_update_donor_details_ignores_blood_type_and_rh_factor(auth_client
     body = response.json()
     assert body["full_name"] == "Bob Renamed"
     assert body["date_of_birth"] == "1991-03-21"
-    assert body["nic_number"] == "199112345678"
+    assert body["nic_number"] == "200000000005"
     assert body["blood_type"] == "O"
     assert body["rh_factor"] == "+"
 
@@ -457,12 +457,12 @@ async def test_deleted_donors_nic_number_can_be_reused(auth_client: AsyncClient)
     # to every row regardless of is_deleted, so re-registering a real donor
     # after their old record was deleted hit a false-positive "already
     # registered" 409.
-    donor = await create_donor(auth_client, nic_number="852741963v")
+    donor = await create_donor(auth_client, nic_number="000000000v")
 
     delete_response = await auth_client.delete(f"/donors/{donor['id']}")
     assert delete_response.status_code == 204
 
     response = await auth_client.post(
-        "/donors", json=make_donor_payload(nic_number="852741963v")
+        "/donors", json=make_donor_payload(nic_number="000000000v")
     )
     assert response.status_code == 201

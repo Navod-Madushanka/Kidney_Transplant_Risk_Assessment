@@ -116,12 +116,12 @@ export default function HlaTypingEditor({ loadState, initialEntries = [], onSave
               onChange={(e) => updateRow(row.rowId, "locus", e.target.value)}
             />
             <InputField
-              placeholder="Allele 1"
+              placeholder="Antigen 1"
               value={row.allele1}
               onChange={(e) => updateRow(row.rowId, "allele1", e.target.value)}
             />
             <InputField
-              placeholder="Allele 2"
+              placeholder="Antigen 2"
               value={row.allele2}
               onChange={(e) => updateRow(row.rowId, "allele2", e.target.value)}
             />

@@ -7,7 +7,7 @@ Each step below either halts the check with a specific overall_status, or
 proceeds to the next step. As of this pass:
 
   1. ABO             - real gate (unchanged from before this pass)
-  2. Sensitization   - NOT YET a gate. Computed and stored for reference,
+  2. Sensitisation   - NOT YET a gate. Computed and stored for reference,
                         but doesn't halt anything. The doctors asked for
                         this to become its own reject/proceed step, but
                         didn't specify the accept/reject rule yet (see the
@@ -15,7 +15,7 @@ proceeds to the next step. As of this pass:
                         rather than guessing a clinical threshold.
   3. Mismatches      - real gate (NEW this pass). A/B/DRB1 only, wired from
                         app/reference_data/mismatch_buckets.py.
-  4. PRA             - NOT a gate (changed back this pass — see below).
+  4. cPRA            - NOT a gate (changed back this pass — see below).
                         Wired from app/reference_data/pra_buckets.py.
                         Computed and bucketed for every check, but never
                         halts, same as Step 2.
@@ -26,7 +26,7 @@ proceeds to the next step. As of this pass:
                         dsa_result.requires_review and let the pipeline
                         continue to crossmatch. Replaces the previous flat
                         MFI 1000 halt/pass cutoff, which duplicated (with a
-                        different number) the Step 4 cPRA sensitization
+                        different number) the Step 4 cPRA sensitisation
                         cutoff and halted transplants on weak/equivocal
                         antibodies.
   6. Crossmatch      - real gate (NEW this pass). Submitted with the check
@@ -47,7 +47,7 @@ proceeds to the next step. As of this pass:
                         final_risk_level stays None rather than guessing or
                         presenting a risk level built on absent data.
 
-Step 4 (PRA) briefly halted the pipeline outright above
+Step 4 (cPRA) briefly halted the pipeline outright above
 MAX_ACCEPTABLE_PRA_PERCENT (60%) — reverted 2026-08-08 as a clinical
 category error. cPRA measures how hard a patient is to match against the
 *population*; it says nothing about this specific donor. Rejecting a
@@ -55,7 +55,7 @@ pairing on cPRA meant the more sensitised a patient was, the more certainly
 the system refused the one compatible donor they'd actually found — exactly
 backwards, since Steps 5 (DSA) and 6 (crossmatch) already test this
 specific pairing directly and are what should decide accept/reject on
-sensitisation-related risk. PRA is bucketed and returned for every check
+sensitisation-related risk. cPRA is bucketed and returned for every check
 (clinical context, and it still feeds Step 7 when a doctor-specified point
 value exists for its bucket — see risk_classification.py), but never halts
 Step 3+ on its own, same as Step 2.
@@ -97,7 +97,7 @@ from app.reference_data.risk_classification import classify_risk
 from app.services.abo_service import ABOResult, check_abo_compatibility
 from app.services.antibody_profile_service import (
     get_patient_antibody_profiles,
-    get_patient_sensitized_antigens,
+    get_patient_unacceptable_antigens,
 )
 from app.services.cpra_service import CPRAResult, calculate_cpra
 from app.services.crossmatch_service import CrossmatchResult, check_crossmatch
@@ -205,21 +205,21 @@ async def run_match_pipeline(
             ),
         )
 
-    # --- Step 4: PRA -----------------------------------------------------
-    # Uses the existing cPRA sensitized-antigen threshold (DEFAULT_MFI_CUTOFF,
+    # --- Step 4: cPRA ------------------------------------------------------
+    # Uses the existing cPRA unacceptable-antigen threshold (DEFAULT_MFI_CUTOFF,
     # a fixed 2000 from dsa_service.py) — this is a different cutoff from the
     # Step 5 DSA gate below and doctors didn't ask to change it.
-    # Normalized the same way Step 5 normalizes patient_antibodies below (a
+    # Normalised the same way Step 5 normalises patient_antibodies below (a
     # raw chart antigen like "B45,Bw6" must have its Bw4/Bw6 suffix stripped
     # to match a plain "B45" reference-table key).
-    sensitized_antigens = [
+    unacceptable_antigens = [
         normalize_antibody_antigen(antigen)
-        for antigen in await get_patient_sensitized_antigens(
+        for antigen in await get_patient_unacceptable_antigens(
             db, patient.id, DEFAULT_MFI_CUTOFF
         )
     ]
     cpra_result = calculate_cpra(
-        sensitized_antigens=sensitized_antigens,
+        unacceptable_antigens=unacceptable_antigens,
         antigen_frequencies=HLA_ANTIGEN_FREQUENCIES,
         reference_sample_size=HLA_FREQUENCY_TABLE_SAMPLE_SIZE,
         reference_table_version=HLA_FREQUENCY_TABLE_VERSION,
@@ -235,6 +235,11 @@ async def run_match_pipeline(
     # "strong" match halts; weak/moderate set requires_review and the
     # pipeline continues to crossmatch. Independent of the Sensitization
     # score's adjusted_mfi_cutoff and of Step 4's DEFAULT_MFI_CUTOFF.
+    # donor_typed_loci is passed through so check_dsa can tell "donor typed
+    # here, confirmed no match" apart from "donor never typed at this locus
+    # at all" (e.g. no DQB1 typing on file) — the latter now sets
+    # requires_review instead of silently looking like a clean DSA screen,
+    # same principle as MismatchResult.data_completeness in Step 3.
     antibody_rows = await get_patient_antibody_profiles(db, patient.id)
     patient_antibodies = [
         PatientAntibody(antigen=normalize_antibody_antigen(row.antigen), mfi=float(row.mfi))
@@ -245,10 +250,12 @@ async def run_match_pipeline(
         for row in donor_hla_entries_all
         for allele in (row.allele_1, row.allele_2)
     ]
+    donor_typed_loci = {row.locus.value for row in donor_hla_entries_all}
 
     dsa_result = check_dsa(
         patient_antibodies=patient_antibodies,
         donor_hla_antigens=donor_hla_antigens,
+        donor_typed_loci=donor_typed_loci,
         floor=DSA_MFI_FLOOR,
     )
 

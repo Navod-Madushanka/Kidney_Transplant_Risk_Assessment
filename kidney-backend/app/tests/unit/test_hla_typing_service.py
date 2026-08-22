@@ -1,6 +1,7 @@
 # app/tests/unit/test_hla_typing_service.py
 from app.services.hla_typing_service import (
     hla_antigen_designation,
+    locus_for_antigen_designation,
     normalize_antibody_antigen,
 )
 
@@ -75,3 +76,29 @@ def test_normalize_antibody_antigen_does_not_touch_allele_level_designation():
     # Allele-level designations ("B*07:02") are a different, unmapped
     # naming scheme entirely -- out of scope here, see the module docstring.
     assert normalize_antibody_antigen("B*07:02") == "B*07:02"
+
+
+def test_locus_for_antigen_designation_same_scheme_loci():
+    assert locus_for_antigen_designation("A29") == "A"
+    assert locus_for_antigen_designation("B7") == "B"
+
+
+def test_locus_for_antigen_designation_serological_prefixes():
+    assert locus_for_antigen_designation("DR13") == "DRB1"
+    assert locus_for_antigen_designation("DQ5") == "DQB1"
+    assert locus_for_antigen_designation("DP4") == "DPB1"
+    assert locus_for_antigen_designation("Cw3") == "C"
+
+
+def test_locus_for_antigen_designation_unrecognized_returns_none():
+    # HLA-E is outside this system's serological-prefix scheme entirely (not
+    # DR/DQ/DP/Cw, and doesn't start with "A" or "B" either).
+    assert locus_for_antigen_designation("E1") is None
+
+
+def test_locus_for_antigen_designation_does_not_filter_allele_level_strings():
+    # Prefix-only matching resolves a locus letter even for an allele-level
+    # string -- callers needing to treat that differently (e.g.
+    # dsa_service.check_dsa's _ALLELE_LEVEL_CHARS check) must check for it
+    # themselves before falling back to this function.
+    assert locus_for_antigen_designation("B*07:02") == "B"

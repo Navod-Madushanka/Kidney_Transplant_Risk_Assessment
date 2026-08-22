@@ -45,12 +45,12 @@ antibody bead-specificity chart data -- there is no vocabulary overlap to
 serve. DPA1 and the composite DRB3,4,5 locus are excluded for the same
 reason and also weren't typed by this study. That leaves the 97 antigens
 below, across the 6 loci (A, B, C, DPB1, DQB1, DRB1) that
-sensitized_antigens can actually contain.
+unacceptable_antigens can actually contain.
 
 Known limitation -- linkage disequilibrium: cpra_service.py combines these
-single-locus frequencies as if sensitization to each antigen were an
+single-locus frequencies as if sensitisation to each antigen were an
 independent event. HLA loci are not independent (haplotypes like
-A1-B8-DR3 travel together), so this inflates cPRA for patients sensitized
+A1-B8-DR3 travel together), so this inflates cPRA for patients sensitised
 against antigens on a shared haplotype. This is a disclosed approximation,
 not fixed here. The source paper *does* report real per-cohort haplotype
 frequencies for this exact population (950 EM-estimated haplotypes across

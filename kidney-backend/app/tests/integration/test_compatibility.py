@@ -420,7 +420,7 @@ async def test_full_pipeline_run_reaches_hla_scoring_and_risk_tier(auth_client: 
     assert body["crossmatch_result"]["is_halted"] is False
 
     # New Step 4/7: this patient never submitted an antibody profile, so
-    # sensitized_antigens is empty regardless of the reference table ->
+    # unacceptable_antigens is empty regardless of the reference table ->
     # cpra_percentage 0.0 -> the "<30%" PRA bucket (0 pts). Combined with
     # the "3-6 mismatches" mismatch bucket above (2 pts), Step 7 lands on
     # "High-Average Risk" (see risk_classification.py's scoring table).

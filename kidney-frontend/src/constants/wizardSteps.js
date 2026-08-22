@@ -10,7 +10,7 @@ export const WIZARD_STEPS = [
   { key: "subject", label: "Patient & Donor", path: "subject" },
   { key: "details", label: "Confirm details", path: "details" },
   { key: "hla", label: "HLA Typing", path: "hla" },
-  { key: "sensitization", label: "Sensitization", path: "sensitization" },
+  { key: "sensitization", label: "Sensitisation", path: "sensitization" },
   { key: "bead-chart", label: "Bead Specificity", path: "bead-chart" },
   { key: "review", label: "Review & Submit", path: "review" },
 ]

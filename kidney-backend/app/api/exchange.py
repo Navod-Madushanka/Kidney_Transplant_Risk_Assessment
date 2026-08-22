@@ -248,7 +248,7 @@ async def hard_to_match_endpoint(
     current_doctor: Doctor = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """K9: the desensitization/national-referral worklist -- pool pairs that
+    """K9: the desensitisation/national-referral worklist -- pool pairs that
     NO registered policy selects, under any weighting. Reuses K8's cross-
     policy solve rather than introducing a separate notion of "unmatched":
     a pair absent from every policy's selected set is genuinely hard to

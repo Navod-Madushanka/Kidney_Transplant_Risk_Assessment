@@ -1,16 +1,17 @@
 {
   "_source_image": "sample.jpg (HLA Typing Report, National Blood Transfusion Service Sri Lanka)",
   "_confidence": "high — verified this session by running the actual patched extract_hla()/extract_demographics() against the real raw OCR text/box data and cross-checking every field against the printed report by eye. Treat this fixture as authoritative.",
+  "_redaction_note": "full_name/nic_number below were replaced with synthetic values (B8, PDPA cleanup) -- they no longer match sample.jpg if a real copy of it exists locally (sample.jpg itself is gitignored, not tracked). Every other field (DOB, blood type, hla_ref_no, and all HLA alleles) is untouched and still authoritative against the real image. See test_hla_typing_live.py's module comment.",
   "patient_details": {
-    "full_name": "Rev.S.Amarasinghe Thero",
-    "nic_number": "198723456789",
+    "full_name": "Test Patient One",
+    "nic_number": "200000000001",
     "date_of_birth": "16-Jan-1980",
     "blood_type": "B Positive",
     "hla_ref_no": "847/26M"
   },
   "donor_details": {
-    "full_name": "K.R.Wickremasinghe",
-    "nic_number": "852741963v",
+    "full_name": "Test Donor One",
+    "nic_number": "000000000v",
     "date_of_birth": "22-Nov-1982",
     "blood_type": "B Positive",
     "hla_ref_no": "848/26M"

@@ -1,6 +1,11 @@
 # app/reference_data/donor_risk_model.py
 """
-Grams et al. 2016 living-kidney-donor-candidate ESRD risk projection model.
+Grams et al. 2016 living-kidney-donor-candidate kidney-failure risk
+projection model. The source paper and its coefficients use "ESRD"
+(end-stage renal disease); this module's own prose uses "kidney failure" /
+"ESKD" (end-stage kidney disease) per the KDIGO 2020 consensus nomenclature
+that retired "renal"/"ESRD" -- terminology only, the clinical model and its
+coefficients are unchanged.
 
 Source: Grams ME, Sang Y, Levey AS, et al. "Kidney-Failure Risk Projection
 for the Living Kidney-Donor Candidate." N Engl J Med 2016;374:411-421.
@@ -12,8 +17,8 @@ source. If these numbers are ever revisited, re-derive them from that
 appendix directly rather than trust this file or any other relay of it.
 
 This is a *projection*, not a diagnosis: it estimates the long-term
-incidence of ESRD a candidate would face if they did NOT donate, based on
-their demographic and health profile. It says nothing about surgical risk
+incidence of kidney failure a candidate would face if they did NOT donate,
+based on their demographic and health profile. It says nothing about surgical risk
 or the risk actually attributable to donating a kidney. See
 app/services/donor_risk_service.py for how this reference data is used and
 for the two-question split (quantitative projection vs. absolute

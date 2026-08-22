@@ -16,24 +16,58 @@ rather than leaving account creation invisible to the audit trail.
 New accounts are never admin by default -- promote separately with
 app/scripts/promote_admin.py.
 
-Usage:
-    uv run python -m app.scripts.create_doctor <email> <password> <full_name> [hospital_name]
+The password is never accepted as a command-line argument (B10 / Phase 3.3
+of FINALIZATION-PLAN.md): anything passed on argv is visible to every other
+user on the host for the life of the process via `ps`, and lands in shell
+history the moment the command is entered. It's prompted for instead
+(twice, since a no-echo prompt gives the operator no way to see a typo) and
+checked against app/scripts/password_policy.py before the account is
+created.
 
-    hospital_name defaults to "Kandy National Hospital Sri Lanka" -- the
-    only hospital this system is actually deployed for today (see
+Usage:
+    uv run python -m app.scripts.create_doctor <email> <full_name> [hospital_name]
+
+    Prompts for the password interactively -- it is never accepted as an
+    argument. hospital_name defaults to "Kandy National Hospital Sri Lanka"
+    -- the only hospital this system is actually deployed for today (see
     kidney-frontend's former registration form). Pass it explicitly to
     provision a doctor at any other hospital.
 """
 import asyncio
+import getpass
 import sys
 
 from app.db.session import async_session_maker
+from app.scripts.password_policy import validate_password_strength
 from app.services.audit_service import create_audit_log
 from app.services.doctor_service import create_doctor, get_doctor_by_email
 from app.services.hospital_service import get_or_create_hospital
 
 DEFAULT_HOSPITAL_NAME = "Kandy National Hospital Sri Lanka"
-MIN_PASSWORD_LENGTH = 8
+
+
+def _prompt_for_password() -> str:
+    """Prompts twice (no-echo, via getpass) and retries on mismatch or a
+    policy violation, rather than failing the whole script on the first
+    typo or weak attempt -- provisioning an account is rare enough that an
+    operator re-running the whole command over one mistake is real friction
+    for no safety benefit."""
+    while True:
+        password = getpass.getpass("Password (input hidden): ")
+        problems = validate_password_strength(password)
+        if problems:
+            print("That password is not acceptable:")
+            for problem in problems:
+                print(f"  - {problem}")
+            print("Please try again.\n")
+            continue
+
+        confirm = getpass.getpass("Confirm password: ")
+        if password != confirm:
+            print("Passwords didn't match. Please try again.\n")
+            continue
+
+        return password
 
 
 async def create_doctor_account(
@@ -42,8 +76,9 @@ async def create_doctor_account(
     full_name: str,
     hospital_name: str = DEFAULT_HOSPITAL_NAME,
 ) -> None:
-    if len(password) < MIN_PASSWORD_LENGTH:
-        raise SystemExit(f"Password must be at least {MIN_PASSWORD_LENGTH} characters.")
+    problems = validate_password_strength(password)
+    if problems:
+        raise SystemExit("Password is not acceptable: " + "; ".join(problems))
 
     async with async_session_maker() as db:
         existing = await get_doctor_by_email(db, email)
@@ -72,13 +107,15 @@ async def create_doctor_account(
 
 
 def main() -> None:
-    if len(sys.argv) not in (4, 5):
+    if len(sys.argv) not in (3, 4):
         raise SystemExit(
-            "Usage: uv run python -m app.scripts.create_doctor <email> <password> <full_name> "
-            "[hospital_name]"
+            "Usage: uv run python -m app.scripts.create_doctor <email> <full_name> "
+            "[hospital_name]\n"
+            "(the password is prompted for interactively, not passed as an argument)"
         )
-    email, password, full_name = sys.argv[1], sys.argv[2], sys.argv[3]
-    hospital_name = sys.argv[4] if len(sys.argv) == 5 else DEFAULT_HOSPITAL_NAME
+    email, full_name = sys.argv[1], sys.argv[2]
+    hospital_name = sys.argv[3] if len(sys.argv) == 4 else DEFAULT_HOSPITAL_NAME
+    password = _prompt_for_password()
     asyncio.run(create_doctor_account(email, password, full_name, hospital_name))
 
 

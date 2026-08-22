@@ -1,0 +1,28 @@
+name: PII scan
+
+# Repo-wide, deliberately no path filter (unlike backend.yml/frontend.yml):
+# a real NIC could land in any tracked file, not just kidney-backend/** or
+# kidney-frontend/** -- the incident this guards against (B8,
+# FINALIZATION-PLAN.md) was actually found in an OCR-service fixture and a
+# throwaway spike directory too.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Scan for real-looking NICs
+        run: python scripts/check_no_real_nics.py

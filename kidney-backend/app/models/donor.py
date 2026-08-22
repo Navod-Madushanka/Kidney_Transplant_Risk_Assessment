@@ -83,7 +83,7 @@ class Donor(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     # Donor safety risk-assessment fields (added 2026-08-09) -- inputs to
     # services/donor_risk_service.py's implementation of the Grams et al.
-    # (NEJM 2016) living-kidney-donor ESRD risk projection; see that
+    # (NEJM 2016) living-kidney-donor kidney-failure risk projection; see that
     # module's docstring for the model itself and its citation. All
     # nullable/editable, same rationale as the clinical fields above.
     # `is_smoker` (bool) is replaced by `smoking_status`: the model scores

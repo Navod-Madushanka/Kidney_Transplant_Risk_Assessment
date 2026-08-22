@@ -181,7 +181,7 @@ export default function SubjectStep() {
           <h1 className="text-[22px] font-bold text-text">Patient &amp; donor</h1>
           <p className="text-[14px] text-text-muted mt-1">
             Register the patient and donor this check is for. Everything the check writes — HLA
-            typing, sensitization events, the check itself — is saved onto these two new records.
+            typing, sensitisation events, the check itself — is saved onto these two new records.
           </p>
         </div>
 
@@ -263,7 +263,7 @@ export default function SubjectStep() {
         <h1 className="text-[22px] font-bold text-text">Patient &amp; donor</h1>
         <p className="text-[14px] text-text-muted mt-1">
           This check runs against the patient and donor below. Everything it writes — HLA typing,
-          sensitization events, the check itself — updates these two records.
+          sensitisation events, the check itself — updates these two records.
         </p>
       </div>
 

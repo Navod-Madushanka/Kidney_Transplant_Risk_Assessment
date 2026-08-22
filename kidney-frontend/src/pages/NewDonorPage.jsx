@@ -8,12 +8,20 @@ import { createDonor } from "../api/donors"
 export default function NewDonorPage() {
   const navigate = useNavigate()
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState("")
 
   async function handleSubmit(payload) {
+    setSubmitError("")
     setIsSubmitting(true)
     try {
       const donor = await createDonor(payload)
       navigate(`/donors/${donor.id}`, { replace: true })
+    } catch (err) {
+      // Own the error at the page level rather than letting it propagate as
+      // an unhandled rejection out of onSubmit -- a duplicate NIC (or any
+      // other 4xx) used to leave the button simply stop spinning with no
+      // indication the record wasn't saved.
+      setSubmitError(err.message || "Couldn't add this donor. Please try again.")
     } finally {
       setIsSubmitting(false)
     }
@@ -28,6 +36,11 @@ export default function NewDonorPage() {
       <Card>
         <DonorForm onSubmit={handleSubmit} isSubmitting={isSubmitting} submitLabel="Add donor" />
       </Card>
+      {submitError && (
+        <p role="alert" className="mt-3 text-[13px] text-high-risk font-medium">
+          {submitError}
+        </p>
+      )}
     </div>
   )
 }

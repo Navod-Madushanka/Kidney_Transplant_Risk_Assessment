@@ -9,11 +9,11 @@ const EXISTING_PATIENT = {
   dateOfBirth: "1985-06-15",
   bloodType: "AB",
   rhFactor: "+",
-  nicNumber: "198506150000",
+  nicNumber: "200000000008",
 }
 
 describe("PatientForm", () => {
-  it("create mode requires blood group and Rh factor", async () => {
+  it("create mode requires blood group and RhD type", async () => {
     const user = userEvent.setup()
     const onSubmit = vi.fn()
     render(<PatientForm onSubmit={onSubmit} />)
@@ -23,7 +23,7 @@ describe("PatientForm", () => {
     await user.click(screen.getByRole("button", { name: "Save patient" }))
 
     expect(screen.getByText("Blood group is required")).toBeInTheDocument()
-    expect(screen.getByText("Rh factor is required")).toBeInTheDocument()
+    expect(screen.getByText("RhD type is required")).toBeInTheDocument()
     expect(onSubmit).not.toHaveBeenCalled()
   })
 
@@ -50,7 +50,7 @@ describe("PatientForm", () => {
     })
   })
 
-  it("edit mode locks blood group and Rh factor controls", () => {
+  it("edit mode locks blood group and RhD type controls", () => {
     render(<PatientForm mode="edit" initialValues={EXISTING_PATIENT} onSubmit={vi.fn()} />)
 
     expect(screen.getByRole("radio", { name: "AB" })).toBeDisabled()
@@ -58,7 +58,7 @@ describe("PatientForm", () => {
     expect(screen.getAllByText("Locked after creation")).toHaveLength(2)
   })
 
-  it("edit mode does not require blood group/Rh factor and omits them from the payload", async () => {
+  it("edit mode does not require blood group/RhD type and omits them from the payload", async () => {
     const user = userEvent.setup()
     const onSubmit = vi.fn().mockResolvedValue(undefined)
     render(
@@ -77,7 +77,7 @@ describe("PatientForm", () => {
     expect(onSubmit).toHaveBeenCalledWith({
       full_name: "Alice Renamed",
       date_of_birth: "1985-06-15",
-      nic_number: "198506150000",
+      nic_number: "200000000008",
       sex: null,
       weight_kg: null,
       dialysis_start_date: null,

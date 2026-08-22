@@ -8,10 +8,10 @@ time. It's submitted as part of the /compatibility/check request body
 (see schemas/match_report.py's CrossmatchInput) and only persisted once a
 check actually runs.
 
-Positive crossmatch = the patient's serum reacts against donor cells =
+Positive crossmatch = the recipient's serum reacts against donor cells =
 immunologically incompatible = reject. Negative = no reaction = proceed.
 This mapping is standard clinical convention, not a project-specific
-judgment call, so unlike Sensitization/PRA it didn't need to wait on
+judgment call, so unlike Sensitisation/cPRA it didn't need to wait on
 doctor confirmation (see the roadmap's Phase 3 open questions).
 """
 from dataclasses import dataclass

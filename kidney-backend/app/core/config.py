@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     redis_url: str
     secret_key: str
     environment: str = "local"
+    # Structured JSON logging (B15) -- see app/core/logging.py. Standard
+    # Python logging level names ("DEBUG", "INFO", "WARNING", "ERROR").
+    log_level: str = "INFO"
 
     # SQLAlchemy engine `echo` -- logs every statement AND its bound
     # parameters. Was hardcoded True in app/db/session.py; flip to True

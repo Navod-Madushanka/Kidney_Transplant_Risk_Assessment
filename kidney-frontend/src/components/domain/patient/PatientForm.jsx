@@ -24,7 +24,7 @@ const emptyForm = {
  *   { full_name, date_of_birth, blood_type, rh_factor, nic_number }
  *
  * Pass mode="edit" to update an existing patient instead of creating one:
- * blood group/Rh factor are shown but locked (they're permanent once set —
+ * blood group/RhD type are shown but locked (they're permanent once set —
  * the compatibility engine and existing reports trust them), and the
  * onSubmit payload omits them, matching PatientUpdate.
  */
@@ -54,7 +54,7 @@ export default function PatientForm({
     if (!form.dateOfBirth) next.dateOfBirth = "Date of birth is required"
     if (!isEdit) {
       if (!form.bloodType) next.bloodType = "Blood group is required"
-      if (!form.rhFactor) next.rhFactor = "Rh factor is required"
+      if (!form.rhFactor) next.rhFactor = "RhD type is required"
     }
     setErrors(next)
     return Object.keys(next).length === 0
@@ -114,7 +114,7 @@ export default function PatientForm({
           helperText={isEdit ? "Locked after creation" : undefined}
         />
         <SegmentedControl
-          label="Rh factor"
+          label="RhD type"
           options={RH_FACTOR_OPTIONS}
           value={form.rhFactor}
           onChange={updateValue("rhFactor")}

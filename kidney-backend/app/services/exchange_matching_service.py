@@ -188,7 +188,7 @@ def weight_max_lkdpi_quality(cycle: Cycle, index: GraphIndex) -> float:
 def cpra_fraction(patient_id: uuid.UUID, index: GraphIndex) -> float:
     """Memoized per patient_id via index._cpra_fraction_cache (review #2
     bug 19): calculate_cpra does a full population-frequency combination
-    over a patient's sensitized antigens, and the same patient can appear
+    over a patient's unacceptable antigens, and the same patient can appear
     in many candidate cycles (2- and 3-cycles alike) -- without this, an
     equity_weighted solve recomputed the identical result from scratch
     once per cycle the patient appeared in, not once per patient."""
@@ -196,15 +196,15 @@ def cpra_fraction(patient_id: uuid.UUID, index: GraphIndex) -> float:
         return index._cpra_fraction_cache[patient_id]
 
     antibodies = index.patient_antibodies_by_patient.get(patient_id, [])
-    # Same ">" threshold get_patient_sensitized_antigens uses (antibody_
+    # Same ">" threshold get_patient_unacceptable_antigens uses (antibody_
     # profile_service.py) -- independent of any one donor's antigens, since
     # cPRA measures how hard this patient is to match against the general
     # population, not against one specific pairing.
-    sensitized_antigens = [
+    unacceptable_antigens = [
         antibody.antigen for antibody in antibodies if antibody.mfi > DEFAULT_MFI_CUTOFF
     ]
     cpra_result = calculate_cpra(
-        sensitized_antigens=sensitized_antigens,
+        unacceptable_antigens=unacceptable_antigens,
         antigen_frequencies=HLA_ANTIGEN_FREQUENCIES,
         reference_sample_size=HLA_FREQUENCY_TABLE_SAMPLE_SIZE,
         reference_table_version=HLA_FREQUENCY_TABLE_VERSION,

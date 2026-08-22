@@ -21,6 +21,23 @@ MISMATCH_BUCKETS: list[MismatchBucket] = [
     MismatchBucket(name="3-6 mismatches", min_count=3, max_count=6),
 ]
 
+# T7: "<3 mismatches" is a stored value -- MatchReport.mismatch_result JSONB
+# on every persisted report, and a lookup key in risk_classification.py's
+# MISMATCH_BUCKET_POINTS -- so it can't be renamed without a migration. But
+# displayed as-is it reads as if it also covers 0 (which has its own bucket
+# right above it) -- a doctor could misread this bucket as "fewer than 3"
+# rather than "1 or 2". This is a *display* label only; bucket.name stays
+# the stored/lookup value everywhere else.
+MISMATCH_BUCKET_DISPLAY_LABELS: dict[str, str] = {
+    "0 mismatches": "0 mismatches",
+    "<3 mismatches": "1-2 mismatches",
+    "3-6 mismatches": "3-6 mismatches",
+}
+
+
+def mismatch_bucket_display_label(bucket_name: str) -> str:
+    return MISMATCH_BUCKET_DISPLAY_LABELS.get(bucket_name, bucket_name)
+
 # The gate rejects once total_mismatches reaches this count (inclusive),
 # not only above it -- with exactly two alleles per locus across the three
 # counted loci (A/B/DRB1), 6 is also the maximum value the count can ever

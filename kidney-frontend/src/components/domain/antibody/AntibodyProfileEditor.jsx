@@ -111,7 +111,7 @@ export default function AntibodyProfileEditor({ loadState, initialEntries = [], 
     <Card>
       <Card.Header
         title="Antibody profile (bead chart)"
-        subtitle="Manually entered or reviewed from an OCR upload — MFI values feed the DSA check"
+        subtitle="Manually entered or reviewed from an OCR upload — MFI (mean fluorescence intensity) values feed the DSA check"
       />
 
       <div className="flex flex-col gap-3">

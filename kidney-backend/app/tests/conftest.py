@@ -60,6 +60,7 @@ from app.db.base import Base  # noqa: E402
 from app.main import app as fastapi_app  # noqa: E402
 from app.services.doctor_service import create_doctor  # noqa: E402
 from app.services.hospital_service import get_or_create_hospital  # noqa: E402
+from app.services.login_throttle_service import reset_all as reset_login_throttle  # noqa: E402
 
 _test_engine = create_async_engine(os.environ["DATABASE_URL"], future=True)
 _TestSessionLocal = async_sessionmaker(_test_engine, expire_on_commit=False)
@@ -96,6 +97,17 @@ def _ocr_spool_scratch_dir_cleanup() -> Iterator[None]:
     app/services/ocr_spool_service.py)."""
     yield
     shutil.rmtree(_OCR_SPOOL_TEST_DIR, ignore_errors=True)
+
+
+@pytest.fixture(autouse=True)
+def _reset_login_throttle() -> None:
+    """Login throttling (app/services/login_throttle_service.py) is
+    module-level, in-process state — without this, a test that deliberately
+    drives an account/IP into lockout (see test_auth.py) would leave every
+    later test in the same session sharing that same locked-out state,
+    since the whole suite runs in one process. Mirrors _clean_tables below,
+    just for in-memory state instead of DB rows."""
+    reset_login_throttle()
 
 
 @pytest_asyncio.fixture(autouse=True)

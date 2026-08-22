@@ -37,7 +37,7 @@ export function parseOcrDate(raw) {
 export function parseOcrBloodType(raw) {
   if (!raw) return ""
   // "B Positive" / "B Pos" / "B+" -> "B". Only the ABO group is stored;
-  // Rh factor isn't part of BLOOD_TYPE_OPTIONS today.
+  // RhD type isn't part of BLOOD_TYPE_OPTIONS today.
   const match = raw.trim().match(/^(AB|A|B|O)/i)
   return match ? match[1].toUpperCase() : ""
 }

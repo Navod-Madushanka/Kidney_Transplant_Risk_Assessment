@@ -34,10 +34,10 @@ async def test_duplicate_nic_for_same_doctor_returns_clean_conflict(auth_client:
     # Regression test for a real bug (found 2026-08-03): this used to crash
     # with an unhandled 500 (raw asyncpg.UniqueViolationError) instead of a
     # clean error.
-    await create_patient(auth_client, nic_number="198723456789")
+    await create_patient(auth_client, nic_number="200000000001")
 
     response = await auth_client.post(
-        "/patients", json=make_patient_payload(full_name="Someone Else", nic_number="198723456789")
+        "/patients", json=make_patient_payload(full_name="Someone Else", nic_number="200000000001")
     )
 
     assert response.status_code == 409
@@ -53,11 +53,11 @@ async def test_two_different_doctors_can_use_the_same_nic(
     # people who happen to share an NIC (or re-running the same real
     # patient's paperwork under a second doctor account) would crash. NIC
     # uniqueness is now scoped per-doctor to match the isolation model.
-    first = await create_patient(auth_client, nic_number="198723456789")
-    second = await create_patient(second_auth_client, nic_number="198723456789")
+    first = await create_patient(auth_client, nic_number="200000000001")
+    second = await create_patient(second_auth_client, nic_number="200000000001")
 
     assert first["id"] != second["id"]
-    assert first["nic_number"] == second["nic_number"] == "198723456789"
+    assert first["nic_number"] == second["nic_number"] == "200000000001"
 
 
 async def test_list_patients_returns_only_this_doctors_patients(
@@ -215,7 +215,7 @@ async def test_update_patient_details(auth_client: AsyncClient):
         json={
             "full_name": "Alice Renamed",
             "date_of_birth": "1986-07-16",
-            "nic_number": "199012345678",
+            "nic_number": "200000000006",
         },
     )
 
@@ -223,7 +223,7 @@ async def test_update_patient_details(auth_client: AsyncClient):
     body = response.json()
     assert body["full_name"] == "Alice Renamed"
     assert body["date_of_birth"] == "1986-07-16"
-    assert body["nic_number"] == "199012345678"
+    assert body["nic_number"] == "200000000006"
 
 
 async def test_update_patient_details_ignores_blood_type_and_rh_factor(

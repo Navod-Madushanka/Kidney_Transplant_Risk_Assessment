@@ -47,7 +47,7 @@ const emptyForm = {
  *   <DonorForm onSubmit={handleCreateDonor} isSubmitting={isSaving} submitLabel="Add donor" />
  *
  * Pass mode="edit" to update an existing donor instead of creating one:
- * blood group/Rh factor are shown but locked (they're permanent once set —
+ * blood group/RhD type are shown but locked (they're permanent once set —
  * the compatibility engine and existing reports trust them), and the
  * onSubmit payload omits them, matching DonorUpdate. The clinical/safety-
  * assessment fields below them (eGFR/BP/BMI/creatinine/urine ACR/diabetes/
@@ -102,7 +102,7 @@ export default function DonorForm({
     if (!form.dateOfBirth) next.dateOfBirth = "Date of birth is required"
     if (!isEdit) {
       if (!form.bloodType) next.bloodType = "Blood group is required"
-      if (!form.rhFactor) next.rhFactor = "Rh factor is required"
+      if (!form.rhFactor) next.rhFactor = "RhD type is required"
     }
     setErrors(next)
     return Object.keys(next).length === 0
@@ -174,7 +174,7 @@ export default function DonorForm({
           helperText={isEdit ? "Locked after creation" : undefined}
         />
         <SegmentedControl
-          label="Rh factor"
+          label="RhD type"
           options={RH_FACTOR_OPTIONS}
           value={form.rhFactor}
           onChange={updateValue("rhFactor")}

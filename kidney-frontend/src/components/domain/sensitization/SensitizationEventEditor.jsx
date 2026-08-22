@@ -52,8 +52,8 @@ export default function SensitizationEventEditor({ loadState, existingEvents = [
   return (
     <Card>
       <Card.Header
-        title="Sensitization events"
-        subtitle="Previous transplant, pregnancy, or transfusion — feeds the sensitization score"
+        title="Sensitisation events"
+        subtitle="Previous transplant, prior pregnancy, or transfusion — feeds the sensitisation score"
       />
 
       <form onSubmit={handleAdd} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2 items-start mb-4">
@@ -80,7 +80,7 @@ export default function SensitizationEventEditor({ loadState, existingEvents = [
           <div className="h-6 w-6 rounded-full border-2 border-border border-t-accent animate-spin" role="status" aria-label="Loading" />
         </div>
       ) : displayEvents.length === 0 ? (
-        <p className="text-[14px] text-text-muted">No sensitization events recorded yet.</p>
+        <p className="text-[14px] text-text-muted">No sensitisation events recorded yet.</p>
       ) : (
         <ul className="flex flex-col divide-y divide-border">
           {displayEvents.map((event) => (

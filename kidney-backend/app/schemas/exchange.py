@@ -102,7 +102,7 @@ class ExchangeCompareResponse(BaseModel):
 
 class HardToMatchPairResponse(BaseModel):
     """K9: one pool pair no policy selects under any weighting -- the
-    desensitization/national-referral worklist. Reuses K7's verdict/blocked
+    desensitisation/national-referral worklist. Reuses K7's verdict/blocked
     -reason counts and K8's cross-policy union rather than introducing a
     separate notion of "unmatched"."""
 

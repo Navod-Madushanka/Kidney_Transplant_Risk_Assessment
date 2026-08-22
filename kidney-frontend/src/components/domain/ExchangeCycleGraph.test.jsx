@@ -17,7 +17,7 @@ function makeNode(pairId, overrides = {}) {
 }
 
 describe("ExchangeCycleGraph — DSA review indication (review #2 bug 13)", () => {
-  it("renders an edge needing desensitization review with a dashed, review-colored stroke and a tooltip", () => {
+  it("renders an edge needing desensitisation review with a dashed, review-colored stroke and a tooltip", () => {
     const a = makeNode("a")
     const b = makeNode("b")
     const edge = {
@@ -34,7 +34,7 @@ describe("ExchangeCycleGraph — DSA review indication (review #2 bug 13)", () =
     const line = container.querySelector("line")
     expect(line).not.toBeNull()
     expect(line.getAttribute("stroke-dasharray")).toBe("4 3")
-    expect(line.querySelector("title").textContent).toMatch(/requires desensitization/)
+    expect(line.querySelector("title").textContent).toMatch(/requires desensitisation/)
   })
 
   it("renders an ordinary edge with no dash when review isn't needed", () => {
@@ -62,6 +62,6 @@ describe("ExchangeCycleGraph — DSA review indication (review #2 bug 13)", () =
     const { getByText } = render(
       <ExchangeCycleGraph nodes={[a, b]} edges={[]} selectedCycles={[]} />
     )
-    expect(getByText(/Needs desensitization review/)).toBeInTheDocument()
+    expect(getByText(/Needs desensitisation review/)).toBeInTheDocument()
   })
 })

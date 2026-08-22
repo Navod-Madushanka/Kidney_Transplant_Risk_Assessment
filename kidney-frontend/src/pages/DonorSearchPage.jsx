@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom"
 import { getPatient } from "../api/patients"
 import { searchCompatibleDonors } from "../api/donorSearch"
 import { runCompatibilityCheck } from "../api/compatibility"
+import { mismatchBucketDisplayLabel } from "../constants/reportStatus"
 import Badge from "../components/ui/Badge"
 import Button from "../components/ui/Button"
 import Table from "../components/ui/Table"
@@ -97,12 +98,12 @@ export default function DonorSearchPage() {
           columns={[
             { key: "hospital", label: "Hospital" },
             { key: "doctor", label: "Doctor" },
-            { key: "blood_type", label: "Blood type" },
+            { key: "blood_type", label: "Blood group" },
             {
               key: "rh_factor",
               label: (
                 <span className="flex flex-col gap-0.5 font-semibold">
-                  <span>Rh factor</span>
+                  <span>RhD type</span>
                   <span className="font-normal normal-case text-[11px] text-text-muted">
                     reference only — not matched
                   </span>
@@ -131,15 +132,15 @@ export default function DonorSearchPage() {
                 return (
                   <span
                     className="text-text-muted"
-                    title="Rh factor is not a kidney transplant compatibility criterion (unlike blood transfusion) — shown for reference only."
+                    title="RhD type is not a kidney transplant compatibility criterion (unlike blood transfusion) — shown for reference only."
                   >
                     {candidate.rh_factor}
                   </span>
                 )
               case "mismatches":
                 return candidate.mismatch_result.data_completeness === false
-                  ? `${candidate.mismatch_result.total_mismatches} (${candidate.mismatch_result.bucket_name}) — incomplete typing`
-                  : `${candidate.mismatch_result.total_mismatches} (${candidate.mismatch_result.bucket_name})`
+                  ? `${candidate.mismatch_result.total_mismatches} (${mismatchBucketDisplayLabel(candidate.mismatch_result.bucket_name)}) — incomplete typing`
+                  : `${candidate.mismatch_result.total_mismatches} (${mismatchBucketDisplayLabel(candidate.mismatch_result.bucket_name)})`
               case "action":
                 return (
                   <Button

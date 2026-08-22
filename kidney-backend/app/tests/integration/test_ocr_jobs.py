@@ -28,8 +28,8 @@ from app.tests.conftest import create_patient
 
 HLA_TYPING_RESPONSE = {
     "structured": {
-        "patient_details": {"full_name": "Rev.S.Amarasinghe Thero", "nic_number": "198723456789"},
-        "donor_details": {"full_name": "K.R.Wickremasinghe", "nic_number": "852741963v"},
+        "patient_details": {"full_name": "Test Patient One", "nic_number": "200000000001"},
+        "donor_details": {"full_name": "Test Donor One", "nic_number": "000000000v"},
         "patient_hla": [{"locus": "A", "allele_1": "29", "allele_2": "33"}],
         "donor_hla": [],
     }
@@ -124,7 +124,7 @@ async def test_job_reaches_done_with_hydrated_data(monkeypatch, auth_client: Asy
     doc = body["documents"]["hla_typing_report"]
     assert doc["status"] == "done"
     assert doc["completed"] == doc["total"]
-    assert doc["patient_details"]["full_name"] == "Rev.S.Amarasinghe Thero"
+    assert doc["patient_details"]["full_name"] == "Test Patient One"
     assert doc["patient_hla"] == [{"locus": "A", "allele_1": "29", "allele_2": "33"}]
 
 

@@ -26,7 +26,7 @@ const SUBMISSION_STEPS = [
   { key: "patientHlaDone", label: "Saving patient HLA typing" },
   { key: "donorHlaDone", label: "Saving donor HLA typing" },
   { key: "antibodyProfilesDone", label: "Saving antibody profile" },
-  { key: "sensitizationDone", label: "Saving sensitization events" },
+  { key: "sensitizationDone", label: "Saving sensitisation events" },
   { key: "reportId", label: "Running compatibility check" },
 ]
 
@@ -102,7 +102,7 @@ export default function ReviewStep() {
     )
     if (missingDates.length > 0) {
       setValidationError(
-        `Enter a date for: ${missingDates.join(", ")} — go back to Sensitization to fill these in.`
+        `Enter a date for: ${missingDates.join(", ")} — go back to Sensitisation to fill these in.`
       )
       return
     }
@@ -150,7 +150,7 @@ export default function ReviewStep() {
       </Card>
 
       <Card>
-        <Card.Header title="Sensitization" />
+        <Card.Header title="Sensitisation" />
         <div className="flex flex-col gap-2">
           {SENSITIZATION_EVENT_OPTIONS.map((option) => {
             const isOn = state.sensitization[option.value]

@@ -134,7 +134,7 @@ async def update_donor_endpoint(
     """Update a donor's core demographic fields (name, DOB, NIC) and
     clinical/risk-assessment fields (eGFR, BP, BMI, diabetes, smoking status,
     sex, race, creatinine, urine ACR, antihypertensive medication use,
-    family history). Blood type and Rh factor are permanent once set — see
+    family history). Blood group and RhD type are permanent once set — see
     DonorUpdate."""
     donor = await get_donor_by_id_for_doctor(db, donor_id, current_doctor.id)
     if donor is None:

@@ -13,7 +13,7 @@
 
 // Every status the sequential pipeline can halt on before reaching a final
 // classification. Mirrors the halt statuses in
-// kidney-backend/app/services/match_pipeline.py. Step 4 (PRA/cPRA) is
+// kidney-backend/app/services/match_pipeline.py. Step 4 (cPRA) is
 // deliberately NOT here — cPRA is population-level, not pair-specific, so
 // it's informational only and never halts the pipeline (reverted
 // 2026-08-08 after briefly being a reject gate; see match_pipeline.py's
@@ -44,8 +44,24 @@ const HALT_BADGE_LABELS = {
 export const HALT_DESCRIPTIONS = {
   halted_abo_fail: "ABO incompatible",
   halted_dsa_trigger: "Donor-specific antibody detected",
-  halted_mismatch_reject: "Too many HLA mismatches",
+  halted_mismatch_reject: "HLA mismatch count above this system's configured threshold",
   halted_crossmatch_positive: "Positive crossmatch",
+}
+
+// T7: mismatch_result.bucket_name is a stored value (kidney-backend/app/
+// reference_data/mismatch_buckets.py — MatchReport JSONB, and a lookup key
+// in risk_classification.py), so it can't be renamed. Displayed as-is,
+// "<3 mismatches" misreads as covering 0 too (which has its own bucket
+// right above it) — this is a *display* label only. Mirrors
+// mismatch_bucket_display_label() in mismatch_buckets.py; keep both in sync.
+const MISMATCH_BUCKET_DISPLAY_LABELS = {
+  "0 mismatches": "0 mismatches",
+  "<3 mismatches": "1-2 mismatches",
+  "3-6 mismatches": "3-6 mismatches",
+}
+
+export function mismatchBucketDisplayLabel(bucketName) {
+  return MISMATCH_BUCKET_DISPLAY_LABELS[bucketName] ?? bucketName
 }
 
 // Step 7's final classification

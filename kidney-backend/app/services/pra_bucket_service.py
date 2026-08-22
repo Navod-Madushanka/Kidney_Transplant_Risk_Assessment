@@ -1,7 +1,7 @@
 # app/services/pra_bucket_service.py
 """
 Step 4 of the sequential compatibility pipeline: bucket the calculated cPRA
-percentage per app/reference_data/pra_buckets.py. PRA itself is calculated
+percentage per app/reference_data/pra_buckets.py. cPRA itself is calculated
 by cpra_service.py, against the frozen reference table in
 app/reference_data/hla_antigen_frequencies.py — this only re-buckets that
 output against the new spec's three ranges instead of treating cPRA as

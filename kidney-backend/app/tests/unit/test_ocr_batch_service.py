@@ -18,8 +18,8 @@ from app.services.ocr_spool_service import SpooledUpload
 
 HLA_TYPING_RESPONSE = {
     "structured": {
-        "patient_details": {"full_name": "Rev.S.Amarasinghe Thero", "nic_number": "198723456789"},
-        "donor_details": {"full_name": "K.R.Wickremasinghe", "nic_number": "852741963v"},
+        "patient_details": {"full_name": "Test Patient One", "nic_number": "200000000001"},
+        "donor_details": {"full_name": "Test Donor One", "nic_number": "000000000v"},
         "patient_hla": [{"locus": "A", "allele_1": "29", "allele_2": "33"}],
         "donor_hla": [{"locus": "A", "allele_1": "33", "allele_2": "33"}],
     }
@@ -81,7 +81,7 @@ async def test_matching_nic_across_documents_raises_no_identity_warning(monkeypa
         _fake_call_ocr_service(
             {
                 "hla_typing_report": HLA_TYPING_RESPONSE,
-                "crossmatch": _crossmatch_response("198723456789", "852741963v"),
+                "crossmatch": _crossmatch_response("200000000001", "000000000v"),
             }
         ),
     )
@@ -91,7 +91,7 @@ async def test_matching_nic_across_documents_raises_no_identity_warning(monkeypa
     )
 
     assert result.errors == []
-    assert result.patient_details["full_name"] == "Rev.S.Amarasinghe Thero"
+    assert result.patient_details["full_name"] == "Test Patient One"
 
 
 async def test_mismatched_patient_nic_across_documents_warns(monkeypatch, fake_file):
@@ -106,7 +106,7 @@ async def test_mismatched_patient_nic_across_documents_warns(monkeypatch, fake_f
             {
                 "hla_typing_report": HLA_TYPING_RESPONSE,
                 # a real NIC belonging to a completely different patient
-                "crossmatch": _crossmatch_response("742963851V", "852741963v"),
+                "crossmatch": _crossmatch_response("000000001V", "000000000v"),
             }
         ),
     )
@@ -117,10 +117,10 @@ async def test_mismatched_patient_nic_across_documents_warns(monkeypatch, fake_f
 
     assert len(result.errors) == 1
     assert result.errors[0]["field"] == "patient_details"
-    assert "742963851V" in result.errors[0]["message"]
-    assert "198723456789" in result.errors[0]["message"]
+    assert "000000001V" in result.errors[0]["message"]
+    assert "200000000001" in result.errors[0]["message"]
     # Still returns the merged data -- this is a warning, not a hard failure.
-    assert result.patient_details["full_name"] == "Rev.S.Amarasinghe Thero"
+    assert result.patient_details["full_name"] == "Test Patient One"
 
 
 async def test_mismatched_donor_nic_across_documents_warns(monkeypatch, fake_file):
@@ -130,7 +130,7 @@ async def test_mismatched_donor_nic_across_documents_warns(monkeypatch, fake_fil
         _fake_call_ocr_service(
             {
                 "hla_typing_report": HLA_TYPING_RESPONSE,
-                "crossmatch": _crossmatch_response("198723456789", "199834567123"),
+                "crossmatch": _crossmatch_response("200000000001", "200000000002"),
             }
         ),
     )
@@ -164,7 +164,7 @@ async def test_case_and_whitespace_differences_are_not_flagged_as_mismatches(
         _fake_call_ocr_service(
             {
                 "hla_typing_report": HLA_TYPING_RESPONSE,
-                "crossmatch": _crossmatch_response(" 198723456789 ", "852741963V"),
+                "crossmatch": _crossmatch_response(" 200000000001 ", "000000000V"),
             }
         ),
     )
@@ -198,7 +198,7 @@ async def test_stream_yields_one_chunk_per_document_in_order(monkeypatch, fake_f
         _fake_call_ocr_service(
             {
                 "hla_typing_report": HLA_TYPING_RESPONSE,
-                "crossmatch": _crossmatch_response("198723456789", "852741963v"),
+                "crossmatch": _crossmatch_response("200000000001", "000000000v"),
             }
         ),
     )
@@ -227,7 +227,7 @@ async def test_stream_yields_one_chunk_per_document_in_order(monkeypatch, fake_f
         "crossmatch_report",
         "bead_specificity_page_1",
     ]
-    assert chunks[0].patient_details["full_name"] == "Rev.S.Amarasinghe Thero"
+    assert chunks[0].patient_details["full_name"] == "Test Patient One"
     assert chunks[0].patient_hla == [{"locus": "A", "allele_1": "29", "allele_2": "33"}]
     # page/panel are stamped from the slot (bead_specificity_page_1 ->
     # page 1/class_i) -- see SLOT_PAGE_PANEL.
@@ -247,7 +247,7 @@ async def test_stream_emits_progress_events_before_each_document(monkeypatch, fa
         _fake_call_ocr_service(
             {
                 "hla_typing_report": HLA_TYPING_RESPONSE,
-                "crossmatch": _crossmatch_response("198723456789", "852741963v"),
+                "crossmatch": _crossmatch_response("200000000001", "000000000v"),
             }
         ),
     )
@@ -302,7 +302,7 @@ async def test_stream_crossmatch_chunk_only_carries_gap_fill_fields(monkeypatch,
         _fake_call_ocr_service(
             {
                 "hla_typing_report": HLA_TYPING_RESPONSE,
-                "crossmatch": _crossmatch_response("198723456789", "852741963v"),
+                "crossmatch": _crossmatch_response("200000000001", "000000000v"),
             }
         ),
     )
@@ -338,8 +338,8 @@ async def test_stream_crossmatch_chunk_gap_fills_when_hla_typing_missing_a_field
     }
     crossmatch_with_ref_no = {
         "structured": {
-            "patient_details": {"nic_number": "198723456789", "hla_ref_no": "847/26M"},
-            "donor_details": {"nic_number": "852741963v"},
+            "patient_details": {"nic_number": "200000000001", "hla_ref_no": "847/26M"},
+            "donor_details": {"nic_number": "000000000v"},
             "crossmatch": {"t_cell_result": "Compatible", "b_cell_result": "Compatible"},
         }
     }
@@ -374,7 +374,7 @@ async def test_stream_crossmatch_chunk_carries_identity_mismatch_warning(monkeyp
         _fake_call_ocr_service(
             {
                 "hla_typing_report": HLA_TYPING_RESPONSE,
-                "crossmatch": _crossmatch_response("742963851V", "852741963v"),
+                "crossmatch": _crossmatch_response("000000001V", "000000000v"),
             }
         ),
     )
@@ -395,7 +395,7 @@ async def test_stream_failed_document_yields_error_chunk_and_continues(monkeypat
     async def _fake(upload, document_type):
         if document_type == "hla_typing_report":
             raise RuntimeError("Ollama unreachable")
-        return _crossmatch_response("198723456789", "852741963v")
+        return _crossmatch_response("200000000001", "000000000v")
 
     monkeypatch.setattr(ocr_batch_service, "call_ocr_service", _fake)
 
@@ -428,7 +428,7 @@ async def test_run_batch_extraction_matches_streamed_chunks_merged(monkeypatch, 
         _fake_call_ocr_service(
             {
                 "hla_typing_report": HLA_TYPING_RESPONSE,
-                "crossmatch": _crossmatch_response("198723456789", "852741963v"),
+                "crossmatch": _crossmatch_response("200000000001", "000000000v"),
             }
         ),
     )
@@ -448,8 +448,8 @@ async def test_run_batch_extraction_matches_streamed_chunks_merged(monkeypatch, 
 
     result = await run_batch_extraction(files)
 
-    assert result.patient_details["full_name"] == "Rev.S.Amarasinghe Thero"
-    assert result.donor_details["full_name"] == "K.R.Wickremasinghe"
+    assert result.patient_details["full_name"] == "Test Patient One"
+    assert result.donor_details["full_name"] == "Test Donor One"
     assert result.patient_hla == [{"locus": "A", "allele_1": "29", "allele_2": "33"}]
     assert result.crossmatch == {"t_cell_result": "Compatible", "b_cell_result": "Compatible"}
     # Bead specificity is uploaded twice (page 1 + page 2) -- both pages'

@@ -9,7 +9,7 @@ paired-donation allocation schemes commonly credit: how hard the patient is
 to match (cPRA) and how long they've waited.
 
 CPRA_WEIGHT bonus uses calculate_cpra() (app/services/cpra_service.py) fed
-by each patient's own sensitized-antigen profile — a highly sensitized
+by each patient's own unacceptable-antigen profile — a highly sensitised
 patient is disproportionately hard to match outside a cycle that happens to
 clear their antibodies, so a cycle that transplants them is worth more.
 

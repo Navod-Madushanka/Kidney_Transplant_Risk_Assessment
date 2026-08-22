@@ -13,10 +13,12 @@ all — see that migration for why).
 """
 from typing import Optional
 
+from app.reference_data.mismatch_buckets import mismatch_bucket_display_label
 from app.reference_data.report_outcome import (
     HALTED_STATUSES,
     HIGH_CPRA_BUCKET_NAME,
     REVIEW_FLAG_DSA_REQUIRES_REVIEW,
+    REVIEW_FLAG_DSA_UNTYPED_LOCUS,
     REVIEW_FLAG_HIGH_CPRA,
     REVIEW_FLAG_INCOMPLETE_TYPING,
     REVIEW_FLAG_LABELS,
@@ -51,17 +53,24 @@ def _halted_headline_and_detail(
         donor_type = abo_result.get("donor_type") if abo_result else "unknown"
         return (
             "ABO incompatible",
-            f"Recipient blood type {recipient_type} is not compatible with donor type "
+            f"Recipient blood group {recipient_type} is not compatible with donor blood group "
             f"{donor_type}.",
         )
 
     if overall_status == "halted_mismatch_reject":
         total = mismatch_result.get("total_mismatches") if mismatch_result else "unknown"
-        bucket = mismatch_result.get("bucket_name") if mismatch_result else "unknown"
+        bucket = mismatch_result.get("bucket_name") if mismatch_result else None
+        bucket_label = mismatch_bucket_display_label(bucket) if bucket else "unknown"
         return (
-            "Too many HLA mismatches",
-            f"{total} HLA mismatches across A/B/DRB1 (bucket: {bucket}) — above the acceptable "
-            "threshold.",
+            # T12: not "too many" in an absolute sense -- see FINALIZATION-
+            # PLAN.md Q1 -- this system's current configured gate rejects a
+            # pairing at MAX_ACCEPTABLE_MISMATCHES (mismatch_buckets.py), a
+            # policy value, not a statement that this pairing could never be
+            # transplanted anywhere. Wording only; the gate itself is
+            # unchanged pending that clinical decision.
+            "HLA mismatch count above this system's configured threshold",
+            f"{total} HLA mismatches across A/B/DRB1 (bucket: {bucket_label}) — at or above the "
+            "configured threshold for this gate.",
         )
 
     if overall_status == "halted_dsa_trigger":
@@ -85,7 +94,7 @@ def _halted_headline_and_detail(
     if overall_status == "halted_crossmatch_positive":
         return (
             "Positive crossmatch",
-            "The patient's serum reacted against donor cells on crossmatch — immunologically "
+            "The recipient's serum reacted against donor cells on crossmatch — immunologically "
             "incompatible.",
         )
 
@@ -235,6 +244,26 @@ def build_report_outcome(
                 "detail": (
                     f"Could not check against donor HLA typing: {names}. Re-enter in "
                     "serological format (e.g. 'B44') and re-run the check."
+                ),
+            }
+        )
+
+    # Pre-existing reports' stored dsa_result JSONB predates this key and
+    # simply won't have it -- .get(...) or [] handles that the same way it
+    # already handles unmapped_antibodies above.
+    untyped_locus_antibodies = (dsa_result or {}).get("untyped_locus_antibodies") or []
+    if untyped_locus_antibodies:
+        names = ", ".join(
+            f"{ab['antigen']} (MFI {ab['mfi']:.0f})" for ab in untyped_locus_antibodies
+        )
+        review_flags.append(
+            {
+                "code": REVIEW_FLAG_DSA_UNTYPED_LOCUS,
+                "label": REVIEW_FLAG_LABELS[REVIEW_FLAG_DSA_UNTYPED_LOCUS],
+                "detail": (
+                    f"Donor has no typing on record for the locus these antibodies target, "
+                    f"so DSA screening is incomplete: {names}. Enter the missing donor HLA "
+                    "typing and re-run the check."
                 ),
             }
         )

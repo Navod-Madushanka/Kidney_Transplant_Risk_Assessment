@@ -25,7 +25,7 @@ class CompatibilityCheckRequest(BaseModel):
     patient_id: uuid.UUID
     donor_id: uuid.UUID
     # Optional so existing callers that halt before Step 6 (ABO/mismatch/
-    # PRA/DSA fail) aren't forced to supply it. If the pipeline reaches
+    # cPRA/DSA fail) aren't forced to supply it. If the pipeline reaches
     # Step 6 without one, the report's overall_status comes back as
     # "pending_crossmatch" rather than silently completing without it.
     crossmatch: Optional[CrossmatchInput] = None

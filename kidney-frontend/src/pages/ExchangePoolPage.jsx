@@ -33,7 +33,7 @@ const VERDICT_LABELS = {
 }
 const VERDICT_HINTS = {
   no_donor_out: "This pair's donor is incompatible with every recipient in the pool.",
-  no_donor_in: "No donor in the pool can give to this patient — the sensitization signal. Consider desensitization or national referral.",
+  no_donor_in: "No donor in the pool can give to this patient — the sensitisation signal. Consider desensitisation or national referral.",
   no_reciprocal_path: "Has compatible edges, but sits in no 2- or 3-cycle.",
   lost_to_overlap: "Sits in a candidate cycle, but every policy preferred an overlapping one instead.",
 }
@@ -325,7 +325,7 @@ export default function ExchangePoolPage() {
       {viewMode === "hard-to-match" && (
         <>
           <p className="text-[13px] text-text-muted -mt-2">
-            Pool pairs no policy selects under any weighting — the desensitization / national-
+            Pool pairs no policy selects under any weighting — the desensitisation / national-
             referral worklist. Sorted by longest real waiting time first.
           </p>
 

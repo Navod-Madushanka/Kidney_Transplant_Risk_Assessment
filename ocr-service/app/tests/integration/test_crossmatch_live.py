@@ -2,17 +2,26 @@
 #
 # Real call against a live Ollama + qwen3-vl:4b-nothink -- excluded from
 # the default `pytest` run. Run explicitly: `uv run pytest -m integration -v`.
+#
+# B8 (PDPA cleanup, FINALIZATION-PLAN.md Phase 3.4): _ACCEPTED_PATIENT_NAMES
+# below and crossmatch_ground_truth's full_name/nic_number fields were the
+# real patient/donor's real identity, transcribed from a real report image
+# for this OCR-accuracy regression test. Both are now synthetic. If you
+# have a real copy of the reference image locally, this test's very first
+# assertion will now (correctly) fail, since the model will keep reading
+# the real name off the real image and neither synthetic value will ever
+# match it -- unlike test_hla_typing_live.py's fixture, this isn't a
+# partial mismatch, it's total, because the model output was never
+# decoupled from the name the way the ground-truth JSON's other fields are.
+# Making this test meaningfully runnable again needs a redacted or
+# synthetic reference image, not something fixable from this repo alone.
 import pytest
 
 from app.extraction.llm_extract import extract_crossmatch
 
 pytestmark = pytest.mark.integration
 
-# The one known field-level miss from Phase 1, confirmed to reproduce
-# identically in Phase 3's real production run: a genuine w/v ambiguity in
-# the source image's print itself (not a model defect -- see the migration
-# plan's Phase 1 Results). Treated as an accepted alternate, not a failure.
-_ACCEPTED_PATIENT_NAMES = {"D.G.S.K.Ratnayake", "D.G.S.K.Ratanayake"}
+_ACCEPTED_PATIENT_NAMES = {"Test Patient One"}
 
 
 async def test_crossmatch_matches_ground_truth(crossmatch_image_bytes, crossmatch_ground_truth):

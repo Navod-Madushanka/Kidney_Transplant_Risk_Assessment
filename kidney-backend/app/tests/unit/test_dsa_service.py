@@ -138,3 +138,63 @@ def test_allele_level_antigen_below_floor_is_not_flagged():
 
     assert result.unmapped_antibodies == []
     assert result.requires_review is False
+
+
+def test_antibody_against_untyped_donor_locus_is_flagged_not_silently_dropped():
+    # Regression: a donor with no DQB1 typing on record has no "DQ*" entries
+    # in donor_hla_antigens, so a strong anti-DQ antibody can never exact-
+    # match -- before this fix that looked identical to "donor typed at DQ,
+    # confirmed no match", with no incompleteness signal anywhere, unlike
+    # Step 3's mismatch_result.data_completeness for the same class of gap.
+    patient_antibodies = [PatientAntibody(antigen="DQ5", mfi=8000)]
+    donor_hla_antigens = ["A2", "B7"]  # no DQB1 typing at all
+    donor_typed_loci = {"A", "B"}
+
+    result = check_dsa(patient_antibodies, donor_hla_antigens, donor_typed_loci=donor_typed_loci)
+
+    assert result.is_halted is False  # never actually screened, so it can't be a confirmed halt
+    assert result.requires_review is True
+    assert result.matches == []
+    assert len(result.untyped_locus_antibodies) == 1
+    assert result.untyped_locus_antibodies[0].antigen == "DQ5"
+    assert result.untyped_locus_antibodies[0].mfi == 8000
+    assert result.screened_loci == ["A", "B"]
+
+
+def test_antibody_against_typed_locus_with_no_match_is_a_real_negative():
+    # Donor IS typed at DQB1, just doesn't carry this particular antigen --
+    # must not be confused with the untyped-locus case above.
+    patient_antibodies = [PatientAntibody(antigen="DQ5", mfi=8000)]
+    donor_hla_antigens = ["A2", "B7", "DQ6"]
+    donor_typed_loci = {"A", "B", "DQB1"}
+
+    result = check_dsa(patient_antibodies, donor_hla_antigens, donor_typed_loci=donor_typed_loci)
+
+    assert result.untyped_locus_antibodies == []
+    assert result.requires_review is False
+
+
+def test_untyped_locus_check_skipped_when_donor_typed_loci_not_provided():
+    # Callers that can't supply donor_typed_loci (donor_typed_loci=None, the
+    # default) keep the old behavior rather than guessing -- see
+    # exchange_graph_service.py's evaluate_pair_edge, which doesn't pass it.
+    patient_antibodies = [PatientAntibody(antigen="DQ5", mfi=8000)]
+    donor_hla_antigens = ["A2", "B7"]
+
+    result = check_dsa(patient_antibodies, donor_hla_antigens)
+
+    assert result.untyped_locus_antibodies == []
+    assert result.requires_review is False
+    assert result.screened_loci == []
+
+
+def test_untyped_locus_antibody_below_floor_is_not_flagged():
+    patient_antibodies = [PatientAntibody(antigen="DQ5", mfi=DSA_MFI_FLOOR - 1)]
+    donor_hla_antigens = ["A2", "B7"]
+
+    result = check_dsa(
+        patient_antibodies, donor_hla_antigens, donor_typed_loci={"A", "B"}
+    )
+
+    assert result.untyped_locus_antibodies == []
+    assert result.requires_review is False

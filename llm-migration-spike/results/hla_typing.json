@@ -1,14 +1,15 @@
 {
+  "_redaction_note": "full_name/nic_number replaced with synthetic values (B8, PDPA cleanup) -- see fixtures/hla_typing_ground_truth.json's own note in this same directory.",
   "patient_details": {
-    "full_name": "Rev.S.Amarasinghe Thero",
-    "nic_number": "198723456789",
+    "full_name": "Test Patient One",
+    "nic_number": "200000000001",
     "date_of_birth": "16-Jan-1980",
     "blood_type": "B Positive",
     "hla_ref_no": "847/26M"
   },
   "donor_details": {
-    "full_name": "K.R.Wickremasinghe",
-    "nic_number": "852741963v",
+    "full_name": "Test Donor One",
+    "nic_number": "000000000v",
     "date_of_birth": "22-Nov-1982",
     "blood_type": "B Positive",
     "hla_ref_no": "848/26M"

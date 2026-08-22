@@ -14,7 +14,7 @@ const SELECTED_COLOR = "var(--color-accent)"
 const UNSELECTED_COLOR = "var(--color-border)"
 // The one legitimate use of the clinical moderate/high-risk colors on this
 // graph (see the comment above): requires_review is a real clinical flag
-// (a weak/moderate DSA that needs desensitization-protocol review before
+// (a weak/moderate DSA that needs desensitisation-protocol review before
 // this leg could actually be used, see dsa_threshold.py), not decoration.
 const REVIEW_COLOR = "var(--color-moderate)"
 
@@ -138,7 +138,7 @@ export default function ExchangeCycleGraph({ nodes, edges, selectedCycles }) {
               backgroundImage: `repeating-linear-gradient(to right, ${REVIEW_COLOR} 0 4px, transparent 4px 7px)`,
             }}
           />
-          Needs desensitization review (DSA)
+          Needs desensitisation review (DSA)
         </span>
         <span>Arrows point donor → recipient.</span>
       </div>
@@ -180,14 +180,14 @@ export default function ExchangeCycleGraph({ nodes, edges, selectedCycles }) {
             // outright (dsa_threshold.py) -- a weak/moderate DSA on this
             // leg sets requires_review instead and still renders as an
             // ordinary edge here, with no indication a coordinator would
-            // need to send it for desensitization-protocol review before
+            // need to send it for desensitisation-protocol review before
             // actually using it.
             const needsReview = Boolean(edge.dsa_result?.requires_review)
             const totalMismatches = edge.mismatch_result?.total_mismatches
             const tooltipLines = [
               `${totalMismatches ?? "?"} HLA mismatch${totalMismatches === 1 ? "" : "es"}`,
               needsReview
-                ? "DSA: requires desensitization-protocol review"
+                ? "DSA: requires desensitisation-protocol review"
                 : "DSA: no review needed",
             ]
 
@@ -255,7 +255,7 @@ export default function ExchangeCycleGraph({ nodes, edges, selectedCycles }) {
         {activeNode ? (
           <div className="grid grid-cols-2 gap-x-4 gap-y-1">
             <p className="col-span-2 font-semibold text-text">
-              Recipient blood type {activeNode.patient_blood_type} · Donor blood type {activeNode.donor_blood_type}
+              Recipient blood group {activeNode.patient_blood_type} · Donor blood group {activeNode.donor_blood_type}
               {cycleNumberByPairId.has(activeNode.pair_id) && (
                 <span className="ml-2 text-accent">· in cycle {cycleNumberByPairId.get(activeNode.pair_id)}</span>
               )}

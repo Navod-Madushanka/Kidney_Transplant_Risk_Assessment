@@ -45,7 +45,7 @@ describe("DonorSearchPage", () => {
     expect(await screen.findByText("Second Test Hospital")).toBeInTheDocument()
     expect(screen.getByText("Dr. Second Doctor")).toBeInTheDocument()
     expect(screen.getByText("second@example.com")).toBeInTheDocument()
-    expect(screen.getByText("2 (<3 mismatches)")).toBeInTheDocument()
+    expect(screen.getByText("2 (1-2 mismatches)")).toBeInTheDocument()
   })
 
   it("shows an empty-state message when no candidates come back", async () => {
