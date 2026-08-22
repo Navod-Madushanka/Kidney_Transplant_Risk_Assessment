@@ -36,6 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.audit_log import AuditLog
 from app.models.match_report import MatchReport
+from app.reference_data.versions import CLINICAL_REFERENCE_VERSIONS
 from app.tests.conftest import (
     COMPATIBLE_DONOR_HLA,
     COMPATIBLE_PATIENT_HLA,
@@ -435,6 +436,12 @@ async def test_full_pipeline_run_reaches_hla_scoring_and_risk_tier(auth_client: 
     assert body["outcome"]["risk_level"] == "High-Average Risk"
     assert body["outcome"]["review_flags"] == []
     assert body["outcome"]["action_required"] is None
+
+    # 4.3: every report is stamped with the reference-data versions in force
+    # at generation time (see app/reference_data/versions.py), so a later
+    # doctor-approved change to one of these tables doesn't silently
+    # reinterpret what this report's numbers meant.
+    assert body["reference_versions"] == CLINICAL_REFERENCE_VERSIONS
 
 
 async def test_lkdpi_inputs_never_affect_verdict_or_risk_level(auth_client: AsyncClient):

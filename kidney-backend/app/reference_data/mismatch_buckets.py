@@ -3,9 +3,16 @@
 HLA mismatch count buckets for Step 3 of the sequential evaluation.
 Only A, B, and DRB1 loci count toward this total (per current spec) —
 unlike the older weighted hla_scoring_service which used all loci.
+
+Bump MISMATCH_BUCKETS_VERSION any time the bucket boundaries below change,
+so a report's stamped reference_versions (see MatchReport.reference_versions,
+app/reference_data/versions.py) keeps meaning exactly what it meant when
+that report was generated.
 """
 
 from dataclasses import dataclass
+
+MISMATCH_BUCKETS_VERSION = "project-spec-v1"
 
 
 @dataclass(frozen=True)

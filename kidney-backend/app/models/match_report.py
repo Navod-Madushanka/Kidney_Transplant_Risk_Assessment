@@ -54,3 +54,13 @@ class MatchReport(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     # reports (nothing to score) and for pre-existing reports created
     # before this column existed.
     lkdpi_result: Mapped[dict] = mapped_column(JSONB, nullable=True)
+
+    # A snapshot of app/reference_data/versions.CLINICAL_REFERENCE_VERSIONS
+    # at the moment this report was created -- so a later doctor-approved
+    # change to, say, the DSA bands or risk tiers doesn't silently
+    # reinterpret what an old report's numbers meant (see that module's
+    # docstring). nullable=True because this was added after reports
+    # already existed; pre-existing rows are simply left null rather than
+    # backfilled with a guess at what version was in force when they were
+    # generated.
+    reference_versions: Mapped[dict] = mapped_column(JSONB, nullable=True)

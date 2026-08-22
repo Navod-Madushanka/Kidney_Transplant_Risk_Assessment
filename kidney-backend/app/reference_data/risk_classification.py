@@ -27,8 +27,17 @@ clinical point value for it has been specified by the doctors yet, so
 classify_risk returns None for that combination rather than guessing one —
 same "don't guess" precedent as insufficient cPRA population data or
 incomplete HLA typing elsewhere in the pipeline.
+
+Bump RISK_CLASSIFICATION_VERSION any time the point values or score->level
+mapping below change, so a report's stamped reference_versions (see
+MatchReport.reference_versions, app/reference_data/versions.py) keeps
+meaning exactly what it meant when that report was generated -- there's no
+per-report JSON blob for this module the way most other steps have one,
+since classify_risk's output is a bare string (MatchReport.final_risk_level).
 """
 from typing import Optional
+
+RISK_CLASSIFICATION_VERSION = "project-spec-v1"
 
 MISMATCH_BUCKET_POINTS: dict[str, int] = {
     "0 mismatches": 0,

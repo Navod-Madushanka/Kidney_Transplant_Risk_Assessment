@@ -11,6 +11,7 @@ from app.services.ocr_batch_service import (
     DocumentChunk,
     ProgressEvent,
     check_bead_id_uniqueness_across_pages,
+    check_panel_antigen_consistency,
     run_batch_extraction,
     stream_batch_extraction,
 )
@@ -509,3 +510,65 @@ def test_rows_without_a_bead_id_are_ignored():
     ]
 
     assert check_bead_id_uniqueness_across_pages(rows) == []
+
+
+# ---------------------------------------------------------------------
+# check_panel_antigen_consistency (B14) -- panel is stamped purely from
+# page position (see SLOT_PAGE_PANEL); this cross-checks it against what
+# the row's own antigen implies, so a swapped-page upload is flagged
+# rather than silently mislabelling every row on that page.
+# ---------------------------------------------------------------------
+
+
+def test_class_i_antigen_on_class_i_panel_is_not_a_conflict():
+    rows = [{"bead": "001", "antigen": "A23", "page": 1, "panel": "class_i"}]
+
+    assert check_panel_antigen_consistency(rows) == []
+
+
+def test_class_ii_antigen_on_class_ii_panel_is_not_a_conflict():
+    rows = [{"bead": "001", "antigen": "DQ7", "page": 2, "panel": "class_ii"}]
+
+    assert check_panel_antigen_consistency(rows) == []
+
+
+def test_class_ii_antigen_stamped_class_i_is_flagged():
+    # The pages were uploaded swapped: a DR antigen landed on the page 1
+    # slot, which SLOT_PAGE_PANEL always stamps "class_i".
+    rows = [{"bead": "012", "antigen": "DR13", "page": 1, "panel": "class_i"}]
+
+    warnings = check_panel_antigen_consistency(rows)
+
+    assert len(warnings) == 1
+    assert "012" in warnings[0]["message"]
+    assert "DR13" in warnings[0]["message"]
+    assert "Class II" in warnings[0]["message"]
+    assert "Class I" in warnings[0]["message"]
+
+
+def test_class_i_antigen_stamped_class_ii_is_flagged():
+    rows = [{"bead": "003", "antigen": "B76,Bw6", "page": 2, "panel": "class_ii"}]
+
+    warnings = check_panel_antigen_consistency(rows)
+
+    assert len(warnings) == 1
+    assert "B76,Bw6" in warnings[0]["message"]
+
+
+def test_antigen_on_a_locus_outside_the_recognized_scheme_is_not_checked():
+    # A non-classical-HLA antigen (e.g. MICA) doesn't start with any of the
+    # recognized serological prefixes (DR/DQ/DP/Cw/A/B), so
+    # locus_for_antigen_designation returns None for it -- silently skipped
+    # rather than guessed at, same precedent as the rest of this module.
+    rows = [{"bead": "005", "antigen": "MICA1", "page": 1, "panel": "class_i"}]
+
+    assert check_panel_antigen_consistency(rows) == []
+
+
+def test_rows_missing_antigen_or_panel_are_ignored():
+    rows = [
+        {"bead": "006", "antigen": None, "page": 1, "panel": "class_i"},
+        {"bead": "007", "antigen": "DR13", "page": 1, "panel": None},
+    ]
+
+    assert check_panel_antigen_consistency(rows) == []

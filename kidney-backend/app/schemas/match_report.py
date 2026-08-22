@@ -47,6 +47,7 @@ class MatchReportResponse(BaseModel):
     final_risk_level: Optional[str] = None
     outcome: Optional[dict] = None
     lkdpi_result: Optional[dict] = None
+    reference_versions: Optional[dict] = None
     created_at: datetime
     updated_at: datetime
 

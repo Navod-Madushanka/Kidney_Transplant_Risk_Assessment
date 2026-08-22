@@ -38,6 +38,7 @@ from app.services.ocr_batch_service import (
     DocumentChunk,
     ProgressEvent,
     check_bead_id_uniqueness_across_pages,
+    check_panel_antigen_consistency,
     stream_batch_extraction,
 )
 from app.services.ocr_spool_service import SpooledUpload, discard_spool
@@ -354,9 +355,12 @@ async def _save_bead_specificity_if_present(db: AsyncSession, job: OcrExtraction
         return
 
     uniqueness_warnings = check_bead_id_uniqueness_across_pages(bead_rows)
-    if uniqueness_warnings:
-        for warning in uniqueness_warnings:
-            _add_warning(warning["message"])
+    for warning in uniqueness_warnings:
+        _add_warning(warning["message"])
+
+    panel_warnings = check_panel_antigen_consistency(bead_rows)
+    for warning in panel_warnings:
+        _add_warning(warning["message"])
 
     readable_rows = [row for row in bead_rows if row.get("mfi") is not None]
     if not readable_rows:

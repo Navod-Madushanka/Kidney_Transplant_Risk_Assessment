@@ -5,9 +5,16 @@ reasons (kept stable rather than renamed, since PRABucketResult's fields are
 persisted as MatchReport.pra_bucket_result), but the value itself is always
 cPRA (calculated cPRA service, population-based), just re-bucketed per the
 new spec's thresholds rather than the old pass/fail-only cPRA output.
+
+Bump PRA_BUCKETS_VERSION any time the boundaries below change, so a
+report's stamped reference_versions (see MatchReport.reference_versions,
+app/reference_data/versions.py) keeps meaning exactly what it meant when
+that report was generated.
 """
 
 from dataclasses import dataclass
+
+PRA_BUCKETS_VERSION = "project-spec-v1"
 
 
 @dataclass(frozen=True)

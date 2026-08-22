@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from typing import AsyncIterator
 
 from app.reference_data.dsa_threshold import DSA_SEVERITY_BANDS
+from app.services.hla_typing_service import locus_for_antigen_designation
 from app.services.ocr_client import call_ocr_service, call_ocr_service_stream
 from app.services.ocr_spool_service import SpooledUpload
 
@@ -219,6 +220,7 @@ async def run_batch_extraction(files: dict[str, SpooledUpload]) -> BatchExtracti
         result.errors.extend(chunk.errors)
 
     result.errors.extend(check_bead_id_uniqueness_across_pages(result.bead_specificity))
+    result.errors.extend(check_panel_antigen_consistency(result.bead_specificity))
     return result
 
 
@@ -257,6 +259,62 @@ def check_bead_id_uniqueness_across_pages(rows: list[dict]) -> list[dict]:
         }
         for page, bead in duplicate_keys
     ]
+
+
+# B14: which serological locus each panel is expected to carry. A/B/C are
+# Class I antigens; DR/DQ/DP are Class II -- see
+# hla_typing_service.locus_for_antigen_designation for the antigen-string ->
+# locus mapping this is built on. DRB3,4,5/DQA1/DPA1 aren't reachable
+# through that function at all (it only recognizes the serological schemes
+# in _SEROLOGICAL_LOCUS_PREFIX plus bare A/B), so a row on one of those loci
+# is simply not checked here rather than guessed at.
+_CLASS_I_LOCI = {"A", "B", "C"}
+_CLASS_II_LOCI = {"DRB1", "DQB1", "DPB1"}
+_LOCUS_TO_PANEL = {
+    **{locus: "class_i" for locus in _CLASS_I_LOCI},
+    **{locus: "class_ii" for locus in _CLASS_II_LOCI},
+}
+_PANEL_DISPLAY_LABEL = {"class_i": "Class I", "class_ii": "Class II"}
+
+
+def check_panel_antigen_consistency(rows: list[dict]) -> list[dict]:
+    """B14: panel (class_i/class_ii) is stamped purely from which page a row
+    came from (see SLOT_PAGE_PANEL above) -- correct only if the lab
+    actually printed Class I beads on page 1 and Class II on page 2, in
+    that order. If a lab prints them in the other order, or a doctor
+    uploads the two pages swapped, every row on that page is stamped with
+    the wrong panel, and (panel, bead) row identity (see
+    check_bead_id_uniqueness_across_pages) can silently collide with the
+    other page's real rows instead of merely being wrong.
+
+    Cross-checks the panel actually assigned against the antigen the row
+    itself claims (A/B/C -> Class I; DR/DQ/DP -> Class II) and raises a
+    WARNING -- never reassigns the panel or drops the row, same "surface
+    it, don't silently fix or hide it" precedent as the rest of this
+    module -- when they disagree, so a swapped upload is flagged for the
+    doctor to resolve rather than trusting slot position blindly."""
+    conflicts = []
+    for row in rows:
+        antigen = row.get("antigen")
+        panel = row.get("panel")
+        if not antigen or not panel:
+            continue
+        locus = locus_for_antigen_designation(antigen)
+        expected_panel = _LOCUS_TO_PANEL.get(locus)
+        if expected_panel is not None and expected_panel != panel:
+            conflicts.append(
+                {
+                    "field": "bead_specificity",
+                    "message": (
+                        f"Bead {row.get('bead')} on page {row.get('page')} is antigen "
+                        f"{antigen!r}, normally a {_PANEL_DISPLAY_LABEL[expected_panel]} antigen, "
+                        f"but this row was stamped {_PANEL_DISPLAY_LABEL.get(panel, panel)} from "
+                        "its page position -- the two bead-specificity pages may have been "
+                        "uploaded in the wrong order. Please verify."
+                    ),
+                }
+            )
+    return conflicts
 
 
 def _check_cross_document_identity(

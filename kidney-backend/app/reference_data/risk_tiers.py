@@ -15,9 +15,16 @@ own boundaries would produce -- it only removes dead space that a future
 non-quarter locus weight could otherwise land a score in, which previously
 raised ValueError out of get_risk_tier() (see risk_tier_service.py) instead
 of returning a tier.
+
+Bump RISK_TIERS_VERSION any time the band boundaries or names below change,
+so a report's stamped reference_versions (see MatchReport.reference_versions,
+app/reference_data/versions.py) keeps meaning exactly what it meant when
+that report was generated.
 """
 
 from dataclasses import dataclass
+
+RISK_TIERS_VERSION = "project-spec-v1"
 
 
 @dataclass(frozen=True)

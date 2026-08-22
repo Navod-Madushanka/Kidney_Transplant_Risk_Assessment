@@ -26,10 +26,15 @@ halts, same as the old gate.
 Each MatchReport's dsa_result JSON records the floor/band boundaries that
 were actually in force when that report was generated (see
 dsa_service.check_dsa), so a later change to these numbers doesn't rewrite
-the clinical meaning of past reports.
+the clinical meaning of past reports. DSA_THRESHOLD_VERSION is a second,
+coarser record of the same fact -- bump it any time the floor/bands below
+change, so it's visible at a glance (via MatchReport.reference_versions,
+app/reference_data/versions.py) without diffing the full band arrays.
 """
 
 from dataclasses import dataclass
+
+DSA_THRESHOLD_VERSION = "project-spec-v1"
 
 
 @dataclass(frozen=True)

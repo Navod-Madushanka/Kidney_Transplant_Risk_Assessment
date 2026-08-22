@@ -3,7 +3,14 @@
 Sensitising-event scoring weights.
 Source: project specification slide 5 -- see docs/clinical-basis.md §2 for
 the full rationale and what is/isn't externally citable about these numbers.
+
+Bump SENSITIZATION_WEIGHTS_VERSION any time the weights or reduction factor
+below change, so a report's stamped reference_versions (see
+MatchReport.reference_versions, app/reference_data/versions.py) keeps
+meaning exactly what it meant when that report was generated.
 """
+
+SENSITIZATION_WEIGHTS_VERSION = "project-spec-v1"
 
 SENSITIZATION_EVENT_WEIGHTS: dict[str, float] = {
     "previous_transplant": 2.0,

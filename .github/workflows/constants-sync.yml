@@ -1,0 +1,27 @@
+name: Constants sync
+
+# Repo-wide, no path filter: a drift can be introduced by editing either
+# side (kidney-backend/app/reference_data or /models/enums.py, or
+# kidney-frontend/src/constants) -- see scripts/check_constants_in_sync.py
+# (B4.4, FINALIZATION-PLAN.md).
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check frontend constants match their backend source of truth
+        run: python scripts/check_constants_in_sync.py

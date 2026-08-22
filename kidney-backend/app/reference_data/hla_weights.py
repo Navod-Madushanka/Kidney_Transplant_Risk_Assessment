@@ -4,8 +4,15 @@ HLA locus mismatch weights, by threat tier.
 Source: project specification slides 7 (tier definitions) and 8 (full locus
 list, worked example) -- see docs/clinical-basis.md §1 for the full table,
 tier rationale, and what is/isn't externally citable about these numbers.
+
+Bump HLA_WEIGHTS_VERSION any time the weights below change, so a report's
+stamped reference_versions (see MatchReport.reference_versions,
+app/reference_data/versions.py) keeps meaning exactly what it meant when
+that report was generated.
 """
 from app.reference_data.hla_loci import HLA_LOCI
+
+HLA_WEIGHTS_VERSION = "project-spec-v1"
 
 HLA_LOCUS_WEIGHTS: dict[str, float] = {
     "DRB1": 1.50,

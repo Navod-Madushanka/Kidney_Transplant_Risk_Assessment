@@ -29,6 +29,7 @@ from datetime import datetime, timezone
 from typing import Callable
 
 import pulp
+from pulp.apis import coin_api
 
 from app.models.patient import Patient
 from app.reference_data.exchange_weight_policies import (
@@ -375,7 +376,7 @@ def _solve_with_shared_cycles(
     ]
 
     problem = pulp.LpProblem("exchange_matching", pulp.LpMaximize)
-    cycle_vars = [pulp.LpVariable(f"cycle_{idx}", cat="Binary") for idx in range(len(cycles))]
+    cycle_vars = [problem.add_variable(f"cycle_{idx}", cat="Binary") for idx in range(len(cycles))]
     problem += pulp.lpSum(weight * var for weight, var in zip(tie_broken_weights, cycle_vars))
 
     for pair_id in index.node_by_id:
@@ -398,7 +399,11 @@ def _solve_with_shared_cycles(
         if len(involved_vars) > 1:
             problem += pulp.lpSum(involved_vars) <= 1
 
-    problem.solve(pulp.PULP_CBC_CMD(msg=False))
+    # PULP_CBC_CMD is deprecated (removed in PuLP 4.0); it was a thin wrapper
+    # around COIN_CMD pointed at the CBC binary PuLP bundles internally.
+    # Using COIN_CMD directly, pointed at that same bundled path, drops the
+    # deprecation warning without depending on a system-installed CBC.
+    problem.solve(pulp.COIN_CMD(msg=False, path=coin_api.pulp_cbc_path))
 
     # Review #2 bug 8: `problem.solve()`'s return status was never checked
     # -- an Infeasible/Not Solved CBC run used to render identically to a

@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.match_report import MatchReport
+from app.reference_data.versions import CLINICAL_REFERENCE_VERSIONS
 from app.services.match_pipeline import MatchPipelineResult
 
 
@@ -42,6 +43,7 @@ async def create_match_report(
         final_risk_level=pipeline_result.final_risk_level,
         outcome=_to_json(pipeline_result.outcome),
         lkdpi_result=_to_json(pipeline_result.lkdpi_result),
+        reference_versions=dict(CLINICAL_REFERENCE_VERSIONS),
     )
     db.add(report)
     await db.flush()
