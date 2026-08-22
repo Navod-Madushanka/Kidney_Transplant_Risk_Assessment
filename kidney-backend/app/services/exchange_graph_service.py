@@ -134,6 +134,7 @@ def evaluate_pair_edge(
     donor_hla_antigens: list[str],
     patient_blood_type: str,
     donor_blood_type: str,
+    donor_typed_loci: set[str] | None = None,
 ) -> PairEdgeResult:
     """Scores one directed donor -> recipient edge: would this specific
     donor's kidney be offered to this specific recipient? Composes the same
@@ -143,10 +144,17 @@ def evaluate_pair_edge(
     step (population-level, not pair-specific -- see pra_gate_removed note
     in match_pipeline.py) and crossmatch (needs a same-day lab result that
     doesn't exist for a hypothetical swap).
+
+    donor_typed_loci mirrors match_pipeline.py's Step 5 call to check_dsa --
+    pass the donor's actual typed loci so an antibody against a locus the
+    donor was never typed for (e.g. no DQB1 typing on file) sets
+    requires_review instead of silently reading as a clean DSA screen.
     """
     abo_result = check_abo_compatibility(patient_blood_type, donor_blood_type)
     mismatch_result = calculate_mismatch_result(patient_typing, donor_typing)
-    dsa_result = check_dsa(patient_antibodies, donor_hla_antigens)
+    dsa_result = check_dsa(
+        patient_antibodies, donor_hla_antigens, donor_typed_loci=donor_typed_loci
+    )
 
     is_compatible = (
         abo_result.is_compatible
@@ -216,6 +224,7 @@ def build_exchange_graph(
         prepared[node.pair_id] = {
             "donor_typing": build_partial_typing_dict(donor_entries, MISMATCH_COUNTED_LOCI),
             "donor_hla_antigens": _donor_hla_antigens(donor_entries),
+            "donor_typed_loci": {row.locus.value for row in donor_entries},
             "patient_typing": build_partial_typing_dict(
                 patient_typing_entries_by_patient.get(node.patient.id, []),
                 MISMATCH_COUNTED_LOCI,
@@ -239,6 +248,7 @@ def build_exchange_graph(
                 donor_hla_antigens=donor_data["donor_hla_antigens"],
                 patient_blood_type=recipient_node.patient.blood_type.value,
                 donor_blood_type=donor_node.donor.blood_type.value,
+                donor_typed_loci=donor_data["donor_typed_loci"],
             )
             if result.is_compatible:
                 # LKDPI is only needed on edges that actually make it into
@@ -339,6 +349,7 @@ async def load_exchange_pool(db: AsyncSession) -> ExchangePoolData:
             donor_hla_antigens=_donor_hla_antigens(donor_entries),
             patient_blood_type=patient.blood_type.value,
             donor_blood_type=donor.blood_type.value,
+            donor_typed_loci={row.locus.value for row in donor_entries},
         )
         if direct_result.is_compatible or not direct_result.mismatch_result.data_completeness:
             # Compatible pairs would pass directly -- not an exchange

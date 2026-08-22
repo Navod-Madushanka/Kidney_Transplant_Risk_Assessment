@@ -214,15 +214,13 @@ def build_report_outcome(
     # --- Build review flags for rows 4/5/6 --------------------------------
     review_flags: list[dict] = []
 
-    if dsa_result and dsa_result.get("requires_review"):
-        matches = dsa_result.get("matches") or []
-        reviewed = [m for m in matches if m.get("severity") not in (None, "strong")]
-        target = reviewed[0] if reviewed else (matches[0] if matches else None)
+    dsa_matches = (dsa_result or {}).get("matches") or []
+    if dsa_matches:
+        reviewed = [m for m in dsa_matches if m.get("severity") not in (None, "strong")]
+        target = reviewed[0] if reviewed else dsa_matches[0]
         detail = (
             f"{(target.get('severity') or 'Moderate').capitalize()} DSA against "
             f"HLA-{target.get('antigen')}"
-            if target
-            else "A weak or moderate donor-specific antibody was detected."
         )
         review_flags.append(
             {

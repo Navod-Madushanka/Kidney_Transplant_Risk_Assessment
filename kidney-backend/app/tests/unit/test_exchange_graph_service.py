@@ -128,6 +128,36 @@ class TestEvaluatePairEdge:
         assert result.dsa_result.is_halted is True
         assert result.is_compatible is False
 
+    def test_untyped_locus_antibody_only_flagged_when_donor_typed_loci_passed(self):
+        # N1 regression: the same clinical inputs must produce the same
+        # answer whether they arrive through evaluate_pair_edge directly
+        # (the exchange path) or through match_pipeline.py's Step 5 call --
+        # both pass donor_typed_loci, so both must set requires_review for
+        # an antibody against a locus the donor was never typed for.
+        common_kwargs = dict(
+            patient_typing=_typing_dict(),
+            donor_typing=_typing_dict(),
+            patient_antibodies=[PatientAntibody(antigen="DQ7", mfi=9000.0)],
+            donor_hla_antigens=["B7", "B8", "DR3", "DR4"],
+            patient_blood_type="O",
+            donor_blood_type="O",
+        )
+
+        without_typed_loci = evaluate_pair_edge(**common_kwargs)
+        with_typed_loci = evaluate_pair_edge(**common_kwargs, donor_typed_loci={"A", "B", "DRB1"})
+
+        assert without_typed_loci.dsa_result.requires_review is False
+        assert without_typed_loci.dsa_result.untyped_locus_antibodies == []
+
+        assert with_typed_loci.dsa_result.requires_review is True
+        assert [a.antigen for a in with_typed_loci.dsa_result.untyped_locus_antibodies] == ["DQ7"]
+
+        # Neither reading halts the edge -- the antibody was never matched
+        # against the donor's typing, so nothing here should block a swap
+        # outright; it should only surface for review.
+        assert without_typed_loci.is_compatible is True
+        assert with_typed_loci.is_compatible is True
+
 
 class TestBuildExchangeGraph:
     def test_two_incompatible_pairs_that_cross_match_form_mutual_edges(self):
@@ -180,3 +210,36 @@ class TestBuildExchangeGraph:
         )
 
         assert graph.edges == []
+
+    def test_graph_edge_flags_antibody_against_a_locus_the_donor_lacks_typing_for(self):
+        # N1 regression, at the build_exchange_graph level: donor_a is only
+        # typed at A/B/DRB1 (MATCHING_TYPING), and patient_b holds an
+        # anti-DQ7 antibody. The resulting donor_a -> patient_b edge must
+        # carry requires_review, not silently read as a clean DSA screen.
+        donor_a, patient_a = _make_donor(BloodType.B), _make_patient(BloodType.A)
+        donor_b, patient_b = _make_donor(BloodType.A), _make_patient(BloodType.B)
+        node_a = _make_node(donor_a, patient_a)
+        node_b = _make_node(donor_b, patient_b)
+
+        graph = build_exchange_graph(
+            nodes=[node_a, node_b],
+            donor_typing_entries_by_donor={
+                donor_a.id: _donor_typing_rows(donor_a.id),
+                donor_b.id: _donor_typing_rows(donor_b.id),
+            },
+            patient_typing_entries_by_patient={
+                patient_a.id: _patient_typing_rows(patient_a.id),
+                patient_b.id: _patient_typing_rows(patient_b.id),
+            },
+            patient_antibodies_by_patient={
+                patient_b.id: [PatientAntibody(antigen="DQ7", mfi=9000.0)],
+            },
+        )
+
+        edge = next(
+            e for e in graph.edges
+            if e.from_pair_id == node_a.pair_id and e.to_pair_id == node_b.pair_id
+        )
+        assert edge.result.is_compatible is True
+        assert edge.result.dsa_result.requires_review is True
+        assert [a.antigen for a in edge.result.dsa_result.untyped_locus_antibodies] == ["DQ7"]

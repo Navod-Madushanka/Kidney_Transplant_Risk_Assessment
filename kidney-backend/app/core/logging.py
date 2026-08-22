@@ -100,6 +100,15 @@ def configure_logging(level: str = "INFO") -> None:
         uv_logger.handlers.clear()
         uv_logger.propagate = True
 
+    # uvicorn.access logs the full request line, including the query
+    # string -- unlike RequestIdMiddleware (method/path/status/duration
+    # only), it doesn't honour this module's no-query-string rule. Nothing
+    # today accepts a clinical query parameter, but silencing it here (not
+    # via uvicorn's own access_log= flag, which depends on how the process
+    # happens to be launched) is what actually makes that invariant hold
+    # regardless of entry point.
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+
 
 def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(name)

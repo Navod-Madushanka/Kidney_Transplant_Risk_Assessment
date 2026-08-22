@@ -48,6 +48,12 @@ DSA_UNMAPPED_ANTIBODY = {
     "matches": [],
     "unmapped_antibodies": [{"antigen": "B*44:02", "mfi": 12000.0, "reason": "..."}],
 }
+DSA_UNTYPED_LOCUS_ANTIBODY = {
+    "is_halted": False,
+    "requires_review": True,
+    "matches": [],
+    "untyped_locus_antibodies": [{"antigen": "DQ7", "mfi": 9000.0, "reason": "..."}],
+}
 
 
 @pytest.mark.parametrize(
@@ -170,6 +176,31 @@ def test_unmapped_antibody_is_a_visible_review_flag_not_dropped():
     unmapped_flag = next(f for f in outcome.review_flags if f["code"] == "unmapped_antibody")
     assert "B*44:02" in unmapped_flag["detail"]
     assert "12000" in unmapped_flag["detail"]
+    # N2 regression: requires_review is true here only because of the
+    # unmapped antibody (matches is empty) -- the report must not also
+    # raise "Donor-specific antibody detected" when no DSA was actually
+    # found. That flag is for actual matches only.
+    assert "dsa_requires_review" not in flag_codes
+
+
+def test_untyped_locus_antibody_is_a_visible_review_flag_not_dropped():
+    # N2 regression: an antibody against a locus the donor was never typed
+    # for (zero matches, since check_dsa can't compare it to anything) must
+    # surface only as "DSA screening incomplete", not as "Donor-specific
+    # antibody detected" -- no DSA was found here, one could not be
+    # excluded, and those are different clinical statements.
+    outcome = build_report_outcome(
+        overall_status="completed",
+        abo_result=ABO_RESULT,
+        mismatch_result=MISMATCH_RESULT_COMPLETE,
+        pra_bucket_result=PRA_BUCKET_LOW,
+        dsa_result=DSA_UNTYPED_LOCUS_ANTIBODY,
+        final_risk_level="Low Risk",
+    )
+    assert outcome.verdict == VERDICT_PROCEED_CAUTION
+    flag_codes = [flag["code"] for flag in outcome.review_flags]
+    assert "dsa_untyped_locus" in flag_codes
+    assert "dsa_requires_review" not in flag_codes
 
 
 def test_row_6_completed_with_no_flags_is_compatible():

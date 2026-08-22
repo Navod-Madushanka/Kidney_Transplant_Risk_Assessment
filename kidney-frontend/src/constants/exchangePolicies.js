@@ -20,7 +20,7 @@ export const EXCHANGE_POLICY_OPTIONS = [
   {
     value: "equity_weighted",
     label: "Equity-weighted",
-    description: "Adds a bonus for highly sensitized and longer-waiting patients.",
+    description: "Adds a bonus for highly sensitised and longer-waiting patients.",
   },
   {
     value: "max_lkdpi_quality",

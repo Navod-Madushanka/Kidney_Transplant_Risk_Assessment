@@ -57,3 +57,12 @@ addopts = "-m 'not integration'"
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.ruff.lint]
+# B008 flags FastAPI's own File(...)/Form(...)/Header(...) parameter-default
+# DI pattern throughout app/api/routes.py -- a false positive for that
+# framework, not a real bug (FastAPI's dependency injection relies on the
+# call happening in the default). Ignored rather than rewritten so
+# ocr-service.yml (added alongside this) starts green on the idiomatic code
+# already here instead of red on day one.
+ignore = ["B008"]
